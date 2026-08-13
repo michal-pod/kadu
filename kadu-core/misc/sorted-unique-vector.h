@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <vector>
 
 /**

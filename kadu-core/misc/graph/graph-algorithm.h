@@ -22,6 +22,7 @@
 #include "misc/algorithm.h"
 
 #include <deque>
+#include <iterator>
 #include <map>
 #include <set>
 #include <utility>
