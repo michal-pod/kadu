@@ -23,9 +23,9 @@
 
 #include "core/configurable-transformer.h"
 #include "exports.h"
+#include "message/raw-message.h"
 
 class Message;
-class RawMessage;
 
 /**
  * @addtogroup Protocol
