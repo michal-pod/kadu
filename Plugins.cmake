@@ -81,8 +81,8 @@ set (DEFAULT_PLUGINS
 	word_fix
 
 # integration
-	# integration with Windows
-	windows_integration
+	# integration with Windows - temporary disabled
+	# windows_integration
 )
 
 # Platform-speficic plugins

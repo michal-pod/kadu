@@ -1,6 +1,6 @@
-project (Kadu)
-
 cmake_minimum_required (VERSION 3.16)
+
+project (Kadu)
 
 include (cmake/options.cmake)
 
@@ -28,7 +28,10 @@ list (APPEND DEFINITIONS KADU_EXPORT_TESTS)
 set (DEFINITIONS_DEBUG DEBUG_ENABLED DEBUG_OUTPUT_ENABLED)
 
 if (MSVC)
-	set (CXX_FLAGS "${CXX_FLAGS} /MP /Zc:wchar_t-")
+	# Qt 6 requires wchar_t to remain a distinct built-in type.  With
+	# /Zc:wchar_t- MSVC aliases it to unsigned short, which makes Qt's qHash()
+	# overloads for ushort and wchar_t collide.
+	set (CXX_FLAGS "${CXX_FLAGS} /MP")
 	list (APPEND DEFINITIONS _CRT_SECURE_NO_WARNINGS=1)
 else ()
 	set (CXX_FLAGS "${CXX_FLAGS} -Wall -Wextra -Wundef -Wunused -Wuninitialized -Wcast-align -Wpointer-arith -fno-common")
@@ -130,15 +133,21 @@ endif ()
 include (cmake/include-dirs.cmake)
 include (cmake/build-dirs.cmake)
 
-# Now write KaduConfig for installation.
-if (UNIX)
-	kadu_configure_package_config_file (cmake/KaduConfig.cmake.in
-		"${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/KaduConfig.cmake" INSTALL_TREE)
-endif ()
-
 if (KADU_INSTALL_SDK)
+	# Keep this separate from the build-tree KaduConfig.cmake. The latter is
+	# consumed while building plugins; this one contains relocatable install
+	# paths. Previously it was generated only on Unix but installed on Windows
+	# too, leaving install() to look for a non-existent CMakeFiles/KaduConfig.
+	kadu_configure_package_config_file (cmake/KaduConfig.cmake.in
+		"${CMAKE_BINARY_DIR}/KaduConfig-install.cmake" INSTALL_TREE)
+
 	install (FILES
-		"${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/KaduConfig.cmake"
+		"${CMAKE_BINARY_DIR}/KaduConfig-install.cmake"
+		DESTINATION "${KADU_INSTALL_CMAKE_DIR}"
+		RENAME KaduConfig.cmake
+	)
+
+	install (FILES
 		"${CMAKE_BINARY_DIR}/KaduConfigVersion.cmake"
 		cmake/KaduMacros.cmake
 		DESTINATION "${KADU_INSTALL_CMAKE_DIR}"

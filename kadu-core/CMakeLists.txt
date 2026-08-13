@@ -100,11 +100,15 @@ set (kadu_SUBDIRS
 )
 
 find_package (LibArchive 2.6.0 REQUIRED)
-include (CheckLibraryExists)
-check_library_exists ("${LibArchive_LIBRARIES}" "archive_write_set_compression_lzma" "" have_libarchive_lzma_support)
-check_library_exists ("${LibArchive_LIBRARIES}" "archive_write_set_compression_xz" "" have_libarchive_xz_support)
-if (NOT have_libarchive_lzma_support OR NOT have_libarchive_xz_support)
-	message (SEND_ERROR "Your libarchive does not have support for lzma and/or xz archives.")
+# The Windows Conan package enables LZMA explicitly. check_library_exists()
+# cannot probe the imported CMakeDeps target used by that package.
+if (NOT WIN32)
+	include (CheckLibraryExists)
+	check_library_exists ("${LibArchive_LIBRARIES}" "archive_write_set_compression_lzma" "" have_libarchive_lzma_support)
+	check_library_exists ("${LibArchive_LIBRARIES}" "archive_write_set_compression_xz" "" have_libarchive_xz_support)
+	if (NOT have_libarchive_lzma_support OR NOT have_libarchive_xz_support)
+		message (SEND_ERROR "Your libarchive does not have support for lzma and/or xz archives.")
+	endif ()
 endif ()
 
 include_directories (${LibArchive_INCLUDE_DIRS})
@@ -193,10 +197,6 @@ if (UNIX AND NOT APPLE)
 	# X11Extras is gone in Qt6 -- absorbed into QtGui.
 	target_link_libraries (libkadu LINK_PRIVATE Qt6::DBus)
 endif ()
-if (WIN32)
-	qt5_use_modules (libkadu LINK_PRIVATE WinExtras)
-endif ()
-
 target_link_libraries (libkadu LINK_PRIVATE ${ADDITIONAL_LIBKADU_LIBRARIES})
 
 add_executable (kadu WIN32 ${main_SRCS})
@@ -231,14 +231,7 @@ if (WIN32)
 	target_link_libraries (kadu_c LINK_PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Xml)
 	target_link_libraries (kadu_c LINK_PRIVATE libkadu ${ADDITIONAL_LIBRARIES})
 
-	# Do not link against qtmain on Windows
-	cmake_policy(SET CMP0020 OLD)
-
 	target_compile_definitions (kadu_c PRIVATE KADU_CONSOLE)
-
-	set_property (TARGET kadu_c PROPERTY Qt5_NO_LINK_QTMAIN TRUE)
-	set_property (TARGET kadu PROPERTY Qt5_NO_LINK_QTMAIN TRUE)
-	set_property (TARGET libkadu PROPERTY Qt5_NO_LINK_QTMAIN TRUE)
 
 	target_link_libraries (kadu LINK_PRIVATE ws2_32)
 	target_link_libraries (libkadu LINK_PRIVATE ws2_32)
@@ -246,7 +239,7 @@ if (WIN32)
 
 	install (TARGETS kadu_c DESTINATION ${KADU_INSTALL_BIN_DIR})
 
-	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPlugins = qt-plugins\nTranslations = translations\n")
+	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt-plugins\nTranslations = translations\n")
 	install (FILES "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "kadu.ico" DESTINATION "${KADU_INSTALL_BIN_DIR}")
 endif ()
 
