@@ -24,8 +24,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <QtCore/QFile>
 #include <QtCore/QSysInfo>
+#include <QtCore/QUrlQuery>
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkReply>
 
@@ -99,75 +99,23 @@ void Updates::accountRemoved(Account account)
 
 void Updates::buildQuery()
 {
-    Query = QString("/update-new.php?uuid=%1&version=%2")
-                .arg(m_configurationManager->uuid().toString())
-                .arg(m_versionService->version());
+    Query = QUrl{QStringLiteral("http://www.kadu.im/update-new.php")};
+    QUrlQuery parameters;
+    auto addParameter = [&parameters](const QString &name, const QString &value) {
+        parameters.addQueryItem(name, QString::fromLatin1(QUrl::toPercentEncoding(value)));
+    };
 
-    if (m_configuration->deprecatedApi()->readBoolEntry("General", "SendSysInfo"), true)
+    addParameter(QStringLiteral("uuid"), m_configurationManager->uuid().toString());
+    addParameter(QStringLiteral("version"), m_versionService->version());
+
+    if (m_configuration->deprecatedApi()->readBoolEntry("General", "SendSysInfo", true))
     {
-        QString platform("&system=");
-#if defined(Q_OS_LINUX)
-        platform.append("Linux-");
-
-        QFile issue("/etc/issue");
-        if (issue.open(QIODevice::ReadOnly | QIODevice::Text))
-        {
-            QString tmp = issue.readLine();
-            tmp.truncate(tmp.indexOf(" "));
-            platform.append(tmp);
-            issue.close();
-        }
-        else
-            platform.append("Unknown");
-#elif defined(Q_OS_FREEBSD)
-        platform.append("FreeBSD");
-#elif defined(Q_OS_NETBSD)
-        platform.append("NetBSD");
-#elif defined(Q_OS_OPENBSD)
-        platform.append("OpenBSD");
-#elif defined(Q_OS_SOLARIS)
-        platform.append("Solaris");
-#elif defined(Q_OS_WIN)
-        switch (QSysInfo::WindowsVersion)
-        {
-        case QSysInfo::WV_95:
-            platform.append("Windows95");
-            break;
-        case QSysInfo::WV_98:
-            platform.append("Windows98");
-            break;
-        case QSysInfo::WV_Me:
-            platform.append("WindowsME");
-            break;
-        case QSysInfo::WV_NT:
-            platform.append("WindowsNT");
-            break;
-        case QSysInfo::WV_2000:
-            platform.append("Windows2000");
-            break;
-        case QSysInfo::WV_XP:
-            platform.append("WindowsXP");
-            break;
-        case QSysInfo::WV_2003:
-            platform.append("Windows2003");
-            break;
-        case QSysInfo::WV_VISTA:
-            platform.append("WindowsVista");
-            break;
-        case QSysInfo::WV_WINDOWS7:
-            platform.append("Windows7");
-            break;
-        default:
-            platform.append("Windows-Unknown");
-            break;
-        }
-#elif defined(Q_OS_HAIKU)
-        platform.append("Haiku OS");
-#else
-        platform.append("Unknown");
-#endif
-        Query.append(platform);
+        addParameter(QStringLiteral("kernel"), QSysInfo::kernelType());
+        addParameter(QStringLiteral("product"), QSysInfo::productType());
+        addParameter(QStringLiteral("release"), QSysInfo::productVersion());
     }
+
+    Query.setQuery(parameters);
 }
 
 void Updates::run()
@@ -180,7 +128,7 @@ void Updates::run()
     auto manager = new QNetworkAccessManager{this};
     connect(manager, SIGNAL(finished(QNetworkReply *)), this, SLOT(gotUpdatesInfo(QNetworkReply *)));
 
-    manager->get(QNetworkRequest{QUrl{QStringLiteral("http://www.kadu.im") + Query}});
+    manager->get(QNetworkRequest{Query});
 }
 
 bool Updates::isNewerVersionThan(const QString &version)
