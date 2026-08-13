@@ -132,7 +132,7 @@ bool ArchiveExtractor::extract(const QString &sourcePath, const QString &destPat
 
         // retry with renamed entry, fire an overwrite query again
         // if the new entry also exists
-        const bool entryIsDir = S_ISDIR(archive_entry_mode(entry));
+        const bool entryIsDir = archive_entry_filetype(entry) == AE_IFDIR;
 
         // we skip directories if not preserving paths
         if (!preservePaths && entryIsDir)
@@ -229,7 +229,7 @@ bool ArchiveExtractor::extract(const QString &sourcePath, const QString &destPat
 void ArchiveExtractor::copyData(struct archive *source, struct archive *dest)
 {
     char buff[10240];
-    ssize_t readBytes;
+    la_ssize_t readBytes;
 
     readBytes = archive_read_data(source, buff, sizeof(buff));
     while (readBytes > 0)
