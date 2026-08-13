@@ -40,7 +40,7 @@
  */
 template <
     typename T, bool (*LessThanComparator)(const T &, const T &), bool (*EqualityComparator)(const T &, const T &)>
-class KADUAPI sorted_unique_vector
+class sorted_unique_vector
 {
 public:
     using This = sorted_unique_vector<T, LessThanComparator, EqualityComparator>;
