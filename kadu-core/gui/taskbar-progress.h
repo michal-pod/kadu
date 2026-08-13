@@ -24,7 +24,7 @@
 #include <QtCore/QObject>
 
 #ifdef Q_OS_WIN
-class QWinTaskbarProgress;
+struct ITaskbarList3;
 #endif
 
 class FileTransferManager;
@@ -41,7 +41,8 @@ public:
 
 private:
 #ifdef Q_OS_WIN
-    QWinTaskbarProgress *m_taskbarProgress;
+    ITaskbarList3 *m_taskbarList = nullptr;
+    bool m_comInitialized = false;
 #endif
 
 private slots:

@@ -25,19 +25,27 @@
 #include <QtWidgets/QWidget>
 
 #ifdef Q_OS_WIN
-#include <QtWinExtras/QtWinExtras>
+#include <windows.h>
+#include <shobjidl_core.h>
 #endif
 
 TaskbarProgress::TaskbarProgress(FileTransferManager *fileTransferManager, QWidget *parent) : QObject{parent}
 {
 #ifdef Q_OS_WIN
-    parent->window()->winId();   // force windowHandle() to be valid
+    if (!parent)
+        return;
 
-    auto button = new QWinTaskbarButton{parent->window()};
-    button->setWindow(parent->window()->windowHandle());
+    parent->window()->winId();   // force a native window handle
 
-    m_taskbarProgress = button->progress();
-    m_taskbarProgress->setRange(0, 100);
+    auto const comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    m_comInitialized = comResult == S_OK || comResult == S_FALSE;
+    if (SUCCEEDED(CoCreateInstance(
+            CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_taskbarList))) &&
+        FAILED(m_taskbarList->HrInit()))
+    {
+        m_taskbarList->Release();
+        m_taskbarList = nullptr;
+    }
 
     connect(fileTransferManager, SIGNAL(totalProgressChanged(int)), this, SLOT(progressChanged(int)));
     progressChanged(fileTransferManager->totalProgress());
@@ -48,18 +56,29 @@ TaskbarProgress::TaskbarProgress(FileTransferManager *fileTransferManager, QWidg
 
 TaskbarProgress::~TaskbarProgress()
 {
+#ifdef Q_OS_WIN
+    if (m_taskbarList)
+        m_taskbarList->Release();
+    if (m_comInitialized)
+        CoUninitialize();
+#endif
 }
 
 void TaskbarProgress::progressChanged(int progress)
 {
 #ifdef Q_OS_WIN
+    if (!m_taskbarList)
+        return;
+
+    auto window = static_cast<QWidget *>(parent())->window();
+    auto const windowHandle = reinterpret_cast<HWND>(window->winId());
     if (progress < 100)
     {
-        m_taskbarProgress->setVisible(true);
-        m_taskbarProgress->setValue(progress);
+        m_taskbarList->SetProgressState(windowHandle, TBPF_NORMAL);
+        m_taskbarList->SetProgressValue(windowHandle, qBound(0, progress, 100), 100);
     }
     else
-        m_taskbarProgress->setVisible(false);
+        m_taskbarList->SetProgressState(windowHandle, TBPF_NOPROGRESS);
 #else
     Q_UNUSED(progress);
 #endif

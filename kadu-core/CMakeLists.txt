@@ -234,7 +234,7 @@ if (WIN32)
 	target_compile_definitions (kadu_c PRIVATE KADU_CONSOLE)
 
 	target_link_libraries (kadu LINK_PRIVATE ws2_32)
-	target_link_libraries (libkadu LINK_PRIVATE ws2_32)
+	target_link_libraries (libkadu LINK_PRIVATE ws2_32 ole32)
 	target_link_libraries (kadu_c LINK_PRIVATE ws2_32)
 
 	install (TARGETS kadu_c DESTINATION ${KADU_INSTALL_BIN_DIR})
