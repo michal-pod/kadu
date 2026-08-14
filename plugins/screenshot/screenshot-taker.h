@@ -25,10 +25,13 @@
 
 #include <QtCore/QObject>
 #include <QtGui/QPixmap>
+#include <QtGui/qwindowdefs.h>
 #include <injeqt/injeqt.h>
 
 class ChatWidget;
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 class PortalScreenshot;
+#endif
 
 /**
  * @short Obtains a screenshot for a chat window.
@@ -43,19 +46,25 @@ class ScreenshotTaker : public QObject
     Q_OBJECT
 
     ChatWidget *CurrentChatWidget;
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     PortalScreenshot *Screenshot;
-
-    bool ChatWindowHidden;
     bool NeedsCrop;
 
     void request(bool interactive, bool needsCrop);
+#else
+    void takeScreenShot(WId windowId, bool needsCrop);
+#endif
+
+    bool ChatWindowHidden;
     void restoreChatWindow();
 
 private slots:
     INJEQT_INIT void init();
 
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     void portalTaken(QPixmap screenshot);
     void portalFailed(const QString &errorMessage);
+#endif
 
 public:
     explicit ScreenshotTaker(ChatWidget *chatWidget);

@@ -22,9 +22,13 @@
  */
 
 #include <QtCore/QTimer>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
 #include <QtWidgets/QWidget>
 
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 #include "portal-screenshot.h"
+#endif
 #include "widgets/chat-widget/chat-widget.h"
 
 #include "screenshot-taker.h"
@@ -39,7 +43,7 @@ constexpr int HideDelayMsec = 1000;
 }
 
 ScreenshotTaker::ScreenshotTaker(ChatWidget *chatWidget)
-        : QObject(chatWidget), CurrentChatWidget(chatWidget), Screenshot(nullptr), ChatWindowHidden(false), NeedsCrop(true)
+        : QObject(chatWidget), CurrentChatWidget(chatWidget), ChatWindowHidden(false)
 {
 }
 
@@ -50,15 +54,21 @@ ScreenshotTaker::~ScreenshotTaker()
 
 void ScreenshotTaker::init()
 {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     Screenshot = new PortalScreenshot{this};
 
     connect(Screenshot, &PortalScreenshot::taken, this, &ScreenshotTaker::portalTaken);
     connect(Screenshot, &PortalScreenshot::failed, this, &ScreenshotTaker::portalFailed);
+#endif
 }
 
 void ScreenshotTaker::takeStandardShot()
 {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     request(false, true);
+#else
+    takeScreenShot(0, true);
+#endif
 }
 
 void ScreenshotTaker::takeShotWithChatWindowHidden()
@@ -66,16 +76,27 @@ void ScreenshotTaker::takeShotWithChatWindowHidden()
     CurrentChatWidget->window()->hide();
     ChatWindowHidden = true;
 
-    QTimer::singleShot(HideDelayMsec, this, [this] { request(false, true); });
+    QTimer::singleShot(HideDelayMsec, this, [this] {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+        request(false, true);
+#else
+        takeScreenShot(0, true);
+#endif
+    });
 }
 
 void ScreenshotTaker::takeWindowShot()
 {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     // The desktop's own tool offers whatever it offers -- a window, an area, a whole screen -- and
     // what comes back is already what the user chose, so Kadu does not crop it afterwards.
     request(true, false);
+#else
+    takeScreenShot(CurrentChatWidget->window()->winId(), false);
+#endif
 }
 
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 void ScreenshotTaker::request(bool interactive, bool needsCrop)
 {
     // Remembered rather than passed through the portal, which answers with a picture and nothing
@@ -101,6 +122,20 @@ void ScreenshotTaker::portalFailed(const QString &errorMessage)
     else
         emit screenshotFailed(errorMessage);
 }
+#else
+void ScreenshotTaker::takeScreenShot(WId windowId, bool needsCrop)
+{
+    auto screen = QGuiApplication::primaryScreen();
+    auto screenshot = screen ? screen->grabWindow(windowId) : QPixmap{};
+
+    restoreChatWindow();
+
+    if (screenshot.isNull())
+        emit screenshotFailed(tr("Could not capture the screen."));
+    else
+        emit screenshotTaken(screenshot, needsCrop);
+}
+#endif
 
 void ScreenshotTaker::restoreChatWindow()
 {
