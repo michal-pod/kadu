@@ -35,7 +35,7 @@ WinampMediaPlayer::~WinampMediaPlayer()
 
 HWND WinampMediaPlayer::findWinamp()
 {
-    return FindWindow("Winamp v1.x", NULL);
+    return FindWindowW(L"Winamp v1.x", nullptr);
 }
 
 QString WinampMediaPlayer::readWinampMemory(quint32 command, quint32 arg, bool unicode)
