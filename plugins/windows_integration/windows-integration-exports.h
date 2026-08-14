@@ -1,6 +1,5 @@
 /*
  * %kadu copyright begin%
- * Copyright 2016 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -19,23 +18,10 @@
 
 #pragma once
 
-#include "windows-integration-exports.h"
+#include <QtCore/QtGlobal>
 
-#include <QtCore/QObject>
-
-class Chat;
-
-class WINDOWS_INTEGRATION_API JumpList : public QObject
-{
-    Q_OBJECT
-
-public:
-    virtual void clear() = 0;
-    virtual void addChat(Chat chat) = 0;
-    virtual void addSeparator() = 0;
-    virtual void setVisible(bool visible) = 0;
-
-protected:
-    explicit JumpList(QObject *parent = nullptr);
-    virtual ~JumpList();
-};
+#ifdef windows_integration_EXPORTS
+#define WINDOWS_INTEGRATION_API Q_DECL_EXPORT
+#else
+#define WINDOWS_INTEGRATION_API Q_DECL_IMPORT
+#endif

@@ -26,19 +26,13 @@
 #include <QtGui/QAction>
 #include <QtWidgets/QWidget>
 
-#ifdef Q_OS_WIN
-#include <QtWinExtras/QtWinExtras>
-#endif
-
 WindowsThumbnailToolbar::WindowsThumbnailToolbar(not_owned_qptr<StatusActions> statusActions, QWidget *parent)
         : QObject{parent}, m_statusActions{std::move(statusActions)}
 {
     parent->window()->winId();   // force windowHandle() to be valid
 
-#ifdef Q_OS_WIN
-    m_toolbar = make_owned<QWinThumbnailToolBar>(parent->window());
+    m_toolbar = make_owned<KaWinThumbnailToolBar>(parent->window()->windowHandle());
     m_toolbar->setWindow(parent->window()->windowHandle());
-#endif
 
     connect(
         m_statusActions, &StatusActions::statusActionsRecreated, this,
@@ -58,19 +52,17 @@ void WindowsThumbnailToolbar::setStatusSetter(StatusSetter *statusSetter)
 
 void WindowsThumbnailToolbar::statusActionsRecreated()
 {
-#ifdef Q_OS_WIN
     m_toolbar->clear();
 
     for (auto action : m_statusActions->actions())
     {
-        auto button = make_owned<QWinThumbnailToolButton>(m_toolbar.get());
+        auto button = make_owned<KaWinThumbnailToolButton>(m_toolbar.get());
         button->setToolTip(action->text());
         button->setIcon(action->icon());
         button->setDismissOnClick(true);
-        connect(button.get(), &QWinThumbnailToolButton::clicked, action, &QAction::trigger);
+        connect(button.get(), &KaWinThumbnailToolButton::clicked, action, &QAction::trigger);
         m_toolbar->addButton(button.get());
     }
-#endif
 }
 
 void WindowsThumbnailToolbar::changeStatus(QAction *action)

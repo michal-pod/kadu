@@ -21,13 +21,13 @@
 
 #include "exports.h"
 
+#include "kawinextres/ka-win-taskbar-button.h"
+
 #include <QtCore/QObject>
 
 class FileTransferManager;
 
 class QWidget;
-class QWinTaskbarProgress;
-
 class WindowsTaskbarProgress : public QObject
 {
     Q_OBJECT
@@ -37,7 +37,7 @@ public:
     virtual ~WindowsTaskbarProgress();
 
 private:
-    QWinTaskbarProgress *m_taskbarProgress;
+    KaWinTaskbarProgress *m_taskbarProgress;
 
 private slots:
     void progressChanged(int progress);

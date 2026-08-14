@@ -21,12 +21,13 @@
 
 #include "chat/chat.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
-#include <QtWinExtras/QtWinExtras>
+#include <QtCore/QDir>
 
 WindowsJumpList::WindowsJumpList(QObject *parent) : JumpList{parent}
 {
-    m_jumpList = make_owned<QWinJumpList>(this);
+    m_jumpList = make_owned<KaWinJumpList>(this);
 }
 
 WindowsJumpList::~WindowsJumpList()

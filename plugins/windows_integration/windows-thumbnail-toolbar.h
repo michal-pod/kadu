@@ -20,6 +20,7 @@
 #pragma once
 
 #include "exports.h"
+#include "kawinextres/ka-win-thumbnail-toolbar.h"
 #include "misc/memory.h"
 
 #include <QtCore/QObject>
@@ -31,8 +32,6 @@ class StatusSetter;
 
 class QAction;
 class QWidget;
-class QWinThumbnailToolBar;
-
 class WindowsThumbnailToolbar : public QObject
 {
     Q_OBJECT
@@ -45,7 +44,7 @@ private:
     QPointer<StatusSetter> m_statusSetter;
 
     not_owned_qptr<StatusActions> m_statusActions;
-    owned_qptr<QWinThumbnailToolBar> m_toolbar;
+    owned_qptr<KaWinThumbnailToolBar> m_toolbar;
 
     void statusActionsRecreated();
     void changeStatus(QAction *action);

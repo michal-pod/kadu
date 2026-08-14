@@ -21,9 +21,9 @@
 
 #include "jump-list.h"
 
-#include "misc/memory.h"
+#include "kawinextres/ka-win-jump-list.h"
 
-class QWinJumpList;
+#include "misc/memory.h"
 
 class WindowsJumpList : public JumpList
 {
@@ -34,7 +34,7 @@ public:
     virtual ~WindowsJumpList();
 
 private:
-    owned_qptr<QWinJumpList> m_jumpList;
+    owned_qptr<KaWinJumpList> m_jumpList;
 
     virtual void clear() override;
     virtual void addChat(Chat chat) override;
