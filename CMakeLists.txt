@@ -114,6 +114,11 @@ endif ()
 # The rest of NETWORK_IMPLEMENTATION stuff is handled in network/CMakeLists.txt.
 
 include (cmake/injeqt.cmake)
+
+# Conan's Qt, OpenSSL and libarchive packages expose ZLIB::ZLIB through their
+# link interfaces. Load it before the first find_package(Qt6) in tests.cmake.
+find_package (ZLIB REQUIRED)
+
 include (cmake/tests.cmake)
 include (cmake/install.cmake)
 include (cmake/config-files.cmake)

@@ -43,7 +43,7 @@ void JabberRosterExtension::setJabberErrorService(JabberErrorService *errorServi
 
 bool JabberRosterExtension::handleStanza(const QDomElement &stanza)
 {
-    if (stanza.tagName() != "iq" || !QXmpp::isIqElement<QXmppRosterIq>(stanza))
+    if (stanza.tagName() != "iq" || !QXmppRosterIq::isRosterIq(stanza))
         return false;
 
     auto rosterIq = QXmppRosterIq{};
