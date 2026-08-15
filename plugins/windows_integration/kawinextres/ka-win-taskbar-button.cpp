@@ -20,7 +20,9 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
+#include <QtCore/QEvent>
 #include <QtCore/QPointer>
+#include <QtGui/QPlatformSurfaceEvent>
 #include <QtGui/QWindow>
 
 #ifdef Q_OS_WIN
@@ -36,6 +38,7 @@ public:
 #ifdef Q_OS_WIN
     ITaskbarList3 *taskbarList = nullptr;
     bool comInitialized = false;
+    bool nativeEventFilterInstalled = false;
     bool taskbarButtonCreated = false;
     UINT taskbarButtonCreatedMessage = RegisterWindowMessageW(L"TaskbarButtonCreated");
 #endif
@@ -79,7 +82,11 @@ KaWinTaskbarButton::KaWinTaskbarButton(QWindow *window)
         m_private->taskbarList = nullptr;
     }
 
-    QCoreApplication::instance()->installNativeEventFilter(this);
+    if (auto application = QCoreApplication::instance())
+    {
+        application->installNativeEventFilter(this);
+        m_private->nativeEventFilterInstalled = true;
+    }
 #endif
 
     setWindow(window);
@@ -88,7 +95,9 @@ KaWinTaskbarButton::KaWinTaskbarButton(QWindow *window)
 KaWinTaskbarButton::~KaWinTaskbarButton()
 {
 #ifdef Q_OS_WIN
-    QCoreApplication::instance()->removeNativeEventFilter(this);
+    if (m_private->nativeEventFilterInstalled)
+        if (auto application = QCoreApplication::instance())
+            application->removeNativeEventFilter(this);
 
     if (m_private->taskbarList)
         m_private->taskbarList->Release();
@@ -102,8 +111,14 @@ void KaWinTaskbarButton::setWindow(QWindow *window)
     if (m_private->window == window)
         return;
 
-    setParent(window);
+    if (m_private->window)
+        m_private->window->removeEventFilter(this);
+
     m_private->window = window;
+    setParent(window);
+
+    if (m_private->window)
+        m_private->window->installEventFilter(this);
 
 #ifdef Q_OS_WIN
     m_private->taskbarButtonCreated = false;
@@ -116,6 +131,23 @@ KaWinTaskbarProgress *KaWinTaskbarButton::progress()
     return &m_progress;
 }
 
+bool KaWinTaskbarButton::eventFilter(QObject *watched, QEvent *event)
+{
+#ifdef Q_OS_WIN
+    if (watched == m_private->window && event->type() == QEvent::PlatformSurface)
+    {
+        auto const platformSurfaceEvent = static_cast<QPlatformSurfaceEvent *>(event);
+        if (platformSurfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)
+            m_private->taskbarButtonCreated = false;
+    }
+#else
+    Q_UNUSED(watched)
+    Q_UNUSED(event)
+#endif
+
+    return QObject::eventFilter(watched, event);
+}
+
 bool KaWinTaskbarButton::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
 {
 #ifdef Q_OS_WIN
@@ -125,11 +157,15 @@ bool KaWinTaskbarButton::nativeEventFilter(const QByteArray &eventType, void *me
         return false;
 
     auto const nativeMessage = static_cast<MSG *>(message);
-    auto const windowHandle = m_private->window ? reinterpret_cast<HWND>(m_private->window->winId()) : nullptr;
+    if (!m_private->window || !m_private->window->handle())
+        return false;
+
+    auto const windowHandle = reinterpret_cast<HWND>(m_private->window->winId());
     if (nativeMessage->hwnd != windowHandle || nativeMessage->message != m_private->taskbarButtonCreatedMessage)
         return false;
 
     m_private->taskbarButtonCreated = true;
+    qDebug() << "KaWinTaskbarButton: received TaskbarButtonCreated";
     synchronize();
 #else
     Q_UNUSED(eventType)
@@ -142,7 +178,8 @@ bool KaWinTaskbarButton::nativeEventFilter(const QByteArray &eventType, void *me
 void KaWinTaskbarButton::synchronize()
 {
 #ifdef Q_OS_WIN
-    if (!m_private->taskbarList || !m_private->window || !m_private->taskbarButtonCreated)
+    if (!m_private->taskbarList || !m_private->window || !m_private->window->handle() ||
+        !m_private->taskbarButtonCreated)
         return;
 
     auto const windowHandle = reinterpret_cast<HWND>(m_private->window->winId());

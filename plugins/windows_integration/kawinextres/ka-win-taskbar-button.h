@@ -23,6 +23,7 @@
 
 #include <memory>
 
+class QEvent;
 class QWindow;
 
 class KaWinTaskbarButton;
@@ -61,6 +62,7 @@ private:
     std::unique_ptr<Private> m_private;
     KaWinTaskbarProgress m_progress;
 
+    bool eventFilter(QObject *watched, QEvent *event) override;
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
     void synchronize();
 

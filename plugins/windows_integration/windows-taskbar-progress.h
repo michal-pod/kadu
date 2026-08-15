@@ -23,10 +23,12 @@
 
 #include "kawinextres/ka-win-taskbar-button.h"
 
+#include <QtCore/QPointer>
 #include <QtCore/QObject>
 
 class FileTransferManager;
 
+class QEvent;
 class QWidget;
 class WindowsTaskbarProgress : public QObject
 {
@@ -37,7 +39,13 @@ public:
     virtual ~WindowsTaskbarProgress();
 
 private:
-    KaWinTaskbarProgress *m_taskbarProgress;
+    QPointer<FileTransferManager> m_fileTransferManager;
+    QPointer<QWidget> m_window;
+    QPointer<KaWinTaskbarButton> m_taskbarButton;
+    KaWinTaskbarProgress *m_taskbarProgress = nullptr;
+
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void initializeTaskbarButton();
 
 private slots:
     void progressChanged(int progress);

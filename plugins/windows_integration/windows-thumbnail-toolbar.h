@@ -31,6 +31,7 @@ class StatusActions;
 class StatusSetter;
 
 class QAction;
+class QEvent;
 class QWidget;
 class WindowsThumbnailToolbar : public QObject
 {
@@ -42,10 +43,13 @@ public:
 
 private:
     QPointer<StatusSetter> m_statusSetter;
+    QPointer<QWidget> m_window;
 
     not_owned_qptr<StatusActions> m_statusActions;
-    owned_qptr<KaWinThumbnailToolBar> m_toolbar;
+    QPointer<KaWinThumbnailToolBar> m_toolbar;
 
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void initializeToolbar();
     void statusActionsRecreated();
     void changeStatus(QAction *action);
 

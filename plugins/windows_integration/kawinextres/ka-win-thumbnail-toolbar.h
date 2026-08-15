@@ -26,6 +26,7 @@
 
 #include <memory>
 
+class QEvent;
 class QWindow;
 
 class KaWinThumbnailToolButton;
@@ -46,8 +47,12 @@ private:
     class Private;
     std::unique_ptr<Private> m_private;
 
+    bool eventFilter(QObject *watched, QEvent *event) override;
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
     void synchronize();
+    void buttonChanged(KaWinThumbnailToolButton *button);
+
+    friend class KaWinThumbnailToolButton;
 };
 
 class KaWinThumbnailToolButton : public QObject
@@ -68,6 +73,7 @@ private:
     QString m_toolTip;
     QIcon m_icon;
     bool m_dismissOnClick = false;
+    KaWinThumbnailToolBar *m_toolBar = nullptr;
 
     friend class KaWinThumbnailToolBar;
 };

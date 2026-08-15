@@ -20,9 +20,11 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
+#include <QtCore/QEvent>
 #include <QtCore/QList>
 #include <QtCore/QMetaObject>
 #include <QtGui/QImage>
+#include <QtGui/QPlatformSurfaceEvent>
 #include <QtGui/QPixmap>
 #include <QtGui/QWindow>
 
@@ -51,6 +53,7 @@ public:
 #ifdef Q_OS_WIN
     ITaskbarList3 *taskbarList = nullptr;
     bool comInitialized = false;
+    bool nativeEventFilterInstalled = false;
     bool buttonsAdded = false;
     bool taskbarButtonCreated = false;
     UINT taskbarButtonCreatedMessage = RegisterWindowMessageW(L"TaskbarButtonCreated");
@@ -71,7 +74,11 @@ KaWinThumbnailToolBar::KaWinThumbnailToolBar(QWindow *window) : QObject{window},
         m_private->taskbarList = nullptr;
     }
 
-    QCoreApplication::instance()->installNativeEventFilter(this);
+    if (auto application = QCoreApplication::instance())
+    {
+        application->installNativeEventFilter(this);
+        m_private->nativeEventFilterInstalled = true;
+    }
 #endif
 
     setWindow(window);
@@ -79,8 +86,12 @@ KaWinThumbnailToolBar::KaWinThumbnailToolBar(QWindow *window) : QObject{window},
 
 KaWinThumbnailToolBar::~KaWinThumbnailToolBar()
 {
+    clear();
+
 #ifdef Q_OS_WIN
-    QCoreApplication::instance()->removeNativeEventFilter(this);
+    if (m_private->nativeEventFilterInstalled)
+        if (auto application = QCoreApplication::instance())
+            application->removeNativeEventFilter(this);
 
     if (m_private->taskbarList)
         m_private->taskbarList->Release();
@@ -94,8 +105,14 @@ void KaWinThumbnailToolBar::setWindow(QWindow *window)
     if (m_private->window == window)
         return;
 
-    setParent(window);
+    if (m_private->window)
+        m_private->window->removeEventFilter(this);
+
     m_private->window = window;
+    setParent(window);
+
+    if (m_private->window)
+        m_private->window->installEventFilter(this);
 
 #ifdef Q_OS_WIN
     m_private->buttonsAdded = false;
@@ -106,9 +123,18 @@ void KaWinThumbnailToolBar::setWindow(QWindow *window)
 
 void KaWinThumbnailToolBar::clear()
 {
-    for (auto const &button : m_private->buttons)
-        delete button.data();
+    auto const buttons = m_private->buttons;
     m_private->buttons.clear();
+
+    for (auto const &button : buttons)
+    {
+        if (!button)
+            continue;
+
+        button->m_toolBar = nullptr;
+        delete button.data();
+    }
+
     synchronize();
 }
 
@@ -117,15 +143,45 @@ void KaWinThumbnailToolBar::addButton(KaWinThumbnailToolButton *button)
     if (!button)
         return;
 
+    if (m_private->buttons.contains(button))
+        return;
+
+    if (button->m_toolBar && button->m_toolBar != this)
+    {
+        qWarning() << "KaWinThumbnailToolBar: button already belongs to another toolbar";
+        return;
+    }
+
     if (m_private->buttons.size() == MaximumButtons)
     {
-        delete button;
+        qWarning() << "KaWinThumbnailToolBar: a thumbnail toolbar can contain at most" << MaximumButtons << "buttons";
         return;
     }
 
     button->setParent(this);
+    button->m_toolBar = this;
     m_private->buttons.append(button);
     synchronize();
+}
+
+bool KaWinThumbnailToolBar::eventFilter(QObject *watched, QEvent *event)
+{
+#ifdef Q_OS_WIN
+    if (watched == m_private->window && event->type() == QEvent::PlatformSurface)
+    {
+        auto const platformSurfaceEvent = static_cast<QPlatformSurfaceEvent *>(event);
+        if (platformSurfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)
+        {
+            m_private->buttonsAdded = false;
+            m_private->taskbarButtonCreated = false;
+        }
+    }
+#else
+    Q_UNUSED(watched)
+    Q_UNUSED(event)
+#endif
+
+    return QObject::eventFilter(watched, event);
 }
 
 bool KaWinThumbnailToolBar::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
@@ -135,12 +191,18 @@ bool KaWinThumbnailToolBar::nativeEventFilter(const QByteArray &eventType, void 
         return false;
 
     auto const nativeMessage = static_cast<MSG *>(message);
-    auto const windowHandle = m_private->window ? reinterpret_cast<HWND>(m_private->window->winId()) : nullptr;
+    if (!m_private->window || !m_private->window->handle())
+        return false;
+
+    auto const windowHandle = reinterpret_cast<HWND>(m_private->window->winId());
     if (nativeMessage->hwnd != windowHandle)
         return false;
 
     if (nativeMessage->message == m_private->taskbarButtonCreatedMessage)
     {
+        // Explorer can recreate a taskbar button without recreating QWindow.
+        // ThumbBarAddButtons must be called again for that new taskbar button.
+        m_private->buttonsAdded = false;
         m_private->taskbarButtonCreated = true;
         qDebug() << "KaWinThumbnailToolBar: received TaskbarButtonCreated";
         synchronize();
@@ -176,7 +238,8 @@ bool KaWinThumbnailToolBar::nativeEventFilter(const QByteArray &eventType, void 
 void KaWinThumbnailToolBar::synchronize()
 {
 #ifdef Q_OS_WIN
-    if (!m_private->taskbarList || !m_private->window || !m_private->taskbarButtonCreated)
+    if (!m_private->taskbarList || !m_private->window || !m_private->window->handle() ||
+        !m_private->taskbarButtonCreated)
         return;
 
     auto const windowHandle = reinterpret_cast<HWND>(m_private->window->winId());
@@ -222,21 +285,40 @@ void KaWinThumbnailToolBar::synchronize()
 #endif
 }
 
-KaWinThumbnailToolButton::KaWinThumbnailToolButton(KaWinThumbnailToolBar *parent) : QObject{parent}
+void KaWinThumbnailToolBar::buttonChanged(KaWinThumbnailToolButton *button)
+{
+    if (m_private->buttons.contains(button))
+        synchronize();
+}
+
+KaWinThumbnailToolButton::KaWinThumbnailToolButton(KaWinThumbnailToolBar *parent)
+        : QObject{parent}, m_toolBar{parent}
 {
 }
 
 void KaWinThumbnailToolButton::setToolTip(const QString &toolTip)
 {
+    if (m_toolTip == toolTip)
+        return;
+
     m_toolTip = toolTip;
+    if (m_toolBar)
+        m_toolBar->buttonChanged(this);
 }
 
 void KaWinThumbnailToolButton::setIcon(const QIcon &icon)
 {
     m_icon = icon;
+    if (m_toolBar)
+        m_toolBar->buttonChanged(this);
 }
 
 void KaWinThumbnailToolButton::setDismissOnClick(bool dismissOnClick)
 {
+    if (m_dismissOnClick == dismissOnClick)
+        return;
+
     m_dismissOnClick = dismissOnClick;
+    if (m_toolBar)
+        m_toolBar->buttonChanged(this);
 }

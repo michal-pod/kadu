@@ -22,29 +22,54 @@
 
 #include "file-transfer/file-transfer-manager.h"
 
+#include <QtCore/QEvent>
 #include <QtWidgets/QWidget>
 
 WindowsTaskbarProgress::WindowsTaskbarProgress(FileTransferManager *fileTransferManager, QWidget *parent)
-        : QObject{parent}
+        : QObject{parent}, m_fileTransferManager{fileTransferManager}, m_window{parent}
 {
-    parent->window()->winId();   // force windowHandle() to be valid
+    if (m_fileTransferManager)
+        connect(m_fileTransferManager, SIGNAL(totalProgressChanged(int)), this, SLOT(progressChanged(int)));
 
-    auto button = new KaWinTaskbarButton{parent->window()->windowHandle()};
-    button->setWindow(parent->window()->windowHandle());
-
-    m_taskbarProgress = button->progress();
-    m_taskbarProgress->setRange(0, 100);
-
-    connect(fileTransferManager, SIGNAL(totalProgressChanged(int)), this, SLOT(progressChanged(int)));
-    progressChanged(fileTransferManager->totalProgress());
+    if (m_window)
+        m_window->installEventFilter(this);
+    initializeTaskbarButton();
 }
 
 WindowsTaskbarProgress::~WindowsTaskbarProgress()
 {
+    if (m_window)
+        m_window->removeEventFilter(this);
+}
+
+bool WindowsTaskbarProgress::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_window && (event->type() == QEvent::Show || event->type() == QEvent::WinIdChange))
+        initializeTaskbarButton();
+
+    return QObject::eventFilter(watched, event);
+}
+
+void WindowsTaskbarProgress::initializeTaskbarButton()
+{
+    if (!m_window || m_taskbarButton || !m_window->windowHandle())
+        return;
+
+    auto button = new KaWinTaskbarButton{m_window->windowHandle()};
+    connect(button, &QObject::destroyed, this, [this] { m_taskbarProgress = nullptr; });
+    m_taskbarButton = button;
+    m_taskbarProgress = button->progress();
+    m_taskbarProgress->setRange(0, 100);
+
+    if (m_fileTransferManager)
+        progressChanged(m_fileTransferManager->totalProgress());
 }
 
 void WindowsTaskbarProgress::progressChanged(int progress)
 {
+    if (!m_taskbarProgress)
+        return;
+
     if (progress < 100)
     {
         m_taskbarProgress->setVisible(true);
