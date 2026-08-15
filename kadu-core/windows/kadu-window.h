@@ -144,9 +144,6 @@ private:
     StatusButtons *ChangeStatusButtons;
     QPoint LastPositionBeforeStatusMenuHide;
 
-#ifdef Q_OS_WIN
-    QWidget *HiddenParent;
-#endif
     QWidget *WindowParent;
 
     bool CompositingEnabled;
@@ -160,10 +157,6 @@ private:
     void createContactsMenu();
     void createToolsMenu();
     void createHelpMenu();
-
-#ifdef Q_OS_WIN
-    void hideWindowFromTaskbar();
-#endif
 
     virtual void compositingEnabled();
     virtual void compositingDisabled();
@@ -200,10 +193,6 @@ private slots:
     INJEQT_SET void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
     INJEQT_SET void setUrlOpener(UrlOpener *urlOpener);
     INJEQT_INIT void init();
-
-#ifdef Q_OS_WIN
-    void setHiddenParent();
-#endif
 
 protected:
     virtual void closeEvent(QCloseEvent *);
