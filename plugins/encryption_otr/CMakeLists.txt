@@ -4,8 +4,6 @@ cmake_minimum_required (VERSION 3.16)
 
 find_package (Kadu REQUIRED CONFIG)
 
-include (FindPkgConfig)
-
 set (SOURCES
 	gui/widgets/otr-account-configuration-widget-factory.cpp
 	gui/widgets/otr-account-configuration-widget.cpp
@@ -99,12 +97,20 @@ set (MOC_SOURCES
 set (CONFIGURATION_FILES
 )
 
-pkg_check_modules (LIBOTR REQUIRED libotr>=4.0 REQUIRED)
+find_package (libotr CONFIG QUIET)
+find_package (libgcrypt CONFIG QUIET)
+find_package (libgpg-error CONFIG QUIET)
 
-set (LIBRARIES ${LIBOTR_LDFLAGS} gcrypt)
+if (TARGET libotr::libotr AND TARGET libgcrypt::libgcrypt AND TARGET libgpg-error::libgpg-error)
+	set (LIBRARIES libotr::libotr libgcrypt::libgcrypt libgpg-error::libgpg-error)
+else ()
+	include (FindPkgConfig)
+	pkg_check_modules (LIBOTR REQUIRED libotr>=4.0 REQUIRED)
+	set (LIBRARIES ${LIBOTR_LDFLAGS} gcrypt)
 
-if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-	include_directories (${LIBOTR_INCLUDE_DIRS})
+	if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+		include_directories (${LIBOTR_INCLUDE_DIRS})
+	endif ()
 endif ()
 
 kadu_plugin (encryption_otr
