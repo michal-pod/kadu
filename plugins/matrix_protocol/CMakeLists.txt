@@ -11,6 +11,7 @@ set (SOURCES
     matrix-account-data.cpp
     matrix-add-account-widget.cpp
     matrix-chat-service.cpp
+    matrix-contact-avatar-service.cpp
     matrix-edit-account-widget.cpp
     matrix-id-validator.cpp
     matrix-join-room-action.cpp

@@ -30,6 +30,7 @@ class ChatStorage;
 class ContactManager;
 class FormattedStringFactory;
 class MessageStorage;
+class MatrixContactAvatarService;
 
 namespace Quotient
 {
@@ -49,6 +50,7 @@ public:
     virtual int maxMessageLength() const override;
 
     void setConnection(Quotient::Connection *connection);
+    void setContactAvatarService(MatrixContactAvatarService *contactAvatarService);
 
 public slots:
     virtual bool sendMessage(const Message &message) override;
@@ -61,6 +63,7 @@ private:
     QPointer<ContactManager> m_contactManager;
     QPointer<FormattedStringFactory> m_formattedStringFactory;
     QPointer<MessageStorage> m_messageStorage;
+    QPointer<MatrixContactAvatarService> m_contactAvatarService;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
     bool m_initialSyncFinished = false;
@@ -71,6 +74,7 @@ private:
     bool isSupportedRoom(const Quotient::Room *room) const;
     Chat roomChat(Quotient::Room *room) const;
     void synchronizeRoom(Quotient::Room *room);
+    void synchronizeRoomMembers(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handleDirectMessageEvent(const Quotient::RoomMessageEvent &event);

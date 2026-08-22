@@ -27,7 +27,9 @@
 
 class ChatServiceRepository;
 class MatrixChatService;
+class MatrixContactAvatarService;
 class PluginInjectedFactory;
+class AggregatedContactAvatarService;
 
 namespace Quotient
 {
@@ -58,10 +60,13 @@ public:
 
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
+    QPointer<AggregatedContactAvatarService> m_aggregatedContactAvatarService;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
     QPointer<Quotient::Connection> m_connection;
     MatrixChatService *m_chatService = nullptr;
+    MatrixContactAvatarService *m_contactAvatarService = nullptr;
     bool m_recoveryKeyRestorePrompted = false;
+    bool m_applicationQuitting = false;
 
     void createConnection();
     void handleConnectionError(const QString &message, const QString &details = {});
@@ -71,6 +76,7 @@ private:
 
 private slots:
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
+    INJEQT_SET void setAggregatedContactAvatarService(AggregatedContactAvatarService *aggregatedContactAvatarService);
     INJEQT_SET void setPluginInjectedFactory(PluginInjectedFactory *pluginInjectedFactory);
     INJEQT_INIT void init();
 

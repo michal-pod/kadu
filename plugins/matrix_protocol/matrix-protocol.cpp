@@ -23,8 +23,11 @@
 #include "chat/chat-service-repository.h"
 #include "plugin/plugin-injected-factory.h"
 
+#include "avatars/aggregated-contact-avatar-service.h"
+
 #include "matrix-account-data.h"
 #include "matrix-chat-service.h"
+#include "matrix-contact-avatar-service.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
 
@@ -41,10 +44,14 @@
 
 MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Protocol{account, factory}
 {
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
+            [this] { m_applicationQuitting = true; });
 }
 
 MatrixProtocol::~MatrixProtocol()
 {
+    if (m_aggregatedContactAvatarService && m_contactAvatarService)
+        m_aggregatedContactAvatarService->remove(m_contactAvatarService);
     if (m_chatServiceRepository && m_chatService)
         m_chatServiceRepository->removeChatService(m_chatService);
 }
@@ -52,6 +59,12 @@ MatrixProtocol::~MatrixProtocol()
 void MatrixProtocol::setChatServiceRepository(ChatServiceRepository *chatServiceRepository)
 {
     m_chatServiceRepository = chatServiceRepository;
+}
+
+void MatrixProtocol::setAggregatedContactAvatarService(
+    AggregatedContactAvatarService *aggregatedContactAvatarService)
+{
+    m_aggregatedContactAvatarService = aggregatedContactAvatarService;
 }
 
 void MatrixProtocol::setPluginInjectedFactory(PluginInjectedFactory *pluginInjectedFactory)
@@ -62,8 +75,12 @@ void MatrixProtocol::setPluginInjectedFactory(PluginInjectedFactory *pluginInjec
 void MatrixProtocol::init()
 {
     createConnection();
+    m_contactAvatarService = m_pluginInjectedFactory->makeInjected<MatrixContactAvatarService>(account(), this);
+    m_contactAvatarService->setConnection(m_connection);
     m_chatService = m_pluginInjectedFactory->makeInjected<MatrixChatService>(account(), this);
+    m_chatService->setContactAvatarService(m_contactAvatarService);
     m_chatService->setConnection(m_connection);
+    m_aggregatedContactAvatarService->add(m_contactAvatarService);
     m_chatServiceRepository->addChatService(m_chatService);
 }
 
@@ -76,6 +93,8 @@ void MatrixProtocol::createConnection()
     m_connection->enableDirectChatEncryption(true);
     if (m_chatService)
         m_chatService->setConnection(m_connection);
+    if (m_contactAvatarService)
+        m_contactAvatarService->setConnection(m_connection);
 
     connect(m_connection, &Quotient::Connection::connected, this, [this] {
         if (!m_connection)
@@ -91,6 +110,8 @@ void MatrixProtocol::createConnection()
     connect(m_connection, &Quotient::Connection::loggedOut, this, [this] {
         if (m_chatService)
             m_chatService->setConnection(nullptr);
+        if (m_contactAvatarService)
+            m_contactAvatarService->setConnection(nullptr);
         m_recoveryKeyRestorePrompted = false;
         loggedOut();
     });
@@ -128,6 +149,13 @@ void MatrixProtocol::login()
 {
     if (!m_connection)
         createConnection();
+    else
+    {
+        if (m_chatService)
+            m_chatService->setConnection(m_connection);
+        if (m_contactAvatarService)
+            m_contactAvatarService->setConnection(m_connection);
+    }
 
     const auto accountData = MatrixAccountData{account()};
     if (accountData.deviceId().isEmpty())
@@ -212,6 +240,14 @@ void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSessi
 
 void MatrixProtocol::logout()
 {
+    if (m_applicationQuitting)
+    {
+        if (m_connection)
+            m_connection->stopSync();
+        loggedOut();
+        return;
+    }
+
     if (m_connection && m_connection->isLoggedIn())
     {
         m_connection->logout();
@@ -223,6 +259,8 @@ void MatrixProtocol::logout()
         disconnect(m_connection, nullptr, this, nullptr);
         if (m_chatService)
             m_chatService->setConnection(nullptr);
+        if (m_contactAvatarService)
+            m_contactAvatarService->setConnection(nullptr);
         m_connection->deleteLater();
         m_connection = nullptr;
     }

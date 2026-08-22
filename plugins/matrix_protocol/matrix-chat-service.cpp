@@ -20,6 +20,9 @@
 #include "matrix-chat-service.h"
 #include "matrix-chat-service.moc"
 
+#include "matrix-contact-avatar-service.h"
+
+#include "accounts/account.h"
 #include "chat/chat.h"
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
@@ -38,6 +41,7 @@
 #include <Quotient/connection.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/room.h>
+#include <Quotient/roommember.h>
 
 #include <QtCore/QDateTime>
 
@@ -76,6 +80,11 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
 
     for (auto *room : m_connection->allRooms())
         watchRoom(room);
+}
+
+void MatrixChatService::setContactAvatarService(MatrixContactAvatarService *contactAvatarService)
+{
+    m_contactAvatarService = contactAvatarService;
 }
 
 void MatrixChatService::setChatManager(ChatManager *chatManager)
@@ -209,7 +218,44 @@ void MatrixChatService::synchronizeRoom(Quotient::Room *room)
     if (!m_initialSyncFinished)
         return;
 
-    roomChat(room);
+    if (!roomChat(room))
+        return;
+
+    room->setDisplayed(true);
+    synchronizeRoomMembers(room);
+}
+
+void MatrixChatService::synchronizeRoomMembers(Quotient::Room *room)
+{
+    if (!m_initialSyncFinished || !m_contactManager)
+        return;
+
+    const auto chat = roomChat(room);
+    auto *details = chat ? qobject_cast<ChatDetailsRoom *>(chat.details()) : nullptr;
+    if (!details)
+        return;
+
+    ContactSet roomContacts;
+    for (const auto &member : room->joinedMembers())
+    {
+        const auto contact = member.isLocalMember()
+                                 ? account().accountContact()
+                                 : m_contactManager->byId(account(), member.id(), ActionCreateAndAdd);
+        if (!contact)
+            continue;
+
+        roomContacts.insert(contact);
+        if (!member.isLocalMember() && m_contactAvatarService)
+            m_contactAvatarService->observeContact(member.id());
+    }
+
+    const auto existingContacts = details->contacts();
+    for (const auto &contact : existingContacts)
+        if (!roomContacts.contains(contact))
+            details->removeContact(contact);
+
+    for (const auto &contact : roomContacts)
+        details->addContact(contact);
 }
 
 void MatrixChatService::watchRoom(Quotient::Room *room)
@@ -221,6 +267,10 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
     connect(room, &Quotient::Room::addedMessages, this,
             [this, room](int fromIndex, int toIndex) { handleNewMessages(room, fromIndex, toIndex); });
     connect(room, &Quotient::Room::baseStateLoaded, this, [this, room] { synchronizeRoom(room); });
+    connect(room, &Quotient::Room::memberListChanged, this,
+            [this, room] { synchronizeRoomMembers(room); });
+    connect(room, &Quotient::Room::allMembersLoaded, this,
+            [this, room] { synchronizeRoomMembers(room); });
     connect(room, &Quotient::Room::displaynameChanged, this,
             [this, room](Quotient::Room *, const QString &) { synchronizeRoom(room); });
     connect(room, &Quotient::Room::encryption, this, [this, room] { synchronizeRoom(room); });
@@ -242,8 +292,7 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
             continue;
 
         const auto *event = item.viewAs<Quotient::RoomMessageEvent>();
-        if (!event || event->isRedacted() || event->senderId() == m_connection->userId() ||
-            event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
+        if (!event || event->isRedacted() || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
             continue;
 
         if (directChat)
@@ -258,7 +307,11 @@ void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEven
     if (!m_chatManager || !m_chatStorage || !m_contactManager || !m_messageStorage)
         return;
 
-    const auto contact = m_contactManager->byId(account(), event.senderId(), ActionCreateAndAdd);
+    const auto sentByCurrentAccount = m_connection && event.senderId() == m_connection->userId();
+    const auto contact = sentByCurrentAccount ? account().accountContact()
+                                              : m_contactManager->byId(account(), event.senderId(), ActionCreateAndAdd);
+    if (!sentByCurrentAccount && m_contactAvatarService)
+        m_contactAvatarService->observeContact(event.senderId());
     const auto chat = ChatTypeContact::findChat(m_chatManager, m_chatStorage, contact, ActionCreateAndAdd);
     if (!chat || chat.isIgnoreAllMessages())
         return;
@@ -266,7 +319,7 @@ void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEven
     auto message = m_messageStorage->create();
     message.setMessageChat(chat);
     message.setMessageSender(contact);
-    message.setType(MessageTypeReceived);
+    message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
     message.setReceiveDate(QDateTime::currentDateTime());
 
@@ -275,7 +328,10 @@ void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEven
         text = QString::fromUtf8(rawMessageTransformerService()->transform(text.toUtf8(), message).rawContent());
     message.setContent(normalizeHtml(plainToHtml(text)));
 
-    emit messageReceived(message);
+    if (sentByCurrentAccount)
+        emit messageSent(message);
+    else
+        emit messageReceived(message);
 }
 
 void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event)
@@ -287,14 +343,18 @@ void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quoti
     if (!chat || chat.isIgnoreAllMessages())
         return;
 
-    const auto contact = m_contactManager->byId(account(), event.senderId(), ActionCreateAndAdd);
+    const auto sentByCurrentAccount = m_connection && event.senderId() == m_connection->userId();
+    const auto contact = sentByCurrentAccount ? account().accountContact()
+                                              : m_contactManager->byId(account(), event.senderId(), ActionCreateAndAdd);
+    if (!sentByCurrentAccount && m_contactAvatarService)
+        m_contactAvatarService->observeContact(event.senderId());
     if (auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
         details->addContact(contact);
 
     auto message = m_messageStorage->create();
     message.setMessageChat(chat);
     message.setMessageSender(contact);
-    message.setType(MessageTypeReceived);
+    message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
     message.setReceiveDate(QDateTime::currentDateTime());
 
@@ -303,5 +363,8 @@ void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quoti
         text = QString::fromUtf8(rawMessageTransformerService()->transform(text.toUtf8(), message).rawContent());
     message.setContent(normalizeHtml(plainToHtml(text)));
 
-    emit messageReceived(message);
+    if (sentByCurrentAccount)
+        emit messageSent(message);
+    else
+        emit messageReceived(message);
 }
