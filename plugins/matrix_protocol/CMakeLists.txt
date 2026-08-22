@@ -8,11 +8,13 @@ find_package (QuotientQt6 REQUIRED)
 set (SOURCES
     gui/matrix-device-verification-dialog.cpp
     gui/matrix-restore-recovery-key-dialog.cpp
+    gui/matrix-add-account-widget.cpp
+    gui/matrix-edit-account-widget.cpp
     matrix-account-data.cpp
-    matrix-add-account-widget.cpp
+    matrix-account-avatar-service.cpp
     matrix-chat-service.cpp
+    matrix-chat-state-service.cpp
     matrix-contact-avatar-service.cpp
-    matrix-edit-account-widget.cpp
     matrix-id-validator.cpp
     matrix-join-room-action.cpp
     matrix-module.cpp

@@ -25,33 +25,25 @@
 #include "identities/identity-manager.h"
 #include "plugin/plugin-injected-factory.h"
 #include "widgets/account-configuration-widget-tab-adapter.h"
+#include "widgets/account-avatar-widget.h"
 #include "widgets/identities-combo-box.h"
 #include "widgets/simple-configuration-value-state-notifier.h"
 
-#include "matrix-account-data.h"
-#include "matrix-id-validator.h"
+#include "../matrix-account-data.h"
+#include "../matrix-id-validator.h"
 
 #include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
+#include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QVBoxLayout>
-
-namespace
-{
-bool hasValidHomeserver(const QString &value)
-{
-    const auto url = QUrl::fromUserInput(value.trimmed());
-    return !value.trimmed().isEmpty() && url.isValid() && !url.host().isEmpty() &&
-           (url.scheme() == "https" || url.scheme() == "http");
-}
-}
 
 MatrixEditAccountWidget::MatrixEditAccountWidget(Account account, QWidget *parent) : AccountEditWidget{account, parent}
 {
@@ -86,7 +78,9 @@ void MatrixEditAccountWidget::createGui()
     mainLayout->addWidget(tabs);
 
     auto general = new QWidget{tabs};
-    auto form = new QFormLayout{general};
+    auto generalLayout = new QHBoxLayout{general};
+    auto form = new QFormLayout;
+    generalLayout->addLayout(form, 1);
 
     m_matrixId = new QLineEdit{general};
     m_matrixId->setValidator(new MatrixIdValidator{m_matrixId});
@@ -116,6 +110,9 @@ void MatrixEditAccountWidget::createGui()
         general};
     info->setWordWrap(true);
     form->addRow(QString{}, info);
+
+    auto *avatarWidget = m_pluginInjectedFactory->makeInjected<AccountAvatarWidget>(account(), general);
+    generalLayout->addWidget(avatarWidget, 0, Qt::AlignTop);
     tabs->addTab(general, tr("General"));
 
     new AccountConfigurationWidgetTabAdapter{this, tabs, this};
@@ -152,7 +149,10 @@ void MatrixEditAccountWidget::loadAccountData()
 
 bool MatrixEditAccountWidget::validHomeserver() const
 {
-    return hasValidHomeserver(m_homeserver->text());
+    const auto value = m_homeserver->text().trimmed();
+    const auto url = QUrl::fromUserInput(value);
+    return !value.isEmpty() && url.isValid() && !url.host().isEmpty() &&
+           (url.scheme() == "https" || url.scheme() == "http");
 }
 
 void MatrixEditAccountWidget::apply()

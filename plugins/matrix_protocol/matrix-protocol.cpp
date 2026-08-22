@@ -21,12 +21,16 @@
 #include "matrix-protocol.moc"
 
 #include "chat/chat-service-repository.h"
+#include "chat/chat-state-service-repository.h"
 #include "plugin/plugin-injected-factory.h"
 
+#include "avatars/aggregated-account-avatar-service.h"
 #include "avatars/aggregated-contact-avatar-service.h"
 
 #include "matrix-account-data.h"
 #include "matrix-chat-service.h"
+#include "matrix-chat-state-service.h"
+#include "matrix-account-avatar-service.h"
 #include "matrix-contact-avatar-service.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
@@ -50,8 +54,12 @@ MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Prot
 
 MatrixProtocol::~MatrixProtocol()
 {
+    if (m_aggregatedAccountAvatarService && m_accountAvatarService)
+        m_aggregatedAccountAvatarService->remove(m_accountAvatarService);
     if (m_aggregatedContactAvatarService && m_contactAvatarService)
         m_aggregatedContactAvatarService->remove(m_contactAvatarService);
+    if (m_chatStateServiceRepository && m_chatStateService)
+        m_chatStateServiceRepository->removeChatStateService(m_chatStateService);
     if (m_chatServiceRepository && m_chatService)
         m_chatServiceRepository->removeChatService(m_chatService);
 }
@@ -59,6 +67,17 @@ MatrixProtocol::~MatrixProtocol()
 void MatrixProtocol::setChatServiceRepository(ChatServiceRepository *chatServiceRepository)
 {
     m_chatServiceRepository = chatServiceRepository;
+}
+
+void MatrixProtocol::setChatStateServiceRepository(ChatStateServiceRepository *chatStateServiceRepository)
+{
+    m_chatStateServiceRepository = chatStateServiceRepository;
+}
+
+void MatrixProtocol::setAggregatedAccountAvatarService(
+    AggregatedAccountAvatarService *aggregatedAccountAvatarService)
+{
+    m_aggregatedAccountAvatarService = aggregatedAccountAvatarService;
 }
 
 void MatrixProtocol::setAggregatedContactAvatarService(
@@ -75,13 +94,19 @@ void MatrixProtocol::setPluginInjectedFactory(PluginInjectedFactory *pluginInjec
 void MatrixProtocol::init()
 {
     createConnection();
+    m_accountAvatarService = m_pluginInjectedFactory->makeInjected<MatrixAccountAvatarService>(account(), this);
+    m_accountAvatarService->setConnection(m_connection);
     m_contactAvatarService = m_pluginInjectedFactory->makeInjected<MatrixContactAvatarService>(account(), this);
     m_contactAvatarService->setConnection(m_connection);
     m_chatService = m_pluginInjectedFactory->makeInjected<MatrixChatService>(account(), this);
     m_chatService->setContactAvatarService(m_contactAvatarService);
     m_chatService->setConnection(m_connection);
+    m_chatStateService = m_pluginInjectedFactory->makeInjected<MatrixChatStateService>(account(), this);
+    m_chatStateService->setConnection(m_connection);
+    m_aggregatedAccountAvatarService->add(m_accountAvatarService);
     m_aggregatedContactAvatarService->add(m_contactAvatarService);
     m_chatServiceRepository->addChatService(m_chatService);
+    m_chatStateServiceRepository->addChatStateService(m_chatStateService);
 }
 
 void MatrixProtocol::createConnection()
@@ -93,6 +118,10 @@ void MatrixProtocol::createConnection()
     m_connection->enableDirectChatEncryption(true);
     if (m_chatService)
         m_chatService->setConnection(m_connection);
+    if (m_chatStateService)
+        m_chatStateService->setConnection(m_connection);
+    if (m_accountAvatarService)
+        m_accountAvatarService->setConnection(m_connection);
     if (m_contactAvatarService)
         m_contactAvatarService->setConnection(m_connection);
 
@@ -101,6 +130,8 @@ void MatrixProtocol::createConnection()
             return;
 
         MatrixAccountData{account()}.setDeviceId(m_connection->deviceId());
+        if (m_contactAvatarService)
+            m_contactAvatarService->observeContact(m_connection->userId());
         m_connection->syncLoop();
         loggedIn();
     });
@@ -110,6 +141,10 @@ void MatrixProtocol::createConnection()
     connect(m_connection, &Quotient::Connection::loggedOut, this, [this] {
         if (m_chatService)
             m_chatService->setConnection(nullptr);
+        if (m_chatStateService)
+            m_chatStateService->setConnection(nullptr);
+        if (m_accountAvatarService)
+            m_accountAvatarService->setConnection(nullptr);
         if (m_contactAvatarService)
             m_contactAvatarService->setConnection(nullptr);
         m_recoveryKeyRestorePrompted = false;
@@ -153,6 +188,10 @@ void MatrixProtocol::login()
     {
         if (m_chatService)
             m_chatService->setConnection(m_connection);
+        if (m_chatStateService)
+            m_chatStateService->setConnection(m_connection);
+        if (m_accountAvatarService)
+            m_accountAvatarService->setConnection(m_connection);
         if (m_contactAvatarService)
             m_contactAvatarService->setConnection(m_connection);
     }
@@ -259,6 +298,10 @@ void MatrixProtocol::logout()
         disconnect(m_connection, nullptr, this, nullptr);
         if (m_chatService)
             m_chatService->setConnection(nullptr);
+        if (m_chatStateService)
+            m_chatStateService->setConnection(nullptr);
+        if (m_accountAvatarService)
+            m_accountAvatarService->setConnection(nullptr);
         if (m_contactAvatarService)
             m_contactAvatarService->setConnection(nullptr);
         m_connection->deleteLater();

@@ -24,8 +24,8 @@
 #include "plugin/plugin-injected-factory.h"
 #include "status/status-type.h"
 
-#include "matrix-add-account-widget.h"
-#include "matrix-edit-account-widget.h"
+#include "gui/matrix-add-account-widget.h"
+#include "gui/matrix-edit-account-widget.h"
 #include "matrix-id-validator.h"
 #include "matrix-protocol.h"
 

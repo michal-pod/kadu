@@ -26,9 +26,13 @@
 #include <injeqt/injeqt.h>
 
 class ChatServiceRepository;
+class ChatStateServiceRepository;
+class MatrixAccountAvatarService;
 class MatrixChatService;
+class MatrixChatStateService;
 class MatrixContactAvatarService;
 class PluginInjectedFactory;
+class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
 
 namespace Quotient
@@ -60,10 +64,14 @@ public:
 
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
+    QPointer<ChatStateServiceRepository> m_chatStateServiceRepository;
+    QPointer<AggregatedAccountAvatarService> m_aggregatedAccountAvatarService;
     QPointer<AggregatedContactAvatarService> m_aggregatedContactAvatarService;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
     QPointer<Quotient::Connection> m_connection;
     MatrixChatService *m_chatService = nullptr;
+    MatrixChatStateService *m_chatStateService = nullptr;
+    MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;
     bool m_recoveryKeyRestorePrompted = false;
     bool m_applicationQuitting = false;
@@ -76,6 +84,8 @@ private:
 
 private slots:
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
+    INJEQT_SET void setChatStateServiceRepository(ChatStateServiceRepository *chatStateServiceRepository);
+    INJEQT_SET void setAggregatedAccountAvatarService(AggregatedAccountAvatarService *aggregatedAccountAvatarService);
     INJEQT_SET void setAggregatedContactAvatarService(AggregatedContactAvatarService *aggregatedContactAvatarService);
     INJEQT_SET void setPluginInjectedFactory(PluginInjectedFactory *pluginInjectedFactory);
     INJEQT_INIT void init();

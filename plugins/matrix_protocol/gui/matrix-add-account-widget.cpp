@@ -27,8 +27,8 @@
 #include "widgets/identities-combo-box.h"
 #include "widgets/simple-configuration-value-state-notifier.h"
 
-#include "matrix-account-data.h"
-#include "matrix-id-validator.h"
+#include "../matrix-account-data.h"
+#include "../matrix-id-validator.h"
 
 #include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
@@ -39,16 +39,6 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QVBoxLayout>
-
-namespace
-{
-bool hasValidHomeserver(const QString &value)
-{
-    const auto url = QUrl::fromUserInput(value.trimmed());
-    return !value.trimmed().isEmpty() && url.isValid() && !url.host().isEmpty() &&
-           (url.scheme() == "https" || url.scheme() == "http");
-}
-}
 
 MatrixAddAccountWidget::MatrixAddAccountWidget(bool showButtons, QWidget *parent)
         : AccountAddWidget{parent}, m_showButtons{showButtons}
@@ -151,7 +141,10 @@ void MatrixAddAccountWidget::resetGui()
 
 bool MatrixAddAccountWidget::validHomeserver() const
 {
-    return hasValidHomeserver(m_homeserver->text());
+    const auto value = m_homeserver->text().trimmed();
+    const auto url = QUrl::fromUserInput(value);
+    return !value.isEmpty() && url.isValid() && !url.host().isEmpty() &&
+           (url.scheme() == "https" || url.scheme() == "http");
 }
 
 void MatrixAddAccountWidget::apply()

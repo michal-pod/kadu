@@ -54,7 +54,7 @@ void MatrixContactAvatarService::setConnection(Quotient::Connection *connection)
 
 void MatrixContactAvatarService::observeContact(const QString &matrixId)
 {
-    if (!m_connection || matrixId.isEmpty() || matrixId == m_connection->userId())
+    if (!m_connection || matrixId.isEmpty())
         return;
 
     auto *user = m_connection->user(matrixId);
