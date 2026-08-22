@@ -31,6 +31,9 @@ public:
     QString homeserver() const;
     void setHomeserver(const QString &homeserver) const;
 
+    QString deviceId() const;
+    void setDeviceId(const QString &deviceId) const;
+
 private:
     AccountShared *m_data;
 };

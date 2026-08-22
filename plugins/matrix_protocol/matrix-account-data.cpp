@@ -38,3 +38,16 @@ void MatrixAccountData::setHomeserver(const QString &homeserver) const
     if (m_data->isValidStorage())
         m_data->storeValue("Homeserver", homeserver);
 }
+
+QString MatrixAccountData::deviceId() const
+{
+    m_data->ensureLoaded();
+    return m_data->isValidStorage() ? m_data->loadValue<QString>("DeviceId", QString{}) : QString{};
+}
+
+void MatrixAccountData::setDeviceId(const QString &deviceId) const
+{
+    m_data->ensureLoaded();
+    if (m_data->isValidStorage())
+        m_data->storeValue("DeviceId", deviceId);
+}

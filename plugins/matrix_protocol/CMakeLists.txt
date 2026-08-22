@@ -6,6 +6,7 @@ find_package (Kadu REQUIRED CONFIG)
 find_package (QuotientQt6 REQUIRED)
 
 set (SOURCES
+    gui/matrix-restore-recovery-key-dialog.cpp
     matrix-account-data.cpp
     matrix-add-account-widget.cpp
     matrix-chat-service.cpp

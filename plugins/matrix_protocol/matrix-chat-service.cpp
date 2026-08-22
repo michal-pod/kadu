@@ -184,7 +184,7 @@ void MatrixChatService::leaveChat(const Chat &chat)
 
 bool MatrixChatService::isSupportedRoom(const Quotient::Room *room) const
 {
-    return room && room->joinState() == Quotient::JoinState::Join && !room->usesEncryption() &&
+    return room && room->joinState() == Quotient::JoinState::Join &&
            (!m_connection || !m_connection->isDirectChat(room->id()));
 }
 

@@ -25,9 +25,15 @@
 
 #include "matrix-account-data.h"
 #include "matrix-chat-service.h"
+#include "gui/matrix-restore-recovery-key-dialog.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/database.h>
 
+#include <qt6keychain/keychain.h>
+
+#include <QtCore/QByteArray>
+#include <QtCore/QCoreApplication>
 #include <QtCore/QUrl>
 
 MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Protocol{account, factory}
@@ -61,8 +67,10 @@ void MatrixProtocol::init()
 void MatrixProtocol::createConnection()
 {
     m_connection = new Quotient::Connection{QUrl{MatrixAccountData{account()}.homeserver()}, this};
-    // The first messaging step deliberately supports only unencrypted direct chats.
-    m_connection->enableDirectChatEncryption(false);
+    // Encryption must be enabled before logging in: this makes libQuotient initialise
+    // the local Olm account and publish this client's device keys.
+    m_connection->enableEncryption(true);
+    m_connection->enableDirectChatEncryption(true);
     if (m_chatService)
         m_chatService->setConnection(m_connection);
 
@@ -70,12 +78,15 @@ void MatrixProtocol::createConnection()
         if (!m_connection)
             return;
 
+        MatrixAccountData{account()}.setDeviceId(m_connection->deviceId());
         m_connection->syncLoop();
         loggedIn();
     });
+    connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
     connect(m_connection, &Quotient::Connection::loggedOut, this, [this] {
         if (m_chatService)
             m_chatService->setConnection(nullptr);
+        m_recoveryKeyRestorePrompted = false;
         loggedOut();
     });
     connect(
@@ -84,6 +95,21 @@ void MatrixProtocol::createConnection()
     connect(
         m_connection, &Quotient::Connection::resolveError, this,
         [this](const QString &message) { handleConnectionError(message); });
+}
+
+void MatrixProtocol::promptForRecoveryKeyRestore()
+{
+    if (!m_connection || m_recoveryKeyRestorePrompted || !m_connection->encryptionEnabled()
+        || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key")))
+        return;
+
+    auto *database = m_connection->database();
+    if (!database || !database->loadEncrypted(QStringLiteral("m.cross_signing.master")).isEmpty())
+        return;
+
+    m_recoveryKeyRestorePrompted = true;
+    auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection};
+    dialog->show();
 }
 
 void MatrixProtocol::handleConnectionError(const QString &message, const QString &details)
@@ -97,6 +123,39 @@ void MatrixProtocol::login()
 {
     if (!m_connection)
         createConnection();
+
+    const auto accountData = MatrixAccountData{account()};
+    if (accountData.deviceId().isEmpty())
+    {
+        loginWithPassword();
+        return;
+    }
+
+    auto *accessTokenJob = new QKeychain::ReadPasswordJob{qAppName(), this};
+    accessTokenJob->setKey(account().id());
+    connect(accessTokenJob, &QKeychain::Job::finished, this, [this, accessTokenJob] {
+        if (!m_connection)
+            return;
+
+        const auto accessToken = accessTokenJob->error() == QKeychain::Error::NoError
+                                     ? accessTokenJob->binaryData()
+                                     : QByteArray{};
+        if (accessToken.isEmpty())
+        {
+            loginWithPassword();
+            return;
+        }
+
+        m_connection->assumeIdentity(
+            account().id(), MatrixAccountData{account()}.deviceId(), QString::fromUtf8(accessToken));
+    });
+    accessTokenJob->start();
+}
+
+void MatrixProtocol::loginWithPassword()
+{
+    if (!m_connection)
+        return;
 
     m_connection->loginWithPassword(account().id(), account().password(), QStringLiteral("Kadu"));
 }

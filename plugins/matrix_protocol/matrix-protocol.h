@@ -57,9 +57,12 @@ private:
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
     QPointer<Quotient::Connection> m_connection;
     MatrixChatService *m_chatService = nullptr;
+    bool m_recoveryKeyRestorePrompted = false;
 
     void createConnection();
     void handleConnectionError(const QString &message, const QString &details = {});
+    void loginWithPassword();
+    void promptForRecoveryKeyRestore();
 
 private slots:
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
