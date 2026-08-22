@@ -25,15 +25,18 @@
 
 #include "matrix-account-data.h"
 #include "matrix-chat-service.h"
+#include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
 
 #include <Quotient/connection.h>
 #include <Quotient/database.h>
+#include <Quotient/keyverificationsession.h>
 
 #include <qt6keychain/keychain.h>
 
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QSignalBlocker>
 #include <QtCore/QUrl>
 
 MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Protocol{account, factory}
@@ -83,6 +86,8 @@ void MatrixProtocol::createConnection()
         loggedIn();
     });
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
+    connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
+            &MatrixProtocol::showDeviceVerificationDialog);
     connect(m_connection, &Quotient::Connection::loggedOut, this, [this] {
         if (m_chatService)
             m_chatService->setConnection(nullptr);
@@ -166,6 +171,43 @@ void MatrixProtocol::joinRoom(const QString &roomIdOrAlias)
         return;
 
     m_connection->joinRoom(roomIdOrAlias);
+}
+
+QStringList MatrixProtocol::availableVerificationDevices() const
+{
+    if (!m_connection || !m_connection->isLoggedIn() || !m_connection->encryptionEnabled())
+        return {};
+
+    auto devices = m_connection->devicesForUser(m_connection->userId());
+    devices.removeAll(m_connection->deviceId());
+    devices.sort();
+    return devices;
+}
+
+void MatrixProtocol::verifyDevice(const QString &deviceId)
+{
+    if (!m_connection || !availableVerificationDevices().contains(deviceId))
+        return;
+
+    Quotient::KeyVerificationSession *session = nullptr;
+    {
+        QSignalBlocker blocker{m_connection};
+        session = m_connection->startKeyVerificationSession(m_connection->userId(), deviceId);
+    }
+    if (!session)
+        return;
+
+    showDeviceVerificationDialog(session);
+    session->sendRequest();
+}
+
+void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSession *session)
+{
+    if (!session || session->userVerification())
+        return;
+
+    auto *dialog = new MatrixDeviceVerificationDialog{session};
+    dialog->show();
 }
 
 void MatrixProtocol::logout()

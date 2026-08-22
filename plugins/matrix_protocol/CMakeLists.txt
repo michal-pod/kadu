@@ -6,6 +6,7 @@ find_package (Kadu REQUIRED CONFIG)
 find_package (QuotientQt6 REQUIRED)
 
 set (SOURCES
+    gui/matrix-device-verification-dialog.cpp
     gui/matrix-restore-recovery-key-dialog.cpp
     matrix-account-data.cpp
     matrix-add-account-widget.cpp
@@ -18,6 +19,7 @@ set (SOURCES
     matrix-plugin-object.cpp
     matrix-protocol-factory.cpp
     matrix-protocol.cpp
+    matrix-verify-device-action.cpp
 )
 
 kadu_plugin (matrix_protocol

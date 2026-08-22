@@ -22,6 +22,7 @@
 
 #include "matrix-protocol-factory.h"
 #include "matrix-join-room-action.h"
+#include "matrix-verify-device-action.h"
 #include "protocols/protocols-manager.h"
 
 MatrixPluginObject::MatrixPluginObject(QObject *parent) : QObject{parent}
@@ -40,6 +41,11 @@ void MatrixPluginObject::setMatrixProtocolFactory(MatrixProtocolFactory *matrixP
 void MatrixPluginObject::setMatrixJoinRoomAction(MatrixJoinRoomAction *matrixJoinRoomAction)
 {
     m_matrixJoinRoomAction = matrixJoinRoomAction;
+}
+
+void MatrixPluginObject::setMatrixVerifyDeviceAction(MatrixVerifyDeviceAction *matrixVerifyDeviceAction)
+{
+    m_matrixVerifyDeviceAction = matrixVerifyDeviceAction;
 }
 
 void MatrixPluginObject::setProtocolsManager(ProtocolsManager *protocolsManager)

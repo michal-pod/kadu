@@ -22,6 +22,7 @@
 #include "protocols/protocol.h"
 
 #include <QtCore/QPointer>
+#include <QtCore/QStringList>
 #include <injeqt/injeqt.h>
 
 class ChatServiceRepository;
@@ -31,6 +32,7 @@ class PluginInjectedFactory;
 namespace Quotient
 {
 class Connection;
+class KeyVerificationSession;
 }
 
 class MatrixProtocol final : public Protocol
@@ -51,6 +53,8 @@ public:
     }
 
     void joinRoom(const QString &roomIdOrAlias);
+    QStringList availableVerificationDevices() const;
+    void verifyDevice(const QString &deviceId);
 
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
@@ -63,6 +67,7 @@ private:
     void handleConnectionError(const QString &message, const QString &details = {});
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
+    void showDeviceVerificationDialog(Quotient::KeyVerificationSession *session);
 
 private slots:
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
