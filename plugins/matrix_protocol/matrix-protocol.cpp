@@ -101,6 +101,14 @@ void MatrixProtocol::login()
     m_connection->loginWithPassword(account().id(), account().password(), QStringLiteral("Kadu"));
 }
 
+void MatrixProtocol::joinRoom(const QString &roomIdOrAlias)
+{
+    if (!m_connection || !m_connection->isLoggedIn() || roomIdOrAlias.isEmpty())
+        return;
+
+    m_connection->joinRoom(roomIdOrAlias);
+}
+
 void MatrixProtocol::logout()
 {
     if (m_connection && m_connection->isLoggedIn())

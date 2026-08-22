@@ -66,10 +66,15 @@ private:
     bool m_initialSyncFinished = false;
 
     QString directChatId(const Chat &chat) const;
+    QString roomId(const Chat &chat) const;
     bool sendText(const Chat &chat, const QString &text, Message message = {});
+    bool isSupportedRoom(const Quotient::Room *room) const;
+    Chat roomChat(Quotient::Room *room) const;
+    void synchronizeRoom(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
-    void handleMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event);
+    void handleDirectMessageEvent(const Quotient::RoomMessageEvent &event);
+    void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event);
 
 private slots:
     INJEQT_SET void setChatManager(ChatManager *chatManager);

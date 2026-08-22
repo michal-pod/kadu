@@ -11,6 +11,7 @@ set (SOURCES
     matrix-chat-service.cpp
     matrix-edit-account-widget.cpp
     matrix-id-validator.cpp
+    matrix-join-room-action.cpp
     matrix-module.cpp
     matrix-plugin-modules-factory.cpp
     matrix-plugin-object.cpp

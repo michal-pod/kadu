@@ -50,6 +50,8 @@ public:
         return "xmpp";
     }
 
+    void joinRoom(const QString &roomIdOrAlias);
+
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;

@@ -21,9 +21,11 @@
 
 #include "matrix-plugin-object.h"
 #include "matrix-protocol-factory.h"
+#include "matrix-join-room-action.h"
 
 MatrixModule::MatrixModule()
 {
     add_type<MatrixPluginObject>();
+    add_type<MatrixJoinRoomAction>();
     add_type<MatrixProtocolFactory>();
 }
