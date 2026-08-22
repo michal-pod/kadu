@@ -1,0 +1,10 @@
+[Module]
+DisplayName=Matrix network support
+DisplayName[pl]=Obsługa sieci Matrix
+Description=Initial Matrix account and protocol integration
+Description[pl]=Wstępna integracja konta i protokołu Matrix
+Author=Kadu Team
+LoadByDefault=false
+Version=core
+Type=protocol
+Category=Protocols
