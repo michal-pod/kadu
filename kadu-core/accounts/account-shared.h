@@ -113,6 +113,7 @@ protected:
     // TODO: 0.11, fix this
     // hack, changing details does not trigger this
     friend class GaduEditAccountWidget;
+    friend class MatrixEditAccountWidget;
     void forceEmitUpdated();
 
 public:

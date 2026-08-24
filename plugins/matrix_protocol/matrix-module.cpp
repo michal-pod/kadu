@@ -21,13 +21,17 @@
 
 #include "matrix-plugin-object.h"
 #include "matrix-protocol-factory.h"
+#include "matrix-device-verification-notification-service.h"
 #include "matrix-join-room-action.h"
+#include "matrix-room-invitation-notification-service.h"
 #include "matrix-verify-device-action.h"
 
 MatrixModule::MatrixModule()
 {
     add_type<MatrixPluginObject>();
     add_type<MatrixJoinRoomAction>();
+    add_type<MatrixDeviceVerificationNotificationService>();
+    add_type<MatrixRoomInvitationNotificationService>();
     add_type<MatrixVerifyDeviceAction>();
     add_type<MatrixProtocolFactory>();
 }

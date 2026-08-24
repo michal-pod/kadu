@@ -22,6 +22,9 @@
 #include <QtGui/QTextDocument>
 #include <QtWidgets/QSystemTrayIcon>
 
+#include <utility>
+
+#include "chat/chat.h"
 #include "notification/notification.h"
 
 #include "configuration/configuration.h"
@@ -32,8 +35,9 @@
 #include "notification/notification-configuration.h"
 #include "parser/parser.h"
 #include "plugin/plugin-injected-factory.h"
-#include "widgets/chat-widget/chat-widget-manager.h"
 #include "windows/message-dialog.h"
+
+#include "notification/notification-service.h"
 
 #include "plugins/docking/docking-plugin-object.h"
 #include "plugins/docking/docking.h"
@@ -57,11 +61,6 @@ DockingNotifier::~DockingNotifier()
 {
 }
 
-void DockingNotifier::setChatWidgetManager(ChatWidgetManager *chatWidgetManager)
-{
-    m_chatWidgetManager = chatWidgetManager;
-}
-
 void DockingNotifier::setConfiguration(Configuration *configuration)
 {
     m_configuration = configuration;
@@ -82,6 +81,11 @@ void DockingNotifier::setNotificationConfiguration(NotificationConfiguration *no
     m_notificationConfiguration = notificationConfiguration;
 }
 
+void DockingNotifier::setNotificationService(NotificationService *notificationService)
+{
+    m_notificationService = notificationService;
+}
+
 void DockingNotifier::setParser(Parser *parser)
 {
     m_parser = parser;
@@ -98,7 +102,7 @@ DockingNotifier::parseText(const QString &text, const Notification &notification
 {
     QString ret;
 
-    chat = notification.data["chat"].value<Chat>();
+    auto chat = notification.data["chat"].value<Chat>();
 
     if (!text.isEmpty())
     {
@@ -122,6 +126,8 @@ DockingNotifier::parseText(const QString &text, const Notification &notification
 
 void DockingNotifier::notify(const Notification &notification)
 {
+    m_pendingNotification = notification;
+
     auto key = m_notificationConfiguration->notifyConfigurationKey(notification.type);
     unsigned int timeout =
         m_configuration->deprecatedApi()->readNumEntry("Qt4DockingNotifier", QString("Event_") + key + "_timeout");
@@ -139,7 +145,12 @@ void DockingNotifier::notify(const Notification &notification)
 
 void DockingNotifier::messageClicked()
 {
-    m_chatWidgetManager->openChat(chat, OpenChatActivation::Activate);
+    if (!m_pendingNotification || !m_notificationService)
+        return;
+
+    auto notification = std::move(m_pendingNotification);
+    m_pendingNotification.reset();
+    m_notificationService->acceptNotification(*notification);
 }
 
 NotifierConfigurationWidget *DockingNotifier::createConfigurationWidget(QWidget *parent)

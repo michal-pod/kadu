@@ -60,6 +60,9 @@ void HintsConfiguration::createDefaultConfiguration()
     m_configuration->deprecatedApi()->addVariable("Notify", "FileTransfer_Hints", true);
     m_configuration->deprecatedApi()->addVariable("Notify", "FileTransfer/IncomingFile_Hints", true);
     m_configuration->deprecatedApi()->addVariable("Notify", "FileTransfer/Finished_Hints", true);
+    m_configuration->deprecatedApi()->addVariable("Notify", "Matrix_Hints", true);
+    m_configuration->deprecatedApi()->addVariable("Notify", "Matrix/RoomInvitation_Hints", true);
+    m_configuration->deprecatedApi()->addVariable("Notify", "Matrix/DeviceVerification_Hints", true);
     m_configuration->deprecatedApi()->addVariable("Notify", "multilogon_Hints", true);
     m_configuration->deprecatedApi()->addVariable("Notify", "multilogon/sessionConnected_Hints", true);
     m_configuration->deprecatedApi()->addVariable("Notify", "multilogon/sessionDisconnected_Hints", true);

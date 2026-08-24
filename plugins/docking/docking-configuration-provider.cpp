@@ -21,11 +21,14 @@
 #include "docking-configuration-provider.moc"
 
 #include "docking-configuration.h"
+#include "status-notifier-item-attention-mode.h"
 
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
 
-DockingConfigurationProvider::DockingConfigurationProvider(QObject *parent) : QObject{parent}
+DockingConfigurationProvider::DockingConfigurationProvider(QObject *parent)
+        : QObject{parent},
+          m_dockingConfiguration{false, true, StatusNotifierItemAttentionMode::BlinkingIcon}
 {
 }
 

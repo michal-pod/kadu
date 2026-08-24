@@ -32,12 +32,15 @@
 #include "matrix-chat-state-service.h"
 #include "matrix-account-avatar-service.h"
 #include "matrix-contact-avatar-service.h"
+#include "matrix-device-verification-notification-service.h"
+#include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
 
 #include <Quotient/connection.h>
 #include <Quotient/database.h>
 #include <Quotient/keyverificationsession.h>
+#include <Quotient/room.h>
 
 #include <qt6keychain/keychain.h>
 
@@ -91,6 +94,18 @@ void MatrixProtocol::setPluginInjectedFactory(PluginInjectedFactory *pluginInjec
     m_pluginInjectedFactory = pluginInjectedFactory;
 }
 
+void MatrixProtocol::setRoomInvitationNotificationService(
+    MatrixRoomInvitationNotificationService *roomInvitationNotificationService)
+{
+    m_roomInvitationNotificationService = roomInvitationNotificationService;
+}
+
+void MatrixProtocol::setDeviceVerificationNotificationService(
+    MatrixDeviceVerificationNotificationService *deviceVerificationNotificationService)
+{
+    m_deviceVerificationNotificationService = deviceVerificationNotificationService;
+}
+
 void MatrixProtocol::init()
 {
     createConnection();
@@ -137,7 +152,15 @@ void MatrixProtocol::createConnection()
     });
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
     connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
-            &MatrixProtocol::showDeviceVerificationDialog);
+            [this](Quotient::KeyVerificationSession *session) {
+                if (m_deviceVerificationNotificationService)
+                    m_deviceVerificationNotificationService->notifyVerificationRequest(account(), session);
+            });
+    connect(m_connection, &Quotient::Connection::invitedRoom, this,
+            [this](Quotient::Room *room, Quotient::Room *) {
+                if (m_roomInvitationNotificationService)
+                    m_roomInvitationNotificationService->notifyInvitation(account(), room);
+            });
     connect(m_connection, &Quotient::Connection::loggedOut, this, [this] {
         if (m_chatService)
             m_chatService->setConnection(nullptr);
@@ -238,6 +261,15 @@ void MatrixProtocol::joinRoom(const QString &roomIdOrAlias)
         return;
 
     m_connection->joinRoom(roomIdOrAlias);
+}
+
+void MatrixProtocol::rejectRoomInvitation(const QString &roomId)
+{
+    if (!m_connection || !m_connection->isLoggedIn() || roomId.isEmpty())
+        return;
+
+    if (auto *room = m_connection->room(roomId, Quotient::JoinState::Invite))
+        room->leaveRoom();
 }
 
 QStringList MatrixProtocol::availableVerificationDevices() const

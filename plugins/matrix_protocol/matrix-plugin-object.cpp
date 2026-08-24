@@ -21,7 +21,9 @@
 #include "matrix-plugin-object.moc"
 
 #include "matrix-protocol-factory.h"
+#include "matrix-device-verification-notification-service.h"
 #include "matrix-join-room-action.h"
+#include "matrix-room-invitation-notification-service.h"
 #include "matrix-verify-device-action.h"
 #include "protocols/protocols-manager.h"
 
@@ -41,6 +43,18 @@ void MatrixPluginObject::setMatrixProtocolFactory(MatrixProtocolFactory *matrixP
 void MatrixPluginObject::setMatrixJoinRoomAction(MatrixJoinRoomAction *matrixJoinRoomAction)
 {
     m_matrixJoinRoomAction = matrixJoinRoomAction;
+}
+
+void MatrixPluginObject::setMatrixDeviceVerificationNotificationService(
+    MatrixDeviceVerificationNotificationService *matrixDeviceVerificationNotificationService)
+{
+    m_matrixDeviceVerificationNotificationService = matrixDeviceVerificationNotificationService;
+}
+
+void MatrixPluginObject::setMatrixRoomInvitationNotificationService(
+    MatrixRoomInvitationNotificationService *matrixRoomInvitationNotificationService)
+{
+    m_matrixRoomInvitationNotificationService = matrixRoomInvitationNotificationService;
 }
 
 void MatrixPluginObject::setMatrixVerifyDeviceAction(MatrixVerifyDeviceAction *matrixVerifyDeviceAction)

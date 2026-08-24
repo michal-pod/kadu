@@ -31,6 +31,8 @@ class MatrixAccountAvatarService;
 class MatrixChatService;
 class MatrixChatStateService;
 class MatrixContactAvatarService;
+class MatrixDeviceVerificationNotificationService;
+class MatrixRoomInvitationNotificationService;
 class PluginInjectedFactory;
 class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
@@ -59,6 +61,7 @@ public:
     }
 
     void joinRoom(const QString &roomIdOrAlias);
+    void rejectRoomInvitation(const QString &roomId);
     QStringList availableVerificationDevices() const;
     void verifyDevice(const QString &deviceId);
 
@@ -68,6 +71,8 @@ private:
     QPointer<AggregatedAccountAvatarService> m_aggregatedAccountAvatarService;
     QPointer<AggregatedContactAvatarService> m_aggregatedContactAvatarService;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
+    QPointer<MatrixRoomInvitationNotificationService> m_roomInvitationNotificationService;
+    QPointer<MatrixDeviceVerificationNotificationService> m_deviceVerificationNotificationService;
     QPointer<Quotient::Connection> m_connection;
     MatrixChatService *m_chatService = nullptr;
     MatrixChatStateService *m_chatStateService = nullptr;
@@ -88,6 +93,10 @@ private slots:
     INJEQT_SET void setAggregatedAccountAvatarService(AggregatedAccountAvatarService *aggregatedAccountAvatarService);
     INJEQT_SET void setAggregatedContactAvatarService(AggregatedContactAvatarService *aggregatedContactAvatarService);
     INJEQT_SET void setPluginInjectedFactory(PluginInjectedFactory *pluginInjectedFactory);
+    INJEQT_SET void setRoomInvitationNotificationService(
+        MatrixRoomInvitationNotificationService *roomInvitationNotificationService);
+    INJEQT_SET void setDeviceVerificationNotificationService(
+        MatrixDeviceVerificationNotificationService *deviceVerificationNotificationService);
     INJEQT_INIT void init();
 
 protected:
