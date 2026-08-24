@@ -74,6 +74,7 @@ private:
     bool isSupportedRoom(const Quotient::Room *room) const;
     Chat roomChat(Quotient::Room *room) const;
     void synchronizeRoom(Quotient::Room *room);
+    void synchronizeRoomDetails(Quotient::Room *room);
     void synchronizeRoomMembers(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);

@@ -23,6 +23,7 @@
 #include "matrix-contact-avatar-service.h"
 
 #include "accounts/account.h"
+#include "avatars/avatars.h"
 #include "chat/chat.h"
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
@@ -39,11 +40,13 @@
 #include "services/raw-message-transformer-service.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/avatar.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
 #include <QtCore/QDateTime>
+#include <QtGui/QPixmap>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
@@ -222,7 +225,34 @@ void MatrixChatService::synchronizeRoom(Quotient::Room *room)
         return;
 
     room->setDisplayed(true);
+    synchronizeRoomDetails(room);
     synchronizeRoomMembers(room);
+}
+
+void MatrixChatService::synchronizeRoomDetails(Quotient::Room *room)
+{
+    if (!m_initialSyncFinished)
+        return;
+
+    const auto chat = roomChat(room);
+    auto *details = chat ? qobject_cast<ChatDetailsRoom *>(chat.details()) : nullptr;
+    if (!details)
+        return;
+
+    details->setDescription(room->topic());
+    if (!Quotient::Avatar::isUrlValid(room->avatarUrl()))
+    {
+        details->setAvatar({});
+        return;
+    }
+
+    const QPointer<MatrixChatService> service{this};
+    const QPointer<Quotient::Room> watchedRoom{room};
+    const auto image = room->avatarObject().get(AVATAR_SIZE, [service, watchedRoom] {
+        if (service && watchedRoom)
+            service->synchronizeRoomDetails(watchedRoom);
+    });
+    details->setAvatar(QPixmap::fromImage(image));
 }
 
 void MatrixChatService::synchronizeRoomMembers(Quotient::Room *room)
@@ -273,6 +303,8 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
             [this, room] { synchronizeRoomMembers(room); });
     connect(room, &Quotient::Room::displaynameChanged, this,
             [this, room](Quotient::Room *, const QString &) { synchronizeRoom(room); });
+    connect(room, &Quotient::Room::topicChanged, this, [this, room] { synchronizeRoomDetails(room); });
+    connect(room, &Quotient::Room::avatarChanged, this, [this, room] { synchronizeRoomDetails(room); });
     connect(room, &Quotient::Room::encryption, this, [this, room] { synchronizeRoom(room); });
     connect(room, &QObject::destroyed, this, [this, room] { m_watchedRooms.remove(room); });
 }

@@ -27,6 +27,7 @@
 #include "actions/chat-widget/italic-action.h"
 #include "actions/chat-widget/underline-action.h"
 #include "chat/chat-state-service-repository.h"
+#include "chat/chat-details-room.h"
 #include "chat/type/chat-type-manager.h"
 #include "configuration/deprecated-configuration-api.h"
 #include "contacts/contact-set.h"
@@ -67,6 +68,8 @@
 #include <QtCore/QMimeData>
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QMessageBox>
 #include <QtGui/QShortcut>
 #include <QtWidgets/QSplitter>
@@ -74,7 +77,8 @@
 
 ChatWidgetImpl::ChatWidgetImpl(Chat chat, QWidget *parent)
         : ChatWidget{parent}, CurrentChat{chat}, BuddiesWidget{0}, ProxyModel{0}, InputBox{0}, HorizontalSplitter{0},
-          IsComposing{false}, CurrentContactActivity{ChatState::None}, SplittersInitialized{false}
+          RoomDetailsWidget{nullptr}, RoomAvatarLabel{nullptr}, RoomDescriptionLabel{nullptr}, IsComposing{false},
+          CurrentContactActivity{ChatState::None}, SplittersInitialized{false}
 {
 }
 
@@ -192,6 +196,13 @@ void ChatWidgetImpl::init()
     }
 
     connect(CurrentChat, SIGNAL(updated()), this, SLOT(chatUpdated()));
+
+    if (auto *details = qobject_cast<ChatDetailsRoom *>(CurrentChat.details()))
+    {
+        connect(details, &ChatDetails::updated, this, &ChatWidgetImpl::updateRoomDetails);
+        connect(details, &ChatDetails::contactAdded, this, &ChatWidgetImpl::updateRoomDetails);
+        connect(details, &ChatDetails::contactRemoved, this, &ChatWidgetImpl::updateRoomDetails);
+    }
 
     CurrentChat.setOpen(true);
 }
@@ -311,6 +322,28 @@ void ChatWidgetImpl::createContactsList()
     toolBar->addAction(m_actions->createAction("leaveChatAction", InputBox->actionContext(), InputBox));
 
     layout->addWidget(toolBar);
+
+    if (qobject_cast<ChatDetailsRoom *>(CurrentChat.details()))
+    {
+        RoomDetailsWidget = new QWidget(contactsListContainer);
+        auto *roomDetailsLayout = new QHBoxLayout(RoomDetailsWidget);
+        roomDetailsLayout->setContentsMargins(6, 6, 6, 6);
+        roomDetailsLayout->setSpacing(6);
+
+        RoomAvatarLabel = new QLabel(RoomDetailsWidget);
+        RoomAvatarLabel->setFixedSize(48, 48);
+        RoomAvatarLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+        roomDetailsLayout->addWidget(RoomAvatarLabel, 0, Qt::AlignTop);
+
+        RoomDescriptionLabel = new QLabel(RoomDetailsWidget);
+        RoomDescriptionLabel->setWordWrap(true);
+        RoomDescriptionLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+        roomDetailsLayout->addWidget(RoomDescriptionLabel, 1);
+
+        layout->addWidget(RoomDetailsWidget);
+        updateRoomDetails();
+    }
+
     layout->addWidget(BuddiesWidget);
 
     QList<int> sizes;
@@ -337,7 +370,33 @@ void ChatWidgetImpl::configurationUpdated()
 
 void ChatWidgetImpl::chatUpdated()
 {
+    updateRoomDetails();
     qApp->alert(window());
+}
+
+void ChatWidgetImpl::updateRoomDetails()
+{
+    if (!RoomDetailsWidget || !RoomAvatarLabel || !RoomDescriptionLabel)
+        return;
+
+    const auto *details = qobject_cast<ChatDetailsRoom *>(CurrentChat.details());
+    if (!details)
+        return;
+
+    const auto avatar = details->avatar();
+    RoomAvatarLabel->setVisible(!avatar.isNull());
+    if (!avatar.isNull())
+        RoomAvatarLabel->setPixmap(avatar.scaled(RoomAvatarLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
+    auto description = details->description();
+    if (description.isEmpty())
+        description = CurrentChat.display();
+    if (description.isEmpty())
+        description = CurrentChat.name();
+
+    RoomDescriptionLabel->setText(
+        QStringLiteral("%1\n\n%2").arg(description, tr("Participants: %1").arg(CurrentChat.contacts().count())));
+    RoomDetailsWidget->setVisible(true);
 }
 
 bool ChatWidgetImpl::keyPressEventHandled(QKeyEvent *e)

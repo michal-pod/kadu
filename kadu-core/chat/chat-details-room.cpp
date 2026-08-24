@@ -180,6 +180,34 @@ QString ChatDetailsRoom::name() const
     return m_room;
 }
 
+QPixmap ChatDetailsRoom::avatar() const
+{
+    return m_avatar;
+}
+
+void ChatDetailsRoom::setAvatar(const QPixmap &avatar)
+{
+    if (m_avatar.cacheKey() == avatar.cacheKey())
+        return;
+
+    m_avatar = avatar;
+    notifyChanged();
+}
+
+QString ChatDetailsRoom::description() const
+{
+    return m_description;
+}
+
+void ChatDetailsRoom::setDescription(const QString &description)
+{
+    if (m_description == description)
+        return;
+
+    m_description = description;
+    notifyChanged();
+}
+
 void ChatDetailsRoom::updateConnected()
 {
     Protocol *protocol = mainData()->chatAccount().protocolHandler();

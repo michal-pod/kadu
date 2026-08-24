@@ -27,6 +27,7 @@
 #include "exports.h"
 
 #include <QtCore/QPointer>
+#include <QtGui/QPixmap>
 #include <injeqt/injeqt.h>
 
 class ChatTypeManager;
@@ -61,6 +62,12 @@ public:
         return m_contacts;
     }
     virtual QString name() const;
+
+    QPixmap avatar() const;
+    void setAvatar(const QPixmap &avatar);
+
+    QString description() const;
+    void setDescription(const QString &description);
 
     /**
      * @short Set value of Connected property.
@@ -139,6 +146,8 @@ private:
     QString m_room;
     QString m_nick;
     QString m_password;
+    QPixmap m_avatar;
+    QString m_description;
     bool m_stayInRoomAfterClosingWindow;
 
     ContactSet m_contacts;
