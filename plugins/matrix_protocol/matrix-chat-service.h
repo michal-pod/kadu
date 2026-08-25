@@ -68,11 +68,13 @@ private:
     QSet<Quotient::Room *> m_watchedRooms;
     QSet<Quotient::Room *> m_loadedRooms;
     QSet<QString> m_historicalEventIds;
+    QSet<QString> m_localTransactionIds;
     bool m_initialSyncFinished = false;
 
     QString directChatId(const Chat &chat) const;
     QString roomId(const Chat &chat) const;
     bool sendText(const Chat &chat, const QString &text, Message message = {});
+    void postText(Quotient::Room *room, const QString &text, const QString &transactionId);
     bool isSupportedRoom(const Quotient::Room *room) const;
     Chat roomChat(Quotient::Room *room) const;
     void synchronizeRoom(Quotient::Room *room);
@@ -80,8 +82,9 @@ private:
     void synchronizeRoomMembers(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
-    void handleDirectMessageEvent(const Quotient::RoomMessageEvent &event);
-    void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event);
+    void handleDirectMessageEvent(const Quotient::RoomMessageEvent &event, const QString &eventId);
+    void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,
+                                const QString &eventId);
 
 private slots:
     INJEQT_SET void setChatManager(ChatManager *chatManager);

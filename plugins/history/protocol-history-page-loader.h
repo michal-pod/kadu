@@ -36,6 +36,9 @@ public:
     ProtocolHistoryPageLoader(ProtocolHistoryService *historyService, ProtocolHistoryRequest request,
                               WebkitMessagesView *messagesView, QObject *parent = nullptr);
 
+signals:
+    void errorOccurred(const QString &error);
+
 private:
     QPointer<ProtocolHistoryService> m_historyService;
     QPointer<WebkitMessagesView> m_messagesView;
@@ -43,6 +46,7 @@ private:
     QFuture<ProtocolHistoryPage> m_page;
     bool m_loading = false;
     bool m_hasMore = true;
+    bool m_initialPage = true;
 
     void loadPage();
     void loadPreviousPageIfAtTop();

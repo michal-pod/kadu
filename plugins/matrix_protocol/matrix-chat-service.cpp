@@ -46,6 +46,7 @@
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
+#include <QtCore/QDateTime>
 #include <QtGui/QPixmap>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
@@ -69,6 +70,7 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
     m_watchedRooms.clear();
     m_loadedRooms.clear();
     m_historicalEventIds.clear();
+    m_localTransactionIds.clear();
     m_initialSyncFinished = false;
 
     if (!m_connection)
@@ -134,15 +136,17 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
     if (!m_connection || !m_connection->isLoggedIn())
         return false;
 
+    const auto transactionId = m_connection->generateTxnId();
+    if (!message.isNull())
+        message.setId(transactionId);
+
     if (const auto id = roomId(chat); !id.isEmpty())
     {
         auto *room = m_connection->room(id, Quotient::JoinState::Join);
         if (!isSupportedRoom(room))
             return false;
 
-        const auto transactionId = room->postText(text);
-        if (!message.isNull())
-            message.setId(transactionId);
+        postText(room, text, transactionId);
         return true;
     }
 
@@ -151,15 +155,25 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
         return false;
 
     m_connection->getDirectChat(recipientId).then(
-        this, [text, message = std::move(message)](Quotient::Room *room) mutable {
+        this, [this, text, transactionId](Quotient::Room *room) {
             if (!room)
                 return;
 
-            const auto transactionId = room->postText(text);
-            if (!message.isNull())
-                message.setId(transactionId);
+            postText(room, text, transactionId);
         });
     return true;
+}
+
+void MatrixChatService::postText(Quotient::Room *room, const QString &text,
+                                 const QString &transactionId)
+{
+    if (!room)
+        return;
+
+    m_localTransactionIds.insert(transactionId);
+    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(text);
+    event->setTransactionId(transactionId);
+    room->post(std::move(event));
 }
 
 bool MatrixChatService::sendMessage(const Message &message)
@@ -337,22 +351,28 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
         if (item.index() < fromIndex || item.index() > toIndex)
             continue;
 
+        if (m_historicalEventIds.remove(item->id()))
+            continue;
+
         const auto *event = item.viewAs<Quotient::RoomMessageEvent>();
         if (!event)
             continue;
-        if (m_historicalEventIds.remove(event->id()))
+        if (!event->transactionId().isEmpty() && m_localTransactionIds.remove(event->transactionId()))
             continue;
         if (event->isRedacted() || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
             continue;
 
+        // The decrypted RoomMessageEvent is a view of the timeline event. Keep the ID
+        // from TimelineItem: for encrypted messages it is the only stable server event ID.
         if (directChat)
-            handleDirectMessageEvent(*event);
+            handleDirectMessageEvent(*event, item->id());
         else
-            handleRoomMessageEvent(room, *event);
+            handleRoomMessageEvent(room, *event, item->id());
     }
 }
 
-void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEvent &event)
+void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEvent &event,
+                                                 const QString &eventId)
 {
     if (!m_chatManager || !m_chatStorage || !m_contactManager || !m_messageStorage)
         return;
@@ -367,25 +387,23 @@ void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEven
         return;
 
     auto message = m_messageStorage->create();
-    message.setId(event.id());
+    message.setId(eventId);
     message.setMessageChat(chat);
     message.setMessageSender(contact);
-    message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
+    message.setType(MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
-    message.setReceiveDate(event.originTimestamp().toLocalTime());
+    message.setReceiveDate(QDateTime::currentDateTime());
 
     auto text = event.plainBody();
     if (rawMessageTransformerService())
         text = QString::fromUtf8(rawMessageTransformerService()->transform(text.toUtf8(), message).rawContent());
     message.setContent(normalizeHtml(plainToHtml(text)));
 
-    if (sentByCurrentAccount)
-        emit messageSent(message);
-    else
-        emit messageReceived(message);
+    emit messageReceived(message);
 }
 
-void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event)
+void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,
+                                               const QString &eventId)
 {
     if (!m_contactManager || !m_messageStorage)
         return;
@@ -403,20 +421,17 @@ void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quoti
         details->addContact(contact);
 
     auto message = m_messageStorage->create();
-    message.setId(event.id());
+    message.setId(eventId);
     message.setMessageChat(chat);
     message.setMessageSender(contact);
-    message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
+    message.setType(MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
-    message.setReceiveDate(event.originTimestamp().toLocalTime());
+    message.setReceiveDate(QDateTime::currentDateTime());
 
     auto text = event.plainBody();
     if (rawMessageTransformerService())
         text = QString::fromUtf8(rawMessageTransformerService()->transform(text.toUtf8(), message).rawContent());
     message.setContent(normalizeHtml(plainToHtml(text)));
 
-    if (sentByCurrentAccount)
-        emit messageSent(message);
-    else
-        emit messageReceived(message);
+    emit messageReceived(message);
 }

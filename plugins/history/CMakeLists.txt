@@ -17,6 +17,7 @@ kadu_api_directories (plugins/history
 
 set (SOURCES
 	actions/clear-history-action.cpp
+	actions/remote-history-search-action.cpp
 	actions/show-history-action.cpp
 
 	gui/widgets/chat-history-tab.cpp
@@ -29,6 +30,7 @@ set (SOURCES
 	gui/widgets/history-talkable-combo-box.cpp
 	gui/widgets/search-tab.cpp
 	gui/widgets/timeline-chat-messages-view.cpp
+	gui/remote-history-search-dialog.cpp
 
 	gui/windows/history-window-service.cpp
 	gui/windows/history-window.cpp

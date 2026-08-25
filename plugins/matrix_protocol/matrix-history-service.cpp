@@ -26,6 +26,7 @@
 #include "message/message-storage.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/csapi/search.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
@@ -101,6 +102,9 @@ QFuture<ProtocolHistoryPage> MatrixHistoryService::requestHistoryForRoom(
     if (!m_loadedRooms.contains(room))
         return waitForRoomInitialState(request, room);
 
+    if (!request.text().isEmpty())
+        return searchRoom(request, room);
+
     if (request.direction() != ProtocolHistoryRequest::Direction::Older || room->allHistoryLoaded())
         return completedPage(pageForRoom(request, room));
 
@@ -127,6 +131,84 @@ QFuture<ProtocolHistoryPage> MatrixHistoryService::requestHistoryForRoom(
         [this, promise] {
             ProtocolHistoryPage page;
             page.setError(tr("Could not retrieve Matrix history."));
+            finishRequest(promise, std::move(page));
+        });
+    return future;
+}
+
+QFuture<ProtocolHistoryPage> MatrixHistoryService::searchRoom(const ProtocolHistoryRequest &request,
+                                                               Quotient::Room *room)
+{
+    if (!m_connection || !room)
+    {
+        ProtocolHistoryPage page;
+        page.setError(tr("Matrix room is not available."));
+        return completedPage(std::move(page));
+    }
+
+    if (room->usesEncryption())
+    {
+        ProtocolHistoryPage page;
+        page.setError(tr("Server-side search is not available for encrypted Matrix rooms."));
+        return completedPage(std::move(page));
+    }
+
+    const auto limit = request.limit() > 0 ? request.limit() : 50;
+    Quotient::SearchJob::RoomEventsCriteria criteria;
+    criteria.searchTerm = request.text();
+    criteria.keys = {QStringLiteral("content.body")};
+    criteria.orderBy = QStringLiteral("recent");
+    criteria.filter.limit = limit;
+    criteria.filter.rooms = {room->id()};
+    criteria.filter.types = {QStringLiteral("m.room.message")};
+
+    Quotient::SearchJob::Categories categories;
+    categories.roomEvents = std::move(criteria);
+
+    auto promise = std::make_shared<QPromise<ProtocolHistoryPage>>();
+    auto future = promise->future();
+    promise->start();
+
+    const QPointer<Quotient::Room> watchedRoom{room};
+    m_connection->callApi<Quotient::SearchJob>(categories, QString::fromUtf8(request.cursor())).then(
+        this,
+        [this, promise, request, watchedRoom](Quotient::SearchJob *job) {
+            ProtocolHistoryPage page;
+            if (!watchedRoom || !job)
+            {
+                page.setError(tr("Matrix room is no longer available."));
+                finishRequest(promise, std::move(page));
+                return;
+            }
+
+            const auto categories = job->searchCategories();
+            if (!categories.roomEvents)
+            {
+                finishRequest(promise, std::move(page));
+                return;
+            }
+
+            SortedMessages messages;
+            for (const auto &result : categories.roomEvents->results)
+            {
+                const auto *event = Quotient::eventCast<const Quotient::RoomMessageEvent>(result.result);
+                if (!event || event->roomId() != watchedRoom->id() || event->isRedacted()
+                    || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
+                    continue;
+
+                const auto message = messageForEvent(request.chat(), *event, event->id());
+                if (!message.isNull())
+                    messages.add(message);
+            }
+
+            page.setMessages(messages);
+            page.setCursor(categories.roomEvents->nextBatch.toUtf8());
+            page.setHasMore(!categories.roomEvents->nextBatch.isEmpty());
+            finishRequest(promise, std::move(page));
+        },
+        [this, promise] {
+            ProtocolHistoryPage page;
+            page.setError(tr("Could not search Matrix history."));
             finishRequest(promise, std::move(page));
         });
     return future;
@@ -267,7 +349,7 @@ ProtocolHistoryPage MatrixHistoryService::pageForRoom(
             && !event->plainBody().contains(request.text(), Qt::CaseInsensitive))
             continue;
 
-        const auto message = messageForEvent(request.chat(), *event);
+        const auto message = messageForEvent(request.chat(), *event, (*it)->id());
         if (message.isNull())
             continue;
 
@@ -287,7 +369,8 @@ ProtocolHistoryPage MatrixHistoryService::pageForRoom(
     return page;
 }
 
-Message MatrixHistoryService::messageForEvent(const Chat &chat, const Quotient::RoomMessageEvent &event) const
+Message MatrixHistoryService::messageForEvent(const Chat &chat, const Quotient::RoomMessageEvent &event,
+                                              const QString &eventId) const
 {
     if (!m_messageStorage || !m_connection)
         return Message::null;
@@ -303,7 +386,9 @@ Message MatrixHistoryService::messageForEvent(const Chat &chat, const Quotient::
         return Message::null;
 
     auto message = m_messageStorage->create();
-    message.setId(event.id());
+    // A local echo is rendered under its transaction ID. A decrypted event may not
+    // expose an event ID itself, so use the TimelineItem ID supplied by the caller.
+    message.setId(event.transactionId().isEmpty() ? eventId : event.transactionId());
     message.setMessageChat(chat);
     message.setMessageSender(contact);
     message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);

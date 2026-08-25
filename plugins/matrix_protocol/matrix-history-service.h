@@ -65,8 +65,10 @@ private:
                                                           Quotient::Room *room);
     QFuture<ProtocolHistoryPage> requestHistoryForRoom(const ProtocolHistoryRequest &request,
                                                         Quotient::Room *room);
+    QFuture<ProtocolHistoryPage> searchRoom(const ProtocolHistoryRequest &request, Quotient::Room *room);
     ProtocolHistoryPage pageForRoom(const ProtocolHistoryRequest &request, Quotient::Room *room) const;
-    Message messageForEvent(const Chat &chat, const Quotient::RoomMessageEvent &event) const;
+    Message messageForEvent(const Chat &chat, const Quotient::RoomMessageEvent &event,
+                            const QString &eventId) const;
     QFuture<ProtocolHistoryPage> completedPage(ProtocolHistoryPage page) const;
     void finishRequest(const std::shared_ptr<QPromise<ProtocolHistoryPage>> &promise,
                        ProtocolHistoryPage page) const;

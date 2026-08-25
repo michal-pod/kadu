@@ -5,6 +5,8 @@ set (DEFAULT_PLUGINS
 	gadu_protocol
 	# Jabber/XMPP protocol support
 	jabber_protocol
+	# Matrix protocol support
+	matrix_protocol
 
 # notifiers
 	# Enables notifications about buddies presence and other in chat windows

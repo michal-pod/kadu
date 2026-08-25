@@ -67,6 +67,11 @@ public:
     }
     void setChat(const Chat &chat);
 
+    bool atBottom() const
+    {
+        return m_atBottom;
+    }
+
     bool supportTransparency()
     {
         return m_supportTransparency;
@@ -120,6 +125,7 @@ private:
     bool m_supportTransparency;
     bool m_atBottom;
     bool m_atTop = true;
+    bool m_scrollToBottomWhenRendered = false;
 
     void connectChat();
     void disconnectChat();
@@ -139,4 +145,5 @@ private slots:
     void chatImageStored(const ChatImage &chatImage, const QString &fullFilePath);
     void sentMessageStatusChanged(const Message &message);
     void chatStyleConfigurationUpdated();
+    void messagesDisplayed();
 };

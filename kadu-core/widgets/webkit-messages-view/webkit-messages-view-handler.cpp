@@ -40,6 +40,11 @@ WebkitMessagesViewHandler::~WebkitMessagesViewHandler()
 {
 }
 
+bool WebkitMessagesViewHandler::isRendererReady() const
+{
+    return m_chatStyleRenderer->isReady();
+}
+
 void WebkitMessagesViewHandler::setMessageLimit(unsigned int limit)
 {
     m_messagesLimiter.setLimit(limit);
@@ -79,14 +84,20 @@ void WebkitMessagesViewHandler::limitAndDisplayMessages()
 {
     m_messages = m_messagesLimiter.limitMessages(m_messages);
     if (m_chatStyleRenderer->isReady())
+    {
         m_messagesDisplay->displayMessages(m_messages);
+        emit messagesDisplayed();
+    }
 }
 
 void WebkitMessagesViewHandler::clear()
 {
     m_messages.clear();
     if (m_chatStyleRenderer->isReady())
+    {
         m_messagesDisplay->displayMessages(m_messages);
+        emit messagesDisplayed();
+    }
 }
 
 void WebkitMessagesViewHandler::displayMessageStatus(const QString &id, MessageStatus status)

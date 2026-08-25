@@ -28,6 +28,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QSet>
+#include <QtCore/QTimer>
 #include <QtCore/QVariant>
 #include <QtWebEngineCore/QWebEnginePage>
 
@@ -43,7 +44,7 @@ ProtocolHistoryPageLoader::ProtocolHistoryPageLoader(ProtocolHistoryService *his
     connect(m_messagesView, SIGNAL(destroyed()), this, SLOT(deleteLater()));
     connect(m_messagesView, SIGNAL(scrolledToTop()), this, SLOT(loadPreviousPage()));
 
-    loadPage();
+    QTimer::singleShot(0, this, &ProtocolHistoryPageLoader::loadPage);
 }
 
 void ProtocolHistoryPageLoader::loadPreviousPage()
@@ -79,16 +80,21 @@ void ProtocolHistoryPageLoader::pageAvailable()
     const auto page = m_page.result();
     if (!page.error().isEmpty())
     {
+        emit errorOccurred(page.error());
         m_hasMore = false;
         m_loading = false;
         return;
     }
 
+    const auto previousCursor = m_request.cursor();
     m_request.setCursor(page.cursor());
     m_request.setDirection(ProtocolHistoryRequest::Direction::Older);
-    m_hasMore = page.hasMore() && !page.cursor().isEmpty();
+    m_hasMore = page.hasMore() && !page.cursor().isEmpty() && page.cursor() != previousCursor;
 
     const auto messages = m_messagesView->messages();
+    const auto initialPage = m_initialPage;
+    m_initialPage = false;
+    const auto wasAtBottom = m_messagesView->atBottom();
     const auto anchor = messages.empty() ? Message::null : messages.messages().front();
     QSet<QString> visibleMessageIds;
     for (const auto &message : messages.messages())
@@ -107,9 +113,20 @@ void ProtocolHistoryPageLoader::pageAvailable()
 
     m_messagesView->setForcePruneDisabled(true);
     m_messagesView->add(newMessages);
-    if (!newMessages.empty() && !anchor.isNull() && !anchor.id().isEmpty())
+    if (initialPage || wasAtBottom)
+        m_messagesView->forceScrollToBottom();
+    else if (!newMessages.empty() && !anchor.isNull() && !anchor.id().isEmpty())
         restoreScrollPosition(anchor.id());
     m_loading = false;
+
+    // A Matrix page may contain only state events, undecryptable events or messages
+    // already visible in the chat. Such a page must not make pagination stop.
+    if (newMessages.empty() && m_hasMore)
+    {
+        QTimer::singleShot(0, this, &ProtocolHistoryPageLoader::loadPreviousPage);
+        return;
+    }
+
     loadPreviousPageIfAtTop();
 }
 
@@ -120,7 +137,8 @@ void ProtocolHistoryPageLoader::loadPreviousPageIfAtTop()
 
     const QPointer<ProtocolHistoryPageLoader> loader{this};
     m_messagesView->page()->runJavaScript(
-        QStringLiteral("window.scrollY <= 2"), [loader](const QVariant &atTop) {
+        QStringLiteral("window.scrollY <= 2"),
+        [loader](const QVariant &atTop) {
             if (loader && atTop.toBool())
                 loader->loadPreviousPage();
         });

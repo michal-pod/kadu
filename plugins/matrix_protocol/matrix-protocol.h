@@ -65,6 +65,10 @@ public:
     {
         return true;
     }
+    virtual RemoteHistorySearchCapabilities isRemoteSearchSupported() const override
+    {
+        return RemoteHistorySearchCapability::Messages;
+    }
     virtual ProtocolHistoryService *historyService() override;
     virtual QString statusPixmapPath() override
     {

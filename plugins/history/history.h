@@ -114,8 +114,6 @@ class HISTORYAPI History : public QObject, ConfigurationAwareObject, CrashAwareO
     bool shouldSaveForBuddy(const Buddy &buddy);
     bool shouldSaveForChat(const Chat &chat);
     bool shouldEnqueueMessage(const Message &message);
-    Chat protocolHistoryChat(const Chat &chat) const;
-    ProtocolHistoryService *historyService(const Chat &chat) const;
 
 private slots:
     INJEQT_SET void setAccountManager(AccountManager *accountManager);
@@ -154,6 +152,9 @@ public:
 
     void forceSync();
     void setSyncEnabled(bool syncEnabled);
+
+    Chat protocolHistoryChat(const Chat &chat) const;
+    ProtocolHistoryService *historyService(const Chat &chat) const;
 
 signals:
     void storageChanged(HistoryStorage *newStorage);

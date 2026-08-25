@@ -248,6 +248,7 @@ void ChatEditBox::createDefaultToolbars(Configuration *configuration, QDomElemen
     addToolButton(configuration, toolbarConfig, "insertEmoticonAction", Qt::ToolButtonTextBesideIcon);
     addToolButton(configuration, toolbarConfig, "insertImageAction");
     addToolButton(configuration, toolbarConfig, "showHistoryAction");
+    addToolButton(configuration, toolbarConfig, "remoteHistorySearchAction");
     addToolButton(configuration, toolbarConfig, "encryptionAction");
     addToolButton(configuration, toolbarConfig, "editUserAction");
     addToolButton(configuration, toolbarConfig, "__spacer1", Qt::ToolButtonTextBesideIcon);

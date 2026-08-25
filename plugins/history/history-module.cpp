@@ -20,6 +20,7 @@
 #include "history-module.h"
 
 #include "actions/clear-history-action.h"
+#include "actions/remote-history-search-action.h"
 #include "actions/show-history-action.h"
 #include "buddy-history-delete-handler.h"
 #include "gui/widgets/history-buddy-configuration-widget-factory.h"
@@ -32,6 +33,7 @@ HistoryModule::HistoryModule()
 {
     add_type<BuddyHistoryDeleteHandler>();
     add_type<ClearHistoryAction>();
+    add_type<RemoteHistorySearchAction>();
     add_type<HistoryBuddyConfigurationWidgetFactory>();
     add_type<HistoryChatConfigurationWidgetFactory>();
     add_type<HistoryPluginObject>();

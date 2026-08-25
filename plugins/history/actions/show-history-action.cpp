@@ -23,6 +23,7 @@
 #include <QtWidgets/QMenu>
 
 #include "actions/action.h"
+#include "actions/action-context.h"
 #include "actions/actions.h"
 #include "chat/buddy-chat-manager.h"
 #include "chat/chat.h"
@@ -87,6 +88,8 @@ void ShowHistoryAction::configurationUpdated()
 
 void ShowHistoryAction::actionInstanceCreated(Action *action)
 {
+    updateActionState(action);
+
     ChatEditBox *chatEditBox = qobject_cast<ChatEditBox *>(action->parent());
     if (!chatEditBox || !chatEditBox->chatWidget())
         return;
@@ -122,6 +125,18 @@ void ShowHistoryAction::actionTriggered(QAction *sender, bool toggled)
     Q_UNUSED(toggled)
 
     showDaysMessages(sender, -1);
+}
+
+void ShowHistoryAction::updateActionState(Action *action)
+{
+    if (!action || !m_history)
+        return;
+
+    const auto chat = m_history->protocolHistoryChat(action->context()->chat());
+    auto *protocol = chat ? chat.chatAccount().protocolHandler() : nullptr;
+    const auto supportsLocalHistory = !protocol || protocol->isLocalHistorySupported();
+    action->setVisible(supportsLocalHistory);
+    action->setEnabled(supportsLocalHistory);
 }
 
 void ShowHistoryAction::showPruneMessages()

@@ -65,6 +65,8 @@ public:
         QObject *parent = nullptr);
     virtual ~WebkitMessagesViewHandler();
 
+    bool isRendererReady() const;
+
     /**
      * @short Set limit of messages to display.
      * @param limit New limit of messages to display.
@@ -150,6 +152,9 @@ public:
      * saved. That makes possible for javascript code to replace placeholder image with real one.
      */
     void displayChatImage(const ChatImage &chatImage, const QString &fileName);
+
+signals:
+    void messagesDisplayed();
 
 private:
     not_owned_qptr<ChatStyleRenderer> m_chatStyleRenderer;

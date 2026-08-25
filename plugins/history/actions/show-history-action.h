@@ -63,6 +63,7 @@ protected:
 
     virtual void actionInstanceCreated(Action *action);
     virtual void actionTriggered(QAction *sender, bool toggled);
+    virtual void updateActionState(Action *action);
 
 public:
     Q_INVOKABLE explicit ShowHistoryAction(QObject *parent = nullptr);

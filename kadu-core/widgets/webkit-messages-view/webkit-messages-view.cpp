@@ -39,6 +39,7 @@
 #include "widgets/webkit-messages-view/webkit-messages-view-handler.h"
 
 #include <QtCore/QFile>
+#include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
 #include <QtWebEngineCore/QWebEnginePage>
 #include <QtWebEngineCore/QWebEngineScript>
@@ -240,6 +241,8 @@ void WebkitMessagesView::setWebkitMessagesViewHandler(owned_qptr<WebkitMessagesV
 
     auto messages = m_handler ? m_handler->messages() : SortedMessages{};
     m_handler = std::move(handler);
+    connect(m_handler.get(), &WebkitMessagesViewHandler::messagesDisplayed, this,
+            &WebkitMessagesView::messagesDisplayed);
     setForcePruneDisabled(m_forcePruneDisabled);
     m_handler->add(messages);
 
@@ -265,9 +268,13 @@ void WebkitMessagesView::chatImageStored(const ChatImage &chatImage, const QStri
 
 void WebkitMessagesView::add(const Message &message)
 {
+    const auto keepAtBottom = m_atBottom;
     ScopedUpdatesDisabler updatesDisabler{*this};
     m_handler->add(message);
     emit messagesUpdated();
+
+    if (keepAtBottom)
+        QTimer::singleShot(0, this, &WebkitMessagesView::forceScrollToBottom);
 }
 
 void WebkitMessagesView::add(const SortedMessages &messages)
@@ -333,6 +340,15 @@ void WebkitMessagesView::scrollToBottom()
 
 void WebkitMessagesView::forceScrollToBottom()
 {
+    if (!m_handler || !m_handler->isRendererReady())
+    {
+        m_scrollToBottomWhenRendered = true;
+        m_atBottom = true;
+        return;
+    }
+
+    m_scrollToBottomWhenRendered = false;
+
     // No scroll bar API in QtWebEngine; scrolling is done from the document itself.
     page()->runJavaScript(QStringLiteral("window.scrollTo(0, document.body.scrollHeight);"));
 
@@ -341,6 +357,12 @@ void WebkitMessagesView::forceScrollToBottom()
     // is no longer at the bottom -- stopping the next message from scrolling it. Going to the
     // bottom is what this method means, so the flag simply says so.
     m_atBottom = true;
+}
+
+void WebkitMessagesView::messagesDisplayed()
+{
+    if (m_scrollToBottomWhenRendered)
+        forceScrollToBottom();
 }
 
 void WebkitMessagesView::configurationUpdated()
