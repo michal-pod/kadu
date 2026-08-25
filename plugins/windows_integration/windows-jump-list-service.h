@@ -20,6 +20,7 @@
 #pragma once
 
 #include "injeqt-type-roles.h"
+#include "windows-integration-exports.h"
 
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
@@ -31,7 +32,7 @@ class Chat;
 class OpenChatRepository;
 class RecentChatRepository;
 
-class Q_DECL_EXPORT WindowsJumpListService : public QObject
+class WINDOWS_INTEGRATION_API WindowsJumpListService : public QObject
 {
     Q_OBJECT
     INJEQT_TYPE_ROLE(SERVICE)

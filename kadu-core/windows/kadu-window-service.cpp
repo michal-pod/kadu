@@ -44,9 +44,7 @@ void KaduWindowService::done()
     {
         // TODO: check if needed and why
         m_kaduWindowProvider->provideValue(nullptr);
-        auto hiddenParent = m_kaduWindow->parentWidget();
         delete m_kaduWindow;
-        delete hiddenParent;
     }
 }
 

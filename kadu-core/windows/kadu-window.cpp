@@ -31,10 +31,6 @@
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QVBoxLayout>
 
-#ifdef Q_OS_WIN
-#include <windows.h>
-#endif
-
 #include "accounts/account-manager.h"
 #include "actions/action.h"
 #include "actions/chat-widget/open-chat-with-action.h"
@@ -258,11 +254,6 @@ void KaduWindow::init()
     setWindowRole("kadu-main");
 
     setActionContext(new ProxyActionContext(m_statusContainerManager));
-
-#ifdef Q_OS_WIN
-    HiddenParent = new QWidget();
-    setHiddenParent();
-#endif
 
     setWindowTitle(QStringLiteral("Kadu"));
 
@@ -526,43 +517,6 @@ void KaduWindow::keyPressEvent(QKeyEvent *e)
     MainWindow::keyPressEvent(e);
 }
 
-#ifdef Q_OS_WIN
-/* On Windows the only way to not show a window in the taskbar without making it a toolwindow
- * is to turn off the WS_EX_APPWINDOW style and provide it with a parent (which will be hidden
- * in our case).
- */
-void KaduWindow::setHiddenParent()
-{
-    QWidget *futureChild = window();
-    bool wasVisible = futureChild->isVisible();
-    Qt::WindowFlags previousFlags = futureChild->windowFlags();
-    futureChild->setParent(HiddenParent);
-    futureChild->setWindowFlags(previousFlags);
-    futureChild->setVisible(wasVisible);
-
-    hideWindowFromTaskbar();
-}
-
-void KaduWindow::hideWindowFromTaskbar()
-{
-    auto *w = window();
-    auto newWindowLongPtr = GetWindowLongPtr(reinterpret_cast<HWND>(w->winId()), GWL_EXSTYLE);
-    auto hideFromTaskbar = configuration()->deprecatedApi()->readBoolEntry("General", "HideMainWindowFromTaskbar");
-    if (hideFromTaskbar == !(newWindowLongPtr & WS_EX_APPWINDOW))
-        return;
-
-    if (hideFromTaskbar)
-        newWindowLongPtr &= ~WS_EX_APPWINDOW;
-    else
-        newWindowLongPtr |= WS_EX_APPWINDOW;
-
-    auto wasVisible = w->isVisible();
-    w->setVisible(false);
-    SetWindowLongPtr(reinterpret_cast<HWND>(w->winId()), GWL_EXSTYLE, newWindowLongPtr);
-    w->setVisible(wasVisible);
-}
-#endif
-
 void KaduWindow::changeEvent(QEvent *event)
 {
     MainWindow::changeEvent(event);
@@ -588,10 +542,6 @@ void KaduWindow::changeEvent(QEvent *event)
             // On Windows we reparent WindowParent, so we want it to be parentless now.
             // BTW, if WindowParent would be really needed in future, it's quite easy to support it.
             Q_ASSERT(!WindowParent || 0 == WindowParent->parentWidget());
-#ifdef Q_OS_WIN
-            // Without QueuedConnection I hit infinite loop here.
-            QMetaObject::invokeMethod(this, "setHiddenParent", Qt::QueuedConnection);
-#endif
             emit parentChanged(WindowParent);
         }
     }
@@ -614,10 +564,6 @@ TalkableProxyModel *KaduWindow::talkableProxyModel()
 
 void KaduWindow::configurationUpdated()
 {
-#ifdef Q_OS_WIN
-    hideWindowFromTaskbar();
-#endif
-
     setDocked(Docked);
 
     ChangeStatusButtons->setVisible(configuration()->deprecatedApi()->readBoolEntry("Look", "ShowStatusButton"));

@@ -51,7 +51,7 @@ $line"
 
 function update_version_file()
 {
-    echo $VERSION > VERSION
+    echo $VERSION > VERSION.txt
 
     git commit -a -m "version: update to $VERSION"
 }

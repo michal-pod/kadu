@@ -49,7 +49,7 @@ bool JabberRegisterExtension::handleStanza(const QDomElement &stanza)
         return false;
 
     auto id = stanza.attribute("id");
-    auto isRegisterIq = QXmpp::isIqElement<QXmppRegisterIq>(stanza) || m_pendingIds.contains(id);
+    auto isRegisterIq = QXmppRegisterIq::isRegisterIq(stanza) || m_pendingIds.contains(id);
 
     if (!isRegisterIq)
         return false;

@@ -27,6 +27,7 @@
 #include "protocols/protocol.h"
 
 #include <QtCore/QDateTime>
+#include <QtCore/QUrl>
 #include <injeqt/injeqt.h>
 
 class AccountManager;
@@ -59,7 +60,7 @@ private:
     QPointer<VersionService> m_versionService;
 
     bool UpdateChecked;
-    QString Query;
+    QUrl Query;
 
     void buildQuery();
 

@@ -1,0 +1,10 @@
+[Module]
+DisplayName=Notifications by hints
+DisplayName[pl]=Powiadomienia w dymkach
+Description=Shows notifications in hints
+Description[pl]=Powiadamia o zdarzeniach za pomocą dymków na pulpicie
+Author=Kadu Team
+Replaces=osd_hints
+LoadByDefault=true
+Version=core
+Category=Notifications

@@ -14,7 +14,6 @@ set (SOURCES
 	gui/widgets/crop-image-widget.cpp
 	gui/widgets/screenshot-tool-box.cpp
 	gui/widgets/screenshot-widget.cpp
-	portal-screenshot.cpp
 	screen-shot-saver.cpp
 	screenshot-module.cpp
 	screenshot-notification-service.cpp
@@ -30,11 +29,8 @@ set (CONFIGURATION_FILES
 
 if (UNIX AND NOT APPLE)
 	# The screen belongs to the compositor; it is reached over D-Bus through the desktop portal.
+	list (APPEND SOURCES portal-screenshot.cpp)
 	set (PLUGIN_ADDITIONAL_QT_MODULES DBus)
-endif ()
-
-if (WIN32)
-	set (PLUGIN_ADDITIONAL_QT_MODULES WinExtras)
 endif ()
 
 kadu_plugin (screenshot

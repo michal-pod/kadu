@@ -19,11 +19,13 @@
 
 #pragma once
 
+#include "windows-integration-exports.h"
+
 #include <QtCore/QObject>
 
 class Chat;
 
-class Q_DECL_EXPORT JumpList : public QObject
+class WINDOWS_INTEGRATION_API JumpList : public QObject
 {
     Q_OBJECT
 

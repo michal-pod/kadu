@@ -14,6 +14,7 @@ set (DEFAULT_PLUGINS
 	# Notification by external commands module
 	exec_notify
 	# Hints near tray icon
+	hints
 	# Speech synthesis support
 	speech
 	# PC Speaker notification support
@@ -81,8 +82,8 @@ set (DEFAULT_PLUGINS
 	word_fix
 
 # integration
-	# integration with Windows
-	windows_integration
+	# integration with Windows - temporary disabled
+	# windows_integration
 )
 
 # Platform-speficic plugins

@@ -54,7 +54,7 @@ public:
     }
 
 private:
-    friend NormalizedHtmlString normalizeHtml(const HtmlString &html);
+    friend KADUAPI NormalizedHtmlString normalizeHtml(const HtmlString &html);
 
     explicit NormalizedHtmlString(QString string);
     QString m_string;

@@ -54,11 +54,9 @@ bool TalkablePainter::useColorsWorkaround()
 
     checked = true;
 
-    // copied from QWindowsVistaStylePrivate::useVista()
-    if (QSysInfo::WindowsVersion < QSysInfo::WV_VISTA || !(QSysInfo::WindowsVersion & QSysInfo::WV_NT_based))
-        return false;
-
-    // inspired by QWindowsXPStylePrivate::useXP()
+    // Qt 6 supports only NT-based Windows versions newer than Vista. The
+    // UxTheme probes below retain the actual capability check.
+    // Inspired by QWindowsXPStylePrivate::useXP().
     typedef BOOL(WINAPI * PtrIsAppThemed)();
     typedef BOOL(WINAPI * PtrIsThemeActive)();
     HMODULE uxThemeHandle = GetModuleHandle(TEXT("UxTheme.dll"));

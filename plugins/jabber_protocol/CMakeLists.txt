@@ -97,7 +97,7 @@ set (SOURCES
 
 add_definitions (${ZLIB_CFLAGS_OTHER})
 
-set (LIBRARIES ${LIBRARIES} ${ZLIB_LIBRARIES} QXmppQt6)
+set (LIBRARIES ${LIBRARIES} ${ZLIB_LIBRARIES} QXmpp::QXmpp)
 if (WIN32)
 	set (LIBRARIES ${LIBRARIES} advapi32 ws2_32)
 endif ()
