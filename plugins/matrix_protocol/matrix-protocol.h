@@ -32,10 +32,12 @@ class MatrixChatService;
 class MatrixChatStateService;
 class MatrixContactAvatarService;
 class MatrixDeviceVerificationNotificationService;
+class MatrixHistoryService;
 class MatrixRoomInvitationNotificationService;
 class PluginInjectedFactory;
 class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
+class ProtocolHistoryService;
 
 namespace Quotient
 {
@@ -55,6 +57,15 @@ public:
     {
         return false;
     }
+    virtual bool isLocalHistorySupported() const override
+    {
+        return false;
+    }
+    virtual bool isRemoteHistorySupported() const override
+    {
+        return true;
+    }
+    virtual ProtocolHistoryService *historyService() override;
     virtual QString statusPixmapPath() override
     {
         return "xmpp";
@@ -76,6 +87,7 @@ private:
     QPointer<Quotient::Connection> m_connection;
     MatrixChatService *m_chatService = nullptr;
     MatrixChatStateService *m_chatStateService = nullptr;
+    MatrixHistoryService *m_historyService = nullptr;
     MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;
     bool m_recoveryKeyRestorePrompted = false;

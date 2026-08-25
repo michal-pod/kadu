@@ -61,6 +61,7 @@ class HistoryWindow;
 class PluginInjectedFactory;
 class MenuInventory;
 class MessageManager;
+class ProtocolHistoryService;
 class ShowHistoryAction;
 
 class HISTORYAPI History : public QObject, ConfigurationAwareObject, CrashAwareObject
@@ -113,6 +114,8 @@ class HISTORYAPI History : public QObject, ConfigurationAwareObject, CrashAwareO
     bool shouldSaveForBuddy(const Buddy &buddy);
     bool shouldSaveForChat(const Chat &chat);
     bool shouldEnqueueMessage(const Message &message);
+    Chat protocolHistoryChat(const Chat &chat) const;
+    ProtocolHistoryService *historyService(const Chat &chat) const;
 
 private slots:
     INJEQT_SET void setAccountManager(AccountManager *accountManager);

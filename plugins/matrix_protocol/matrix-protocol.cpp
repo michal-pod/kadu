@@ -33,6 +33,7 @@
 #include "matrix-account-avatar-service.h"
 #include "matrix-contact-avatar-service.h"
 #include "matrix-device-verification-notification-service.h"
+#include "matrix-history-service.h"
 #include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
@@ -118,10 +119,17 @@ void MatrixProtocol::init()
     m_chatService->setConnection(m_connection);
     m_chatStateService = m_pluginInjectedFactory->makeInjected<MatrixChatStateService>(account(), this);
     m_chatStateService->setConnection(m_connection);
+    m_historyService = m_pluginInjectedFactory->makeInjected<MatrixHistoryService>(account(), this);
+    m_historyService->setConnection(m_connection);
     m_aggregatedAccountAvatarService->add(m_accountAvatarService);
     m_aggregatedContactAvatarService->add(m_contactAvatarService);
     m_chatServiceRepository->addChatService(m_chatService);
     m_chatStateServiceRepository->addChatStateService(m_chatStateService);
+}
+
+ProtocolHistoryService *MatrixProtocol::historyService()
+{
+    return m_historyService;
 }
 
 void MatrixProtocol::createConnection()
@@ -139,6 +147,8 @@ void MatrixProtocol::createConnection()
         m_accountAvatarService->setConnection(m_connection);
     if (m_contactAvatarService)
         m_contactAvatarService->setConnection(m_connection);
+    if (m_historyService)
+        m_historyService->setConnection(m_connection);
 
     connect(m_connection, &Quotient::Connection::connected, this, [this] {
         if (!m_connection)
@@ -170,6 +180,8 @@ void MatrixProtocol::createConnection()
             m_accountAvatarService->setConnection(nullptr);
         if (m_contactAvatarService)
             m_contactAvatarService->setConnection(nullptr);
+        if (m_historyService)
+            m_historyService->setConnection(nullptr);
         m_recoveryKeyRestorePrompted = false;
         loggedOut();
     });
@@ -217,6 +229,8 @@ void MatrixProtocol::login()
             m_accountAvatarService->setConnection(m_connection);
         if (m_contactAvatarService)
             m_contactAvatarService->setConnection(m_connection);
+        if (m_historyService)
+            m_historyService->setConnection(m_connection);
     }
 
     const auto accountData = MatrixAccountData{account()};
@@ -336,6 +350,8 @@ void MatrixProtocol::logout()
             m_accountAvatarService->setConnection(nullptr);
         if (m_contactAvatarService)
             m_contactAvatarService->setConnection(nullptr);
+        if (m_historyService)
+            m_historyService->setConnection(nullptr);
         m_connection->deleteLater();
         m_connection = nullptr;
     }

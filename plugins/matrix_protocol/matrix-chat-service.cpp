@@ -42,10 +42,10 @@
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
 #include <Quotient/events/roommessageevent.h>
+#include <Quotient/events/roomevent.h>
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
-#include <QtCore/QDateTime>
 #include <QtGui/QPixmap>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
@@ -67,6 +67,8 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
 
     m_connection = connection;
     m_watchedRooms.clear();
+    m_loadedRooms.clear();
+    m_historicalEventIds.clear();
     m_initialSyncFinished = false;
 
     if (!m_connection)
@@ -296,7 +298,16 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
     m_watchedRooms.insert(room);
     connect(room, &Quotient::Room::addedMessages, this,
             [this, room](int fromIndex, int toIndex) { handleNewMessages(room, fromIndex, toIndex); });
-    connect(room, &Quotient::Room::baseStateLoaded, this, [this, room] { synchronizeRoom(room); });
+    connect(room, &Quotient::Room::aboutToAddHistoricalMessages, this,
+            [this](Quotient::RoomEventsRange events) {
+                for (const auto &event : events)
+                    if (event)
+                        m_historicalEventIds.insert(event->id());
+            });
+    connect(room, &Quotient::Room::baseStateLoaded, this, [this, room] {
+        m_loadedRooms.insert(room);
+        synchronizeRoom(room);
+    });
     connect(room, &Quotient::Room::memberListChanged, this,
             [this, room] { synchronizeRoomMembers(room); });
     connect(room, &Quotient::Room::allMembersLoaded, this,
@@ -306,12 +317,15 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
     connect(room, &Quotient::Room::topicChanged, this, [this, room] { synchronizeRoomDetails(room); });
     connect(room, &Quotient::Room::avatarChanged, this, [this, room] { synchronizeRoomDetails(room); });
     connect(room, &Quotient::Room::encryption, this, [this, room] { synchronizeRoom(room); });
-    connect(room, &QObject::destroyed, this, [this, room] { m_watchedRooms.remove(room); });
+    connect(room, &QObject::destroyed, this, [this, room] {
+        m_watchedRooms.remove(room);
+        m_loadedRooms.remove(room);
+    });
 }
 
 void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex)
 {
-    if (!m_initialSyncFinished || !m_connection)
+    if (!m_connection || !m_loadedRooms.contains(room))
         return;
 
     const auto directChat = m_connection->isDirectChat(room->id());
@@ -324,7 +338,11 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
             continue;
 
         const auto *event = item.viewAs<Quotient::RoomMessageEvent>();
-        if (!event || event->isRedacted() || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
+        if (!event)
+            continue;
+        if (m_historicalEventIds.remove(event->id()))
+            continue;
+        if (event->isRedacted() || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
             continue;
 
         if (directChat)
@@ -349,11 +367,12 @@ void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEven
         return;
 
     auto message = m_messageStorage->create();
+    message.setId(event.id());
     message.setMessageChat(chat);
     message.setMessageSender(contact);
     message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
-    message.setReceiveDate(QDateTime::currentDateTime());
+    message.setReceiveDate(event.originTimestamp().toLocalTime());
 
     auto text = event.plainBody();
     if (rawMessageTransformerService())
@@ -384,11 +403,12 @@ void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quoti
         details->addContact(contact);
 
     auto message = m_messageStorage->create();
+    message.setId(event.id());
     message.setMessageChat(chat);
     message.setMessageSender(contact);
     message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
-    message.setReceiveDate(QDateTime::currentDateTime());
+    message.setReceiveDate(event.originTimestamp().toLocalTime());
 
     auto text = event.plainBody();
     if (rawMessageTransformerService())

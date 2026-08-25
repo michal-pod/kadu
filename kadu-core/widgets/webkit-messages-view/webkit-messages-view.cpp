@@ -149,6 +149,11 @@ void WebkitMessagesView::updateAtBottom()
     // more so on a fractionally scaled display, so the comparison needs a little slack.
     auto const belowViewport = page()->contentsSize().height() - page()->scrollPosition().y();
     m_atBottom = belowViewport <= height() + 2;
+
+    const auto atTop = page()->scrollPosition().y() <= 2;
+    if (atTop && !m_atTop)
+        emit scrolledToTop();
+    m_atTop = atTop;
 }
 
 void WebkitMessagesView::connectChat()
@@ -290,6 +295,7 @@ void WebkitMessagesView::clearMessages()
     m_handler->clear();
     emit messagesUpdated();
     m_atBottom = true;
+    m_atTop = true;
 }
 
 int WebkitMessagesView::countMessages()

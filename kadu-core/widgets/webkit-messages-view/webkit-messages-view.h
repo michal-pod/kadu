@@ -94,6 +94,7 @@ public slots:
 
 signals:
     void messagesUpdated();
+    void scrolledToTop();
 
 protected:
     virtual void configurationUpdated() override;
@@ -118,6 +119,7 @@ private:
 
     bool m_supportTransparency;
     bool m_atBottom;
+    bool m_atTop = true;
 
     void connectChat();
     void disconnectChat();

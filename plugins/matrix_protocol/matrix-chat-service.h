@@ -66,6 +66,8 @@ private:
     QPointer<MatrixContactAvatarService> m_contactAvatarService;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
+    QSet<Quotient::Room *> m_loadedRooms;
+    QSet<QString> m_historicalEventIds;
     bool m_initialSyncFinished = false;
 
     QString directChatId(const Chat &chat) const;

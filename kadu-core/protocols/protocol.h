@@ -31,11 +31,22 @@
 #include "status/status.h"
 
 #include <QtCore/QDateTime>
+#include <QtCore/QFlags>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <injeqt/injeqt.h>
 
 typedef quint32 UinType;
+
+enum class RemoteHistorySearchCapability : quint32
+{
+    None = 0x0,
+    Contacts = 0x1,
+    Chats = 0x2,
+    Messages = 0x4
+};
+Q_DECLARE_FLAGS(RemoteHistorySearchCapabilities, RemoteHistorySearchCapability)
+Q_DECLARE_OPERATORS_FOR_FLAGS(RemoteHistorySearchCapabilities)
 
 class QPixmap;
 
@@ -50,6 +61,7 @@ class Message;
 class MultilogonService;
 class PersonalInfoService;
 class PluginInjectedFactory;
+class ProtocolHistoryService;
 class ProtocolFactory;
 class ProtocolStateMachine;
 class RosterService;
@@ -109,6 +121,43 @@ public:
     virtual SubscriptionService *subscriptionService()
     {
         return 0;
+    }
+    virtual ProtocolHistoryService *historyService()
+    {
+        return nullptr;
+    }
+
+    /**
+     * @short Return whether this protocol supports local history.
+     *
+     * Local history belongs to the protocol. The default preserves the current behavior, where local history is
+     * available for every protocol.
+     */
+    virtual bool isLocalHistorySupported() const
+    {
+        return true;
+    }
+
+    /**
+     * @short Return whether this protocol provides history from its server.
+     *
+     * A protocol returning true must provide a protocol-specific history provider when the history layer requests
+     * one. Until such a provider is selected, the local archive remains the only available source.
+     */
+    virtual bool isRemoteHistorySupported() const
+    {
+        return false;
+    }
+
+    /**
+     * @short Return kinds of data that can be searched remotely.
+     *
+     * The empty default means that the protocol offers no remote search. The flags describe result kinds, not local
+     * cache capabilities; a protocol may expose remote contact, chat, and message search independently.
+     */
+    virtual RemoteHistorySearchCapabilities isRemoteSearchSupported() const
+    {
+        return {};
     }
 
     virtual bool contactsListReadOnly() = 0;

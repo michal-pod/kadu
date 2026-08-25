@@ -17,6 +17,7 @@ set (SOURCES
     matrix-chat-state-service.cpp
     matrix-contact-avatar-service.cpp
     matrix-device-verification-notification-service.cpp
+    matrix-history-service.cpp
     matrix-id-validator.cpp
     matrix-join-room-action.cpp
     matrix-module.cpp

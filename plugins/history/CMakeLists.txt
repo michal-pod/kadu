@@ -44,6 +44,7 @@ set (SOURCES
 	chats-buddies-splitter.cpp
 	history.cpp
 	history-messages-prepender.cpp
+	protocol-history-page-loader.cpp
 	history-module.cpp
 	history-plugin-modules-factory.cpp
 	history-plugin-object.cpp

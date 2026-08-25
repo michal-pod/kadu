@@ -33,6 +33,7 @@
 #include "buddies/buddy-manager.h"
 #include "buddies/buddy.h"
 #include "chat/buddy-chat-manager.h"
+#include "chat/chat-details-buddy.h"
 #include "chat/chat-manager.h"
 #include "chat/chat.h"
 #include "configuration/configuration.h"
@@ -44,9 +45,11 @@
 #include "message/sorted-messages.h"
 #include "plugin/plugin-injected-factory.h"
 #include "protocols/services/chat-service.h"
+#include "protocols/services/protocol-history-service.h"
 #include "widgets/chat-edit-box.h"
 #include "widgets/chat-widget/chat-widget-repository.h"
 #include "widgets/chat-widget/chat-widget.h"
+#include "widgets/webkit-messages-view/webkit-messages-view.h"
 #include "widgets/configuration/config-group-box.h"
 #include "widgets/configuration/configuration-widget.h"
 #include "windows/message-dialog.h"
@@ -57,6 +60,7 @@
 #include "history-messages-prepender.h"
 #include "history-query.h"
 #include "history-save-thread.h"
+#include "protocol-history-page-loader.h"
 
 #include "history.h"
 #include "history.moc"
@@ -149,9 +153,6 @@ void History::chatWidgetAdded(ChatWidget *chatWidget)
     if (!chatWidget)
         return;
 
-    if (!CurrentStorage)
-        return;
-
     auto chatMessagesView = chatWidget->chatMessagesView();
     if (!chatMessagesView)
         return;
@@ -162,6 +163,26 @@ void History::chatWidgetAdded(ChatWidget *chatWidget)
     query.setTalkable(chat ? chat : chatWidget->chat());
     query.setFromDateTime(QDateTime::currentDateTime().addSecs(ChatHistoryQuotationTime * 3600));
     query.setLimit(m_configuration->deprecatedApi()->readNumEntry("History", "ChatHistoryCitation", 10));
+
+    const auto protocolChat = protocolHistoryChat(chatWidget->chat());
+    if (auto *service = historyService(protocolChat))
+    {
+        if (chatMessagesView->findChild<ProtocolHistoryPageLoader *>())
+            return;
+
+        ProtocolHistoryRequest request;
+        request.setChat(protocolChat);
+        request.setLimit(query.limit());
+        new ProtocolHistoryPageLoader(service, request, chatMessagesView, chatMessagesView);
+        return;
+    }
+
+    auto *protocol = protocolChat ? protocolChat.chatAccount().protocolHandler() : nullptr;
+    if (protocol && !protocol->isLocalHistorySupported())
+        return;
+
+    if (!CurrentStorage)
+        return;
 
     new HistoryMessagesPrepender(CurrentStorage->messages(query), chatMessagesView);
 }
@@ -197,8 +218,16 @@ bool History::shouldEnqueueMessage(const Message &message)
     if (!SaveChats)
         return false;
 
-    const int contactCount = message.messageChat().contacts().count();
-    const Contact &contact = message.messageChat().contacts().toContact();
+    const auto chat = message.messageChat();
+    auto *protocol = chat ? chat.chatAccount().protocolHandler() : nullptr;
+    if (protocol && !protocol->isLocalHistorySupported())
+        return false;
+
+    if (auto *service = historyService(chat); service && !service->isLocalHistoryEnabled())
+        return false;
+
+    const int contactCount = chat.contacts().count();
+    const Contact &contact = chat.contacts().toContact();
 
     if (!SaveChatsWithAnonymous && 1 == contactCount && contact.isAnonymous())
         return false;
@@ -206,12 +235,57 @@ bool History::shouldEnqueueMessage(const Message &message)
     if (1 == contactCount)
         return shouldSaveForBuddy(contact.ownerBuddy());
     else
-        return shouldSaveForChat(message.messageChat());
+        return shouldSaveForChat(chat);
+}
+
+ProtocolHistoryService *History::historyService(const Chat &chat) const
+{
+    if (!chat)
+        return nullptr;
+
+    auto *protocol = chat.chatAccount().protocolHandler();
+    return protocol ? protocol->historyService() : nullptr;
+}
+
+Chat History::protocolHistoryChat(const Chat &chat) const
+{
+    if (!chat)
+        return Chat::null;
+
+    if (historyService(chat))
+        return chat;
+
+    const auto *details = qobject_cast<ChatDetailsBuddy *>(chat.details());
+    if (!details)
+        return Chat::null;
+
+    Chat result = Chat::null;
+    for (const auto &candidate : details->chats())
+    {
+        if (!historyService(candidate))
+            continue;
+
+        if (result)
+            return Chat::null;
+
+        result = candidate;
+    }
+
+    return result;
 }
 
 void History::enqueueMessage(const Message &message)
 {
-    if (!CurrentStorage || !shouldEnqueueMessage(message))
+    if (!shouldEnqueueMessage(message))
+        return;
+
+    if (auto *service = historyService(message.messageChat()))
+    {
+        service->storeMessage(message);
+        return;
+    }
+
+    if (!CurrentStorage)
         return;
 
     UnsavedDataMutex.lock();
