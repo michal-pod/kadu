@@ -281,6 +281,7 @@ kadu_api_directories (kadu-core
 	buddies/model
 	chat
 	chat/model
+	chat/timeline
 	chat-style/engine/chat-engine-adium
 	chat-style/engine/chat-engine-kadu
 	chat-style/engine

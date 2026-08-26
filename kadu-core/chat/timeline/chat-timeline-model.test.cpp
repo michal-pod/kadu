@@ -1,0 +1,121 @@
+/*
+ * %kadu copyright begin%
+ * Copyright 2026 Kadu Qt6 port
+ * %kadu copyright end%
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "chat/timeline/chat-timeline-model.h"
+
+#include <QtTest/QtTest>
+
+class ChatTimelineModelTest : public QObject
+{
+    Q_OBJECT
+
+private slots:
+    void shouldKeepSourceOrderWhenItemsArriveOutOfOrder();
+    void shouldReplaceLocalEchoWithServerEvent();
+    void shouldIgnoreAnOlderRevision();
+    void shouldEmitDataChangedOnlyForUpdatedItem();
+    void shouldRedactExistingItem();
+
+private:
+    ChatTimelineItem makeItem(const QString &stableId, const QByteArray &sourceOrder, quint64 revision = 0) const;
+};
+
+ChatTimelineItem ChatTimelineModelTest::makeItem(const QString &stableId, const QByteArray &sourceOrder, quint64 revision) const
+{
+    ChatTimelineItem timelineItem;
+    timelineItem.stableId = stableId;
+    timelineItem.sourceOrder = sourceOrder;
+    timelineItem.revision = revision;
+    timelineItem.timestamp = QDateTime::fromSecsSinceEpoch(1000);
+    timelineItem.content.plainText = stableId;
+    ChatTimelineSender sender;
+    sender.id = QStringLiteral("@alice:example.org");
+    sender.displayName = QStringLiteral("Alicja");
+    timelineItem.sender = sender;
+    return timelineItem;
+}
+
+void ChatTimelineModelTest::shouldKeepSourceOrderWhenItemsArriveOutOfOrder()
+{
+    ChatTimelineModel model;
+    model.upsert(makeItem(QStringLiteral("second"), QByteArrayLiteral("002")));
+    model.upsert(makeItem(QStringLiteral("first"), QByteArrayLiteral("001")));
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::StableIdRole).toString(), QStringLiteral("first"));
+    QCOMPARE(model.data(model.index(1, 0), ChatTimelineModel::StableIdRole).toString(), QStringLiteral("second"));
+}
+
+void ChatTimelineModelTest::shouldReplaceLocalEchoWithServerEvent()
+{
+    ChatTimelineModel model;
+    auto localEcho = makeItem(QStringLiteral("local:transaction"), QByteArrayLiteral("temporary"));
+    localEcho.transactionId = QStringLiteral("transaction");
+    model.upsert(localEcho);
+
+    auto serverItem = makeItem(QStringLiteral("$server-event"), QByteArrayLiteral("002"));
+    serverItem.content.plainText = QStringLiteral("confirmed");
+    model.replaceLocalEcho(QStringLiteral("transaction"), serverItem);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.rowForStableId(QStringLiteral("$server-event")), 0);
+    QCOMPARE(model.rowForTransactionId(QStringLiteral("transaction")), 0);
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString(), QStringLiteral("confirmed"));
+}
+
+void ChatTimelineModelTest::shouldIgnoreAnOlderRevision()
+{
+    ChatTimelineModel model;
+    model.upsert(makeItem(QStringLiteral("$event"), QByteArrayLiteral("001"), 2));
+    auto older = makeItem(QStringLiteral("$event"), QByteArrayLiteral("001"), 1);
+    older.content.plainText = QStringLiteral("obsolete");
+    model.upsert(older);
+
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString(), QStringLiteral("$event"));
+}
+
+void ChatTimelineModelTest::shouldEmitDataChangedOnlyForUpdatedItem()
+{
+    ChatTimelineModel model;
+    model.upsert(makeItem(QStringLiteral("$event"), QByteArrayLiteral("001"), 1));
+    QSignalSpy changes{&model, &QAbstractItemModel::dataChanged};
+
+    auto replacement = makeItem(QStringLiteral("ignored"), QByteArray{}, 2);
+    replacement.content.plainText = QStringLiteral("edited");
+    model.update(QStringLiteral("$event"), replacement);
+
+    QCOMPARE(changes.size(), 1);
+    const auto arguments = changes.takeFirst();
+    QCOMPARE(arguments.at(0).value<QModelIndex>().row(), 0);
+    QCOMPARE(arguments.at(1).value<QModelIndex>().row(), 0);
+}
+
+void ChatTimelineModelTest::shouldRedactExistingItem()
+{
+    ChatTimelineModel model;
+    model.upsert(makeItem(QStringLiteral("$event"), QByteArrayLiteral("001")));
+    model.redact(QStringLiteral("$event"), QStringLiteral("removed by moderator"));
+
+    QVERIFY(model.data(model.index(0, 0), ChatTimelineModel::RedactedRole).toBool());
+    QVERIFY(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString().isEmpty());
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::ErrorTextRole).toString(), QStringLiteral("removed by moderator"));
+}
+
+QTEST_APPLESS_MAIN(ChatTimelineModelTest)
+#include "chat-timeline-model.test.moc"
