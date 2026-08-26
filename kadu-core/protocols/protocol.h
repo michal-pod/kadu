@@ -62,6 +62,7 @@ class MultilogonService;
 class PersonalInfoService;
 class PluginInjectedFactory;
 class ProtocolHistoryService;
+class ProtocolTimelineService;
 class ProtocolFactory;
 class ProtocolStateMachine;
 class RosterService;
@@ -123,6 +124,10 @@ public:
         return 0;
     }
     virtual ProtocolHistoryService *historyService()
+    {
+        return nullptr;
+    }
+    virtual ProtocolTimelineService *timelineService()
     {
         return nullptr;
     }

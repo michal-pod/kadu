@@ -28,6 +28,7 @@ class ChatTimelineModelTest : public QObject
 private slots:
     void shouldKeepSourceOrderWhenItemsArriveOutOfOrder();
     void shouldReplaceLocalEchoWithServerEvent();
+    void shouldMergeLocalEchoWhenServerEventArrivesThroughUpsert();
     void shouldIgnoreAnOlderRevision();
     void shouldEmitDataChangedOnlyForUpdatedItem();
     void shouldRedactExistingItem();
@@ -77,6 +78,22 @@ void ChatTimelineModelTest::shouldReplaceLocalEchoWithServerEvent()
     QCOMPARE(model.rowForStableId(QStringLiteral("$server-event")), 0);
     QCOMPARE(model.rowForTransactionId(QStringLiteral("transaction")), 0);
     QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString(), QStringLiteral("confirmed"));
+}
+
+void ChatTimelineModelTest::shouldMergeLocalEchoWhenServerEventArrivesThroughUpsert()
+{
+    ChatTimelineModel model;
+    auto localEcho = makeItem(QStringLiteral("local:transaction"), QByteArrayLiteral("temporary"));
+    localEcho.transactionId = QStringLiteral("transaction");
+    model.upsert(localEcho);
+
+    auto serverItem = makeItem(QStringLiteral("$server-event"), QByteArrayLiteral("002"));
+    serverItem.transactionId = QStringLiteral("transaction");
+    model.upsert(serverItem);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.rowForStableId(QStringLiteral("$server-event")), 0);
+    QCOMPARE(model.rowForTransactionId(QStringLiteral("transaction")), 0);
 }
 
 void ChatTimelineModelTest::shouldIgnoreAnOlderRevision()

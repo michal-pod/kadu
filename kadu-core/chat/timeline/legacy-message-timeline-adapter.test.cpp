@@ -20,6 +20,7 @@
 #include "chat/timeline/legacy-message-timeline-adapter.h"
 
 #include "html/html-conversion.h"
+#include "html/html-string.h"
 #include "html/normalized-html-string.h"
 #include "message/message-shared.h"
 #include "message/message.h"

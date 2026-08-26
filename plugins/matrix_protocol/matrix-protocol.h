@@ -33,11 +33,13 @@ class MatrixChatStateService;
 class MatrixContactAvatarService;
 class MatrixDeviceVerificationNotificationService;
 class MatrixHistoryService;
+class MatrixTimelineService;
 class MatrixRoomInvitationNotificationService;
 class PluginInjectedFactory;
 class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
 class ProtocolHistoryService;
+class ProtocolTimelineService;
 
 namespace Quotient
 {
@@ -70,6 +72,7 @@ public:
         return RemoteHistorySearchCapability::Messages;
     }
     virtual ProtocolHistoryService *historyService() override;
+    virtual ProtocolTimelineService *timelineService() override;
     virtual QString statusPixmapPath() override
     {
         return "xmpp";
@@ -92,6 +95,7 @@ private:
     MatrixChatService *m_chatService = nullptr;
     MatrixChatStateService *m_chatStateService = nullptr;
     MatrixHistoryService *m_historyService = nullptr;
+    MatrixTimelineService *m_timelineService = nullptr;
     MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;
     bool m_recoveryKeyRestorePrompted = false;

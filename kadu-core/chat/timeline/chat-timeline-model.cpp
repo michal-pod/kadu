@@ -144,6 +144,17 @@ void ChatTimelineModel::upsert(const ChatTimelineItem &timelineItem)
             return;
         }
     }
+    if (!timelineItem.transactionId.isEmpty())
+    {
+        const auto existingRow = rowForTransactionId(timelineItem.transactionId);
+        if (existingRow >= 0)
+        {
+            if (m_items.at(existingRow).revision > timelineItem.revision)
+                return;
+            replaceItem(existingRow, timelineItem);
+            return;
+        }
+    }
     insertItem(timelineItem);
 }
 
