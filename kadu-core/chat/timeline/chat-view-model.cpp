@@ -20,35 +20,56 @@
 #include "chat-view-model.h"
 #include "chat-view-model.moc"
 
-#include "chat/timeline/chat-timeline-controller.h"
 #include "chat-style/chat-style-manager.h"
+#include "chat/chat-details-room.h"
+#include "chat/timeline/chat-timeline-controller.h"
+#include "gui/configuration/chat-configuration-holder.h"
 #include "message/message.h"
 #include "message/sorted-messages.h"
 #include "protocols/protocol.h"
 #include "protocols/services/protocol-timeline-service.h"
 
-ChatViewModel::ChatViewModel(Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
-                             QObject *parent)
-        : QObject{parent}, m_chat{chat}, m_chatStyleManager{chatStyleManager}
+#include <QtCore/QBuffer>
+#include <QtCore/QByteArray>
+
+ChatViewModel::ChatViewModel(
+    Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
+    ChatConfigurationHolder *chatConfigurationHolder, QObject *parent)
+        : QObject{parent}, m_chat{chat}, m_chatStyleManager{chatStyleManager},
+          m_chatConfigurationHolder{chatConfigurationHolder}
 {
     if (auto *protocolTimelineService = timelineService(service))
     {
         m_timelineController = new ChatTimelineController{m_chat, protocolTimelineService, this};
         m_timeline = m_timelineController->timeline();
-        connect(m_timelineController, &ChatTimelineController::loadingInitialChanged, this,
-                &ChatViewModel::timelineStateChangedSlot);
-        connect(m_timelineController, &ChatTimelineController::loadingOlderChanged, this,
-                &ChatViewModel::timelineStateChangedSlot);
-        connect(m_timelineController, &ChatTimelineController::hasOlderChanged, this,
-                &ChatViewModel::timelineStateChangedSlot);
+        connect(
+            m_timelineController, &ChatTimelineController::loadingInitialChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
+        connect(
+            m_timelineController, &ChatTimelineController::loadingOlderChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
+        connect(
+            m_timelineController, &ChatTimelineController::hasOlderChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
     }
     else
         m_timeline = new ChatTimelineModel{this};
 
     if (m_chat)
+    {
         connect(m_chat, SIGNAL(updated()), this, SLOT(chatUpdated()));
+        if (auto *details = qobject_cast<ChatDetailsRoom *>(m_chat.details()))
+            connect(details, &ChatDetails::updated, this, &ChatViewModel::refreshRoomDetails);
+    }
     if (m_chatStyleManager)
-        connect(m_chatStyleManager, &ChatStyleManager::chatStyleConfigurationUpdated, this, &ChatViewModel::styleChanged);
+        connect(
+            m_chatStyleManager, &ChatStyleManager::chatStyleConfigurationUpdated, this, &ChatViewModel::styleChanged);
+    if (m_chatConfigurationHolder)
+        connect(
+            m_chatConfigurationHolder, &ChatConfigurationHolder::chatConfigurationUpdated, this,
+            &ChatViewModel::customColorsChangedSlot);
+
+    refreshRoomDetails();
 }
 
 ChatViewModel::~ChatViewModel()
@@ -76,9 +97,52 @@ bool ChatViewModel::usesProtocolTimeline() const
     return m_timelineController != nullptr;
 }
 
-QString ChatViewModel::theme() const
+QUrl ChatViewModel::themeSource() const
 {
-    return m_chatStyleManager ? m_chatStyleManager->currentChatStyle().name() : QStringLiteral("KaduClassic");
+    return m_chatStyleManager ? m_chatStyleManager->styleSource(m_chatStyleManager->currentChatStyle().name())
+                              : QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/KaduClassicTimelineStyle.qml")};
+}
+
+QString ChatViewModel::themeColorScheme() const
+{
+    return m_chatStyleManager ? m_chatStyleManager->currentChatStyle().variant() : QStringLiteral("System");
+}
+
+QVariantMap ChatViewModel::customColors() const
+{
+    if (!m_chatConfigurationHolder)
+        return {{QStringLiteral("enabled"), false}};
+
+    return {
+        {QStringLiteral("enabled"), m_chatConfigurationHolder->customColors()},
+        {QStringLiteral("myBackground"), m_chatConfigurationHolder->myBackgroundColor()},
+        {QStringLiteral("myText"), m_chatConfigurationHolder->myFontColor()},
+        {QStringLiteral("myNick"), m_chatConfigurationHolder->myNickColor()},
+        {QStringLiteral("buddyBackground"), m_chatConfigurationHolder->usrBackgroundColor()},
+        {QStringLiteral("buddyText"), m_chatConfigurationHolder->usrFontColor()},
+        {QStringLiteral("buddyNick"), m_chatConfigurationHolder->usrNickColor()},
+        {QStringLiteral("backgroundEnabled"), m_chatConfigurationHolder->chatBgFilled()},
+        {QStringLiteral("background"), m_chatConfigurationHolder->chatBgColor().name()}};
+}
+
+bool ChatViewModel::roomInfoVisible() const
+{
+    return m_roomInfoVisible;
+}
+
+QString ChatViewModel::roomAvatarSource() const
+{
+    return m_roomAvatarSource;
+}
+
+QString ChatViewModel::roomName() const
+{
+    return m_roomName;
+}
+
+QString ChatViewModel::roomDescription() const
+{
+    return m_roomDescription;
 }
 
 bool ChatViewModel::loadingInitial() const
@@ -159,14 +223,65 @@ ProtocolTimelineService *ChatViewModel::timelineService(ProtocolTimelineService 
 void ChatViewModel::chatUpdated()
 {
     emit titleChanged();
+    refreshRoomDetails();
 }
 
 void ChatViewModel::styleChanged()
 {
-    emit themeChanged();
+    emit themeSourceChanged();
+}
+
+void ChatViewModel::customColorsChangedSlot()
+{
+    emit customColorsChanged();
 }
 
 void ChatViewModel::timelineStateChangedSlot()
 {
     emit timelineStateChanged();
+}
+
+void ChatViewModel::refreshRoomDetails()
+{
+    const auto *details = m_chat ? qobject_cast<ChatDetailsRoom *>(m_chat.details()) : nullptr;
+    if (!details)
+    {
+        if (!m_roomInfoVisible)
+            return;
+
+        m_roomInfoVisible = false;
+        m_roomAvatarSource.clear();
+        m_roomName.clear();
+        m_roomDescription.clear();
+        emit roomDetailsChanged();
+        return;
+    }
+
+    auto roomName = m_chat.display();
+    if (roomName.isEmpty())
+        roomName = m_chat.name();
+    if (roomName.isEmpty())
+        roomName = details->name();
+
+    QString avatarSource;
+    const auto avatar = details->avatar();
+    if (!avatar.isNull())
+    {
+        QByteArray imageData;
+        QBuffer buffer{&imageData};
+        buffer.open(QIODevice::WriteOnly);
+        if (avatar.save(&buffer, "PNG"))
+            avatarSource = QStringLiteral("data:image/png;base64,") + QString::fromLatin1(imageData.toBase64());
+    }
+
+    const auto description = details->description();
+    if (m_roomInfoVisible && m_roomAvatarSource == avatarSource && m_roomName == roomName &&
+        m_roomDescription == description)
+        return;
+
+    m_roomInfoVisible = true;
+    m_roomAvatarSource = avatarSource;
+    m_roomName = roomName;
+    m_roomDescription = description;
+    emit roomDetailsChanged();
 }

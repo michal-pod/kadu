@@ -20,17 +20,21 @@
 #include "info-panel-style-manager.h"
 #include "info-panel-style-manager.moc"
 
+#include "configuration/configuration.h"
+#include "configuration/deprecated-configuration-api.h"
 #include "misc/paths-provider.h"
 
 #include <QtCore/QDir>
-#include <QtCore/QFile>
 #include <QtCore/QFileInfo>
-#include <QtCore/QJsonDocument>
-#include <QtCore/QJsonObject>
-#include <QtCore/QRegularExpression>
+#include <QtCore/QLocale>
 
 InfoPanelStyleManager::InfoPanelStyleManager(QObject *parent) : QObject{parent} {}
 InfoPanelStyleManager::~InfoPanelStyleManager() = default;
+
+void InfoPanelStyleManager::setConfiguration(Configuration *configuration)
+{
+    m_configuration = configuration;
+}
 
 void InfoPanelStyleManager::setPathsProvider(PathsProvider *pathsProvider)
 {
@@ -52,6 +56,21 @@ QString InfoPanelStyleManager::normalizedStyleName(const QString &styleName) con
     return m_styles.contains(styleName) ? styleName : QStringLiteral("Classic");
 }
 
+bool InfoPanelStyleManager::isBuiltIn(const QString &styleName) const
+{
+    return m_styles.value(normalizedStyleName(styleName)).source.scheme() == QStringLiteral("qrc");
+}
+
+QList<QmlThemeColorScheme> InfoPanelStyleManager::colorSchemes(const QString &styleName) const
+{
+    return m_styles.value(normalizedStyleName(styleName)).colorSchemes;
+}
+
+QString InfoPanelStyleManager::normalizedColorScheme(const QString &styleName, const QString &scheme) const
+{
+    return m_styles.value(normalizedStyleName(styleName)).normalizedColorScheme(scheme);
+}
+
 QUrl InfoPanelStyleManager::styleSource(const QString &styleName) const
 {
     return m_styles.value(normalizedStyleName(styleName)).source;
@@ -59,9 +78,23 @@ QUrl InfoPanelStyleManager::styleSource(const QString &styleName) const
 
 void InfoPanelStyleManager::loadStyles()
 {
+    m_styles.clear();
+
+    const QList<QmlThemeColorScheme> bundledSchemes = {
+        {QStringLiteral("Light"), tr("Light")},
+        {QStringLiteral("Dark"), tr("Dark")},
+    };
     m_styles = {
-        {QStringLiteral("Classic"), {tr("Classic"), QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Classic.qml")}}},
-        {QStringLiteral("Compact"), {tr("Compact"), QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Compact.qml")}}},
+        {QStringLiteral("Classic"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("Classic"), tr("Classic"), QStringLiteral("Kadu Team"),
+                                             QStringLiteral("info-panel"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Classic.qml")},
+                                             bundledSchemes)},
+        {QStringLiteral("Compact"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("Compact"), tr("Compact"), QStringLiteral("Kadu Team"),
+                                             QStringLiteral("info-panel"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Compact.qml")},
+                                             bundledSchemes)},
     };
 
     if (!m_pathsProvider)
@@ -74,23 +107,21 @@ void InfoPanelStyleManager::loadStyles()
 void InfoPanelStyleManager::loadExternalStyles(const QString &directory)
 {
     const QDir stylesDirectory{directory};
+    const auto language = m_configuration
+                              ? m_configuration->deprecatedApi()->readEntry("General", "Language")
+                              : QLocale::system().name().left(2);
     for (const auto &entry : stylesDirectory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
     {
-        QFile manifest{entry.filePath() + QStringLiteral("/style.json")};
-        if (!manifest.open(QIODevice::ReadOnly))
+        const auto source = QFileInfo{entry.filePath() + QStringLiteral("/BuddyInfoStyle.qml")};
+        const auto descriptor = QFileInfo{entry.filePath() + QStringLiteral("/theme.desc")};
+        if (!source.isFile() || !descriptor.isFile())
             continue;
 
-        const auto document = QJsonDocument::fromJson(manifest.readAll());
-        const auto object = document.object();
-        const auto id = object.value(QStringLiteral("id")).toString();
-        const auto name = object.value(QStringLiteral("name")).toString();
-        const auto qmlFile = object.value(QStringLiteral("qml")).toString(QStringLiteral("InfoPanelStyle.qml"));
-        const auto source = QFileInfo{entry.filePath() + QLatin1Char('/') + qmlFile};
-
-        if (!QRegularExpression{QStringLiteral("^[A-Za-z0-9_.-]+$")}.match(id).hasMatch() || name.isEmpty() ||
-            !source.isFile())
-            continue;
-
-        m_styles.insert(id, {name, QUrl::fromLocalFile(source.absoluteFilePath())});
+        const auto id = entry.fileName();
+        const auto style = QmlThemeDescriptionLoader::load(descriptor.absoluteFilePath(), id,
+                                                           QUrl::fromLocalFile(source.absoluteFilePath()),
+                                                           QStringLiteral("info-panel"), language);
+        if (style.isValid())
+            m_styles.insert(id, style);
     }
 }

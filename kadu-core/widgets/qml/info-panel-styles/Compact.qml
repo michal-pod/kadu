@@ -23,6 +23,23 @@ Item {
     id: root
 
     property var infoPanel
+    property string colorScheme: "System"
+    SystemPalette {
+        id: systemPalette
+        colorGroup: SystemPalette.Active
+    }
+    readonly property bool darkSurface: colorScheme === "Dark" ||
+                                       (colorScheme !== "Light" && systemPalette.base.r * 0.2126 +
+                                        systemPalette.base.g * 0.7152 +
+                                        systemPalette.base.b * 0.0722 < 0.5)
+    readonly property bool useCustomColors: root.value("useCustomColors", false)
+    readonly property color fallbackAvatarColor: darkSurface ? "#4b86c5" : "#5a8bbd"
+    readonly property color themeForegroundColor: useCustomColors ? root.value("foregroundColor", systemPalette.text)
+                                                                   : (colorScheme === "System" ? systemPalette.text
+                                                                                               : (darkSurface ? "#f2f4f8" : "#202020"))
+    readonly property color themeBackgroundColor: useCustomColors ? root.value("backgroundColor", "transparent")
+                                                                   : (colorScheme === "System" ? "transparent"
+                                                                                               : (darkSurface ? "#20242b" : "#f7f7f7"))
     readonly property string selectedText: detailsText.selectedText.length > 0
                                           ? detailsText.selectedText
                                           : (statusText.selectedText.length > 0
@@ -44,7 +61,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: root.value("backgroundColor", "transparent")
+        color: root.themeBackgroundColor
     }
 
     Flickable {
@@ -64,7 +81,8 @@ Item {
             y: 2 + flickable.contentY * (flickable.height - height - 4) /
                    Math.max(1, flickable.contentHeight - flickable.height)
             radius: width / 2
-            color: "#808080"
+            color: root.colorScheme === "System" ? systemPalette.mid
+                                                   : (root.darkSurface ? "#6d7785" : "#858585")
             opacity: 0.7
             visible: root.value("showScrollBar", false) && flickable.contentHeight > flickable.height
 
@@ -102,7 +120,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: width / 2
-                        color: "#5a8bbd"
+                        color: root.fallbackAvatarColor
                         visible: !avatar.visible
                     }
 
@@ -111,7 +129,7 @@ Item {
                         text: root.value("displayName", "?").length > 0
                               ? root.value("displayName", "?").substring(0, 1).toUpperCase()
                               : "?"
-                        color: "white"
+                        color: "#ffffff"
                         font.bold: true
                         font.pixelSize: parent.width / 2
                         visible: !avatar.visible
@@ -133,7 +151,7 @@ Item {
                     Text {
                         width: parent.width
                         text: root.value("displayName", "")
-                        color: root.value("foregroundColor", "#202020")
+                        color: root.themeForegroundColor
                         elide: Text.ElideRight
                         font.family: root.value("fontFamily", "")
                         font.pointSize: root.value("fontPointSize", 10) + 1
@@ -145,7 +163,7 @@ Item {
                         width: parent.width
                         text: root.value("detailsText", "")
                         textFormat: TextEdit.RichText
-                        color: root.value("foregroundColor", "#202020")
+                        color: root.themeForegroundColor
                         readOnly: true
                         selectByMouse: true
                         wrapMode: TextEdit.Wrap
@@ -160,7 +178,7 @@ Item {
                 width: parent.width
                 text: root.value("statusText", "")
                 textFormat: TextEdit.RichText
-                color: root.value("foregroundColor", "#202020")
+                color: root.themeForegroundColor
                 readOnly: true
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap
@@ -176,7 +194,7 @@ Item {
                 width: parent.width
                 text: root.value("descriptionText", "")
                 textFormat: TextEdit.RichText
-                color: root.value("foregroundColor", "#202020")
+                color: root.themeForegroundColor
                 readOnly: true
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap

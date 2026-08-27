@@ -48,6 +48,7 @@ set (widgets_SRCS
 	buddy-personal-info-configuration-widget.cpp
 	buddy-options-configuration-widget.cpp
 	buddy-info-panel.cpp
+	info-panel-style-configuration-ui-handler.cpp
 	info-panel-style-manager.cpp
 	categorized-list-view.cpp
 	categorized-list-view-painter.cpp

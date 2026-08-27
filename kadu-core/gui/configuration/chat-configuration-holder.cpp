@@ -19,6 +19,7 @@
 
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
+#include "chat-style/chat-style-manager.h"
 #include "widgets/chat-widget/chat-widget-title-composing-state-position.h"
 
 #include <QtGui/QGuiApplication>
@@ -28,7 +29,7 @@
 #include "chat-configuration-holder.moc"
 
 ChatConfigurationHolder::ChatConfigurationHolder(QObject *parent)
-        : ConfigurationHolder{parent}, AutoSend{}, NiceDateFormat{}, ChatTextCustomColors{}, ForceCustomChatFont{},
+        : ConfigurationHolder{parent}, AutoSend{}, NiceDateFormat{}, CustomColors{}, ChatTextCustomColors{}, ForceCustomChatFont{},
           ChatBgFilled{}, UseTransparency{}, ContactStateChats{}, ContactStateWindowTitle{},
           ContactStateWindowTitlePosition{}
 {
@@ -43,6 +44,15 @@ void ChatConfigurationHolder::setConfiguration(Configuration *configuration)
     m_configuration = configuration;
 }
 
+void ChatConfigurationHolder::setChatStyleManager(ChatStyleManager *chatStyleManager)
+{
+    m_chatStyleManager = chatStyleManager;
+    connect(m_chatStyleManager, &ChatStyleManager::chatStyleConfigurationUpdated, this, [this] {
+        if (m_configuration)
+            configurationUpdated();
+    });
+}
+
 void ChatConfigurationHolder::init()
 {
     configurationUpdated();
@@ -53,17 +63,19 @@ void ChatConfigurationHolder::configurationUpdated()
     AutoSend = m_configuration->deprecatedApi()->readBoolEntry("Chat", "AutoSend");
     NiceDateFormat = m_configuration->deprecatedApi()->readBoolEntry("Look", "NiceDateFormat");
 
-    // Unless the user asks for colours of their own, every colour below is taken from the palette
-    // the desktop hands out, so the conversation turns dark when the desktop does. The stored
-    // values are read but not used, and are waiting unchanged for the switch to be turned back on.
-    auto const customColors = m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatCustomColors");
+    // Custom conversation colours belong to bundled themes only. External QML themes own their
+    // palette completely, while the stored legacy values stay intact for a later return to a
+    // bundled theme.
+    const auto selectedStyle = m_configuration->deprecatedApi()->readEntry("Look", "Style", "KaduClassic");
+    CustomColors = m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatCustomColors") &&
+                   (!m_chatStyleManager || m_chatStyleManager->isBuiltIn(selectedStyle));
     auto const palette = QGuiApplication::palette();
 
     ChatTextCustomColors =
-        customColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatTextCustomColors");
-    ChatTextBgColor = customColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatTextBgColor")
+        CustomColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatTextCustomColors");
+    ChatTextBgColor = CustomColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatTextBgColor")
                                    : palette.base().color();
-    ChatTextFontColor = customColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatTextFontColor")
+    ChatTextFontColor = CustomColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatTextFontColor")
                                      : palette.text().color();
 
     ForceCustomChatFont = m_configuration->deprecatedApi()->readBoolEntry("Look", "ForceCustomChatFont");
@@ -72,17 +84,17 @@ void ChatConfigurationHolder::configurationUpdated()
     // One side of the conversation stands on the window's own background and the other on the
     // colour a list uses for every second row, which is how a desktop tells two kinds of thing
     // apart without naming a colour of its own.
-    MyBackgroundColor = customColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatMyBgColor")
+    MyBackgroundColor = CustomColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatMyBgColor")
                                      : palette.base().color().name();
-    MyFontColor = customColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatMyFontColor")
+    MyFontColor = CustomColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatMyFontColor")
                                : palette.text().color().name();
-    MyNickColor = customColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatMyNickColor")
+    MyNickColor = CustomColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatMyNickColor")
                                : palette.text().color().name();
-    UsrBackgroundColor = customColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatUsrBgColor")
+    UsrBackgroundColor = CustomColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatUsrBgColor")
                                       : palette.alternateBase().color().name();
-    UsrFontColor = customColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatUsrFontColor")
+    UsrFontColor = CustomColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatUsrFontColor")
                                 : palette.text().color().name();
-    UsrNickColor = customColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatUsrNickColor")
+    UsrNickColor = CustomColors ? m_configuration->deprecatedApi()->readEntry("Look", "ChatUsrNickColor")
                                 : palette.text().color().name();
 
     ContactStateChats = m_configuration->deprecatedApi()->readBoolEntry("Chat", "ContactStateChats");
@@ -90,8 +102,8 @@ void ChatConfigurationHolder::configurationUpdated()
     ContactStateWindowTitlePosition =
         m_configuration->deprecatedApi()->readNumEntry("Chat", "ContactStateWindowTitlePosition");
 
-    ChatBgFilled = customColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatBgFilled");
-    ChatBgColor = customColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatBgColor")
+    ChatBgFilled = CustomColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatBgFilled");
+    ChatBgColor = CustomColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatBgColor")
                                : palette.base().color();
 
     UseTransparency = m_configuration->deprecatedApi()->readBoolEntry("Chat", "UseTransparency");

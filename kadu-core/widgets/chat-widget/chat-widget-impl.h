@@ -38,7 +38,6 @@
 #include <injeqt/injeqt.h>
 
 class QSplitter;
-class QLabel;
 class QWidget;
 
 class Actions;
@@ -101,10 +100,6 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
     FilteredTreeView *BuddiesWidget;
     TalkableProxyModel *ProxyModel;
     ChatEditBox *InputBox;
-    QWidget *RoomDetailsWidget;
-    QLabel *RoomAvatarLabel;
-    QLabel *RoomDescriptionLabel;
-
     QSplitter *VerticalSplitter;
     QSplitter *HorizontalSplitter;
 
@@ -120,8 +115,6 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
 
     void createGui();
     void createContactsList();
-    void updateRoomDetails();
-
     void resetEditBox();
 
     bool decodeLocalFiles(QDropEvent *event, QStringList &files);

@@ -14,6 +14,11 @@
 
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
+#include "misc/paths-provider.h"
+
+#include <QtCore/QDir>
+#include <QtCore/QFileInfo>
+#include <QtCore/QLocale>
 
 ChatStyleManager::ChatStyleManager(QObject *parent) : QObject{parent} {}
 ChatStyleManager::~ChatStyleManager() = default;
@@ -21,6 +26,11 @@ ChatStyleManager::~ChatStyleManager() = default;
 void ChatStyleManager::setConfiguration(Configuration *configuration)
 {
     m_configuration = configuration;
+}
+
+void ChatStyleManager::setPathsProvider(PathsProvider *pathsProvider)
+{
+    m_pathsProvider = pathsProvider;
 }
 
 void ChatStyleManager::init()
@@ -31,10 +41,30 @@ void ChatStyleManager::init()
 
 void ChatStyleManager::loadStyles()
 {
-    m_availableStyles = {
-        {QStringLiteral("KaduClassic"), {tr("Classic Kadu")}},
-        {QStringLiteral("Bubbles"), {tr("Bubbles")}},
+    m_availableStyles.clear();
+
+    const QList<QmlThemeColorScheme> bundledSchemes = {
+        {QStringLiteral("Light"), tr("Light")},
+        {QStringLiteral("Dark"), tr("Dark")},
     };
+    m_availableStyles = {
+        {QStringLiteral("KaduClassic"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("KaduClassic"), tr("Classic Kadu"),
+                                             QStringLiteral("Kadu Team"), QStringLiteral("chat"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/KaduClassicTimelineStyle.qml")},
+                                             bundledSchemes)},
+        {QStringLiteral("Bubbles"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("Bubbles"), tr("Bubbles"), QStringLiteral("Kadu Team"),
+                                             QStringLiteral("chat"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/BubblesTimelineStyle.qml")},
+                                             bundledSchemes)},
+    };
+
+    if (!m_pathsProvider)
+        return;
+
+    loadExternalStyles(m_pathsProvider->dataPath() + QStringLiteral("chat-styles"));
+    loadExternalStyles(m_pathsProvider->profilePath() + QStringLiteral("chat-styles"));
 }
 
 QString ChatStyleManager::normalizedStyleName(const QString &styleName) const
@@ -54,7 +84,11 @@ void ChatStyleManager::configurationUpdated()
     const auto configuredStyle = m_configuration
                                      ? m_configuration->deprecatedApi()->readEntry("Look", "Style", "KaduClassic")
                                      : QStringLiteral("KaduClassic");
-    const ChatStyle nextStyle{normalizedStyleName(configuredStyle), QString{}};
+    const auto styleName = normalizedStyleName(configuredStyle);
+    const auto configuredScheme = m_configuration
+                                      ? m_configuration->deprecatedApi()->readEntry("Look", "ChatStyleVariant", "System")
+                                      : QStringLiteral("System");
+    const ChatStyle nextStyle{styleName, normalizedColorScheme(styleName, configuredScheme)};
     if (nextStyle == m_currentChatStyle)
         return;
 
@@ -67,7 +101,49 @@ bool ChatStyleManager::isChatStyleValid(const QString &name) const
     return m_availableStyles.contains(name);
 }
 
-StyleInfo ChatStyleManager::chatStyleInfo(const QString &name) const
+bool ChatStyleManager::isBuiltIn(const QString &name) const
+{
+    return m_availableStyles.value(normalizedStyleName(name)).source.scheme() == QStringLiteral("qrc");
+}
+
+ChatStyleInfo ChatStyleManager::chatStyleInfo(const QString &name) const
 {
     return m_availableStyles.value(name);
+}
+
+QList<QmlThemeColorScheme> ChatStyleManager::colorSchemes(const QString &name) const
+{
+    return m_availableStyles.value(normalizedStyleName(name)).colorSchemes;
+}
+
+QString ChatStyleManager::normalizedColorScheme(const QString &styleName, const QString &scheme) const
+{
+    return m_availableStyles.value(normalizedStyleName(styleName)).normalizedColorScheme(scheme);
+}
+
+QUrl ChatStyleManager::styleSource(const QString &name) const
+{
+    return m_availableStyles.value(normalizedStyleName(name)).source;
+}
+
+void ChatStyleManager::loadExternalStyles(const QString &directory)
+{
+    const QDir stylesDirectory{directory};
+    const auto language = m_configuration
+                              ? m_configuration->deprecatedApi()->readEntry("General", "Language")
+                              : QLocale::system().name().left(2);
+    for (const auto &entry : stylesDirectory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+    {
+        const auto source = QFileInfo{entry.filePath() + QStringLiteral("/ChatStyle.qml")};
+        const auto descriptor = QFileInfo{entry.filePath() + QStringLiteral("/theme.desc")};
+        if (!source.isFile() || !descriptor.isFile())
+            continue;
+
+        const auto id = entry.fileName();
+        const auto style = QmlThemeDescriptionLoader::load(descriptor.absoluteFilePath(), id,
+                                                           QUrl::fromLocalFile(source.absoluteFilePath()),
+                                                           QStringLiteral("chat"), language);
+        if (style.isValid())
+            m_availableStyles.insert(id, style);
+    }
 }

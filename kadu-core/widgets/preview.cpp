@@ -27,6 +27,8 @@
 
 #include <QtCore/QUrl>
 #include <QtCore/QVariantMap>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QPalette>
 #include <QtQml/QQmlContext>
 #include <QtQuick/QQuickItem>
 #include <QtQuickWidgets/QQuickWidget>
@@ -47,7 +49,7 @@ Preview::Preview(QWidget *parent) : QFrame{parent}
                              {QStringLiteral("statusText"), QStringLiteral("Dostępny")},
                              {QStringLiteral("descriptionText"), QStringLiteral("Przykładowy opis kontaktu.")},
                              {QStringLiteral("style"), QStringLiteral("Classic")},
-                             {QStringLiteral("foregroundColor"), QStringLiteral("#202020")},
+                             {QStringLiteral("foregroundColor"), QGuiApplication::palette().text().color().name()},
                              {QStringLiteral("backgroundColor"), QStringLiteral("transparent")},
                              {QStringLiteral("fontFamily"), QString{}},
                              {QStringLiteral("fontPointSize"), 10},
@@ -71,4 +73,10 @@ void Preview::setStyleSource(const QUrl &source)
 {
     if (m_view && m_view->rootObject())
         m_view->rootObject()->setProperty("styleSource", source);
+}
+
+void Preview::setColorScheme(const QString &scheme)
+{
+    if (m_view && m_view->rootObject())
+        m_view->rootObject()->setProperty("colorScheme", scheme);
 }

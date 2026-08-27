@@ -39,6 +39,7 @@ public:
 
 public slots:
     void setStyleSource(const QUrl &source);
+    void setColorScheme(const QString &scheme);
 
 private:
     QQuickWidget *m_view = nullptr;

@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <QtCore/QString>
+#include <QtCore/QUrl>
 #include <QtWidgets/QFrame>
 
 class ChatViewModel;
@@ -39,13 +39,15 @@ public:
     explicit ChatTimelinePreview(QWidget *parent = nullptr);
     ~ChatTimelinePreview() override;
 
-    void setTheme(const QString &theme);
+    void setThemeSource(const QUrl &source);
+    void setColorScheme(const QString &scheme);
 
 private:
     ChatViewModel *m_viewModel = nullptr;
     QQuickWidget *m_timelineView = nullptr;
-    QString m_theme;
+    QUrl m_themeSource;
+    QString m_colorScheme = QStringLiteral("System");
 
     void populateTimeline();
-    void updateTheme();
+    void updateThemeSource();
 };

@@ -41,7 +41,7 @@ ChatTimelinePreview::ChatTimelinePreview(QWidget *parent) : QFrame{parent}
 
     m_timelineView = new QQuickWidget{this};
     m_timelineView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    m_viewModel = new ChatViewModel{Chat::null, nullptr, nullptr, m_timelineView};
+    m_viewModel = new ChatViewModel{Chat::null, nullptr, nullptr, nullptr, m_timelineView};
     populateTimeline();
     m_timelineView->rootContext()->setContextProperty(QStringLiteral("_chatViewModel"), m_viewModel);
     m_timelineView->setSource(QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/ChatPage.qml")});
@@ -50,13 +50,23 @@ ChatTimelinePreview::ChatTimelinePreview(QWidget *parent) : QFrame{parent}
 
 ChatTimelinePreview::~ChatTimelinePreview() = default;
 
-void ChatTimelinePreview::setTheme(const QString &theme)
+void ChatTimelinePreview::setThemeSource(const QUrl &source)
 {
-    if (m_theme == theme)
+    if (m_themeSource == source)
         return;
 
-    m_theme = theme;
-    updateTheme();
+    m_themeSource = source;
+    updateThemeSource();
+}
+
+void ChatTimelinePreview::setColorScheme(const QString &scheme)
+{
+    if (m_colorScheme == scheme)
+        return;
+
+    m_colorScheme = scheme;
+    if (m_timelineView && m_timelineView->rootObject())
+        m_timelineView->rootObject()->setProperty("themeColorSchemeOverride", m_colorScheme);
 }
 
 void ChatTimelinePreview::populateTimeline()
@@ -96,10 +106,11 @@ void ChatTimelinePreview::populateTimeline()
     m_viewModel->timeline()->reset({received, sent, notice});
 }
 
-void ChatTimelinePreview::updateTheme()
+void ChatTimelinePreview::updateThemeSource()
 {
     if (!m_timelineView || !m_timelineView->rootObject())
         return;
 
-    m_timelineView->rootObject()->setProperty("themeOverride", m_theme);
+    m_timelineView->rootObject()->setProperty("themeSourceOverride", m_themeSource);
+    m_timelineView->rootObject()->setProperty("themeColorSchemeOverride", m_colorScheme);
 }

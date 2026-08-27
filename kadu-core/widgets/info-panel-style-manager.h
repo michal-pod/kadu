@@ -20,6 +20,7 @@
 #pragma once
 
 #include "exports.h"
+#include "themes/qml-theme-description.h"
 
 #include <QtCore/QMap>
 #include <QtCore/QObject>
@@ -28,23 +29,23 @@
 #include <QtCore/QUrl>
 #include <injeqt/injeqt.h>
 
+class Configuration;
 class PathsProvider;
 
-struct InfoPanelStyleInfo
-{
-    QString displayName;
-    QUrl source;
-};
+using InfoPanelStyleInfo = QmlThemeDescription;
 
 /**
  * @short Discovers QML information-panel styles.
  *
- * Built-in styles are packaged in the Kadu.Chat QML module. External styles
- * are directories containing style.json and the QML file named by its qml
- * property. System styles live in data/info-panel-styles and profile styles in
- * info-panel-styles below the user's profile; profile styles override system
- * styles with the same identifier. The QML root has to expose an infoPanel
- * property plus selectedText and copySelection() for the shell's copy action.
+ * Built-in styles are packaged in the Kadu.Chat QML module. Each external
+ * style is self-contained in a directory:
+ * data/info-panel-styles/<style name>/BuddyInfoStyle.qml together with
+ * theme.desc, or the corresponding directory below the user's profile. Its
+ * exact directory name, including spaces, is its identifier in configuration.
+ * Profile styles override system styles with the same ID. The descriptor
+ * carries the localized label, author and supported colour schemes. The QML
+ * root has to expose writable infoPanel and colorScheme properties plus
+ * selectedText and copySelection() for the shell's copy action.
  */
 class KADUAPI InfoPanelStyleManager : public QObject
 {
@@ -56,17 +57,22 @@ public:
 
     QMap<QString, InfoPanelStyleInfo> availableStyles() const;
     QString normalizedStyleName(const QString &styleName) const;
+    bool isBuiltIn(const QString &styleName) const;
+    QList<QmlThemeColorScheme> colorSchemes(const QString &styleName) const;
+    QString normalizedColorScheme(const QString &styleName, const QString &scheme) const;
     QUrl styleSource(const QString &styleName) const;
 
     void loadStyles();
 
 private:
+    QPointer<Configuration> m_configuration;
     QPointer<PathsProvider> m_pathsProvider;
     QMap<QString, InfoPanelStyleInfo> m_styles;
 
     void loadExternalStyles(const QString &directory);
 
 private slots:
+    INJEQT_SET void setConfiguration(Configuration *configuration);
     INJEQT_SET void setPathsProvider(PathsProvider *pathsProvider);
     INJEQT_INIT void init();
 };

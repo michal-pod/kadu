@@ -12,7 +12,7 @@
  * Copyright 2009, 2010, 2011, 2012, 2013, 2014, 2015 Rafał Przemysław Malinowski (rafal.przemyslaw@kadu.im)
  * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
- *
+ * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
@@ -36,9 +36,9 @@
 #include "buddies/buddy.h"
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
-#include "widgets/info-panel-style-manager.h"
 #include "parser/parser.h"
 #include "talkable/talkable-converter.h"
+#include "widgets/info-panel-style-manager.h"
 
 #include <QtCore/QMetaObject>
 #include <QtGui/QGuiApplication>
@@ -68,33 +68,104 @@ BuddyInfoPanel::~BuddyInfoPanel()
     disconnect(m_buddyPreferredManager, nullptr, this, nullptr);
 }
 
-QString BuddyInfoPanel::displayName() const { return m_displayName; }
-QUrl BuddyInfoPanel::avatarSource() const { return m_avatarSource; }
-QString BuddyInfoPanel::detailsText() const { return m_detailsText; }
-QString BuddyInfoPanel::statusText() const { return m_statusText; }
-QString BuddyInfoPanel::descriptionText() const { return m_descriptionText; }
-QString BuddyInfoPanel::style() const { return m_style; }
-QUrl BuddyInfoPanel::styleSource() const { return m_styleSource; }
-QString BuddyInfoPanel::foregroundColor() const { return m_foregroundColor; }
-QString BuddyInfoPanel::backgroundColor() const { return m_backgroundColor; }
-QString BuddyInfoPanel::fontFamily() const { return m_fontFamily; }
-int BuddyInfoPanel::fontPointSize() const { return m_fontPointSize; }
-bool BuddyInfoPanel::fontBold() const { return m_fontBold; }
-bool BuddyInfoPanel::fontItalic() const { return m_fontItalic; }
-bool BuddyInfoPanel::fontUnderline() const { return m_fontUnderline; }
-bool BuddyInfoPanel::showScrollBar() const { return m_showScrollBar; }
+QString BuddyInfoPanel::displayName() const
+{
+    return m_displayName;
+}
+QUrl BuddyInfoPanel::avatarSource() const
+{
+    return m_avatarSource;
+}
+QString BuddyInfoPanel::detailsText() const
+{
+    return m_detailsText;
+}
+QString BuddyInfoPanel::statusText() const
+{
+    return m_statusText;
+}
+QString BuddyInfoPanel::descriptionText() const
+{
+    return m_descriptionText;
+}
+QString BuddyInfoPanel::style() const
+{
+    return m_style;
+}
+QUrl BuddyInfoPanel::styleSource() const
+{
+    return m_styleSource;
+}
+QString BuddyInfoPanel::colorScheme() const
+{
+    return m_colorScheme;
+}
+bool BuddyInfoPanel::useCustomColors() const
+{
+    return m_useCustomColors;
+}
+QString BuddyInfoPanel::foregroundColor() const
+{
+    return m_foregroundColor;
+}
+QString BuddyInfoPanel::backgroundColor() const
+{
+    return m_backgroundColor;
+}
+QString BuddyInfoPanel::fontFamily() const
+{
+    return m_fontFamily;
+}
+int BuddyInfoPanel::fontPointSize() const
+{
+    return m_fontPointSize;
+}
+bool BuddyInfoPanel::fontBold() const
+{
+    return m_fontBold;
+}
+bool BuddyInfoPanel::fontItalic() const
+{
+    return m_fontItalic;
+}
+bool BuddyInfoPanel::fontUnderline() const
+{
+    return m_fontUnderline;
+}
+bool BuddyInfoPanel::showScrollBar() const
+{
+    return m_showScrollBar;
+}
 
 QString BuddyInfoPanel::selectedText() const
 {
     return m_view && m_view->rootObject() ? m_view->rootObject()->property("selectedText").toString() : QString{};
 }
 
-void BuddyInfoPanel::setAvatars(Avatars *avatars) { m_avatars = avatars; }
-void BuddyInfoPanel::setBuddyPreferredManager(BuddyPreferredManager *manager) { m_buddyPreferredManager = manager; }
-void BuddyInfoPanel::setConfiguration(Configuration *configuration) { m_configuration = configuration; }
-void BuddyInfoPanel::setInfoPanelStyleManager(InfoPanelStyleManager *manager) { m_infoPanelStyleManager = manager; }
-void BuddyInfoPanel::setParser(Parser *parser) { m_parser = parser; }
-void BuddyInfoPanel::setTalkableConverter(TalkableConverter *converter) { m_talkableConverter = converter; }
+void BuddyInfoPanel::setAvatars(Avatars *avatars)
+{
+    m_avatars = avatars;
+}
+void BuddyInfoPanel::setBuddyPreferredManager(BuddyPreferredManager *manager)
+{
+    m_buddyPreferredManager = manager;
+}
+void BuddyInfoPanel::setConfiguration(Configuration *configuration)
+{
+    m_configuration = configuration;
+}
+void BuddyInfoPanel::setInfoPanelStyleManager(InfoPanelStyleManager *manager)
+{
+    m_infoPanelStyleManager = manager;
+}
+void BuddyInfoPanel::setParser(Parser *parser)
+{
+    m_parser = parser;
+}
+void BuddyInfoPanel::setTalkableConverter(TalkableConverter *converter)
+{
+    m_talkableConverter = converter;
+}
 
 void BuddyInfoPanel::init()
 {
@@ -109,13 +180,21 @@ void BuddyInfoPanel::configurationUpdated()
         return;
 
     const auto font = m_configuration->deprecatedApi()->readFontEntry("Look", "PanelFont");
-    const auto customColors = m_configuration->deprecatedApi()->readBoolEntry("Look", "InfoPanelCustomColors");
     m_style = m_configuration->deprecatedApi()->readEntry("Look", "InfoPanelStyle", "Classic");
-    m_style = m_infoPanelStyleManager ? m_infoPanelStyleManager->normalizedStyleName(m_style) : QStringLiteral("Classic");
+    m_style =
+        m_infoPanelStyleManager ? m_infoPanelStyleManager->normalizedStyleName(m_style) : QStringLiteral("Classic");
     m_styleSource = m_infoPanelStyleManager ? m_infoPanelStyleManager->styleSource(m_style) : QUrl{};
-    m_foregroundColor = customColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "InfoPanelFgColor").name()
-                                     : QGuiApplication::palette().text().color().name();
-    m_backgroundColor = customColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "InfoPanelBgFilled")
+    const auto configuredColorScheme =
+        m_configuration->deprecatedApi()->readEntry("Look", "InfoPanelStyleVariant", "System");
+    m_colorScheme = m_infoPanelStyleManager
+                        ? m_infoPanelStyleManager->normalizedColorScheme(m_style, configuredColorScheme)
+                        : QStringLiteral("System");
+    m_useCustomColors = m_configuration->deprecatedApi()->readBoolEntry("Look", "InfoPanelCustomColors") &&
+                        (!m_infoPanelStyleManager || m_infoPanelStyleManager->isBuiltIn(m_style));
+    m_foregroundColor = m_useCustomColors
+                            ? m_configuration->deprecatedApi()->readColorEntry("Look", "InfoPanelFgColor").name()
+                            : QGuiApplication::palette().text().color().name();
+    m_backgroundColor = m_useCustomColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "InfoPanelBgFilled")
                             ? m_configuration->deprecatedApi()->readColorEntry("Look", "InfoPanelBgColor").name()
                             : QStringLiteral("transparent");
     m_fontFamily = font.family();

@@ -25,6 +25,7 @@
 #include "widgets/chat-edit-box-size-manager.h"
 #include "widgets/chat-widget/actions/chat-widget-actions.h"
 #include "widgets/custom-input-menu-manager.h"
+#include "widgets/info-panel-style-configuration-ui-handler.h"
 #include "widgets/info-panel-style-manager.h"
 #include "widgets/tool-tip-manager.h"
 #include "windows/buddy-data-window-repository.h"
@@ -48,6 +49,7 @@ GuiModule::GuiModule()
     add_type<ChatEditBoxSizeManager>();
     add_type<ChatWidgetActions>();
     add_type<CustomInputMenuManager>();
+    add_type<InfoPanelStyleConfigurationUiHandler>();
     add_type<InfoPanelStyleManager>();
     add_type<KaduWindowActions>();
     add_type<KaduWindowService>();

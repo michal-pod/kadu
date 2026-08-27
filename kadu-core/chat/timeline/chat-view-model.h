@@ -24,7 +24,12 @@
 #include "chat/timeline/legacy-message-timeline-adapter.h"
 #include "exports.h"
 
+#include <QtCore/QPointer>
+#include <QtCore/QUrl>
+#include <QtCore/QVariantMap>
+
 class ChatTimelineController;
+class ChatConfigurationHolder;
 class ChatStyleManager;
 class Message;
 class ProtocolTimelineService;
@@ -43,7 +48,13 @@ class KADUAPI ChatViewModel : public QObject
 
     Q_PROPERTY(ChatTimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
-    Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
+    Q_PROPERTY(QUrl themeSource READ themeSource NOTIFY themeSourceChanged)
+    Q_PROPERTY(QString themeColorScheme READ themeColorScheme NOTIFY themeSourceChanged)
+    Q_PROPERTY(QVariantMap customColors READ customColors NOTIFY customColorsChanged)
+    Q_PROPERTY(bool roomInfoVisible READ roomInfoVisible NOTIFY roomDetailsChanged)
+    Q_PROPERTY(QString roomAvatarSource READ roomAvatarSource NOTIFY roomDetailsChanged)
+    Q_PROPERTY(QString roomName READ roomName NOTIFY roomDetailsChanged)
+    Q_PROPERTY(QString roomDescription READ roomDescription NOTIFY roomDetailsChanged)
     Q_PROPERTY(bool usesProtocolTimeline READ usesProtocolTimeline CONSTANT)
     Q_PROPERTY(bool loadingInitial READ loadingInitial NOTIFY timelineStateChanged)
     Q_PROPERTY(bool loadingOlder READ loadingOlder NOTIFY timelineStateChanged)
@@ -51,13 +62,20 @@ class KADUAPI ChatViewModel : public QObject
 
 public:
     explicit ChatViewModel(Chat chat, ProtocolTimelineService *timelineService = nullptr,
-                           ChatStyleManager *chatStyleManager = nullptr, QObject *parent = nullptr);
+                           ChatStyleManager *chatStyleManager = nullptr,
+                           ChatConfigurationHolder *chatConfigurationHolder = nullptr, QObject *parent = nullptr);
     virtual ~ChatViewModel();
 
     Chat chat() const;
     ChatTimelineModel *timeline() const;
     QString title() const;
-    QString theme() const;
+    QUrl themeSource() const;
+    QString themeColorScheme() const;
+    QVariantMap customColors() const;
+    bool roomInfoVisible() const;
+    QString roomAvatarSource() const;
+    QString roomName() const;
+    QString roomDescription() const;
     bool usesProtocolTimeline() const;
     bool loadingInitial() const;
     bool loadingOlder() const;
@@ -73,7 +91,9 @@ public slots:
 
 signals:
     void titleChanged();
-    void themeChanged();
+    void themeSourceChanged();
+    void customColorsChanged();
+    void roomDetailsChanged();
     void timelineStateChanged();
 
 private:
@@ -82,12 +102,19 @@ private:
     ChatTimelineModel *m_timeline = nullptr;
     LegacyMessageTimelineAdapter m_legacyAdapter;
     ChatStyleManager *m_chatStyleManager = nullptr;
+    QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
+    bool m_roomInfoVisible = false;
+    QString m_roomAvatarSource;
+    QString m_roomName;
+    QString m_roomDescription;
     bool m_open = false;
 
     ProtocolTimelineService *timelineService(ProtocolTimelineService *service) const;
+    void refreshRoomDetails();
 
 private slots:
     void chatUpdated();
     void styleChanged();
+    void customColorsChangedSlot();
     void timelineStateChangedSlot();
 };

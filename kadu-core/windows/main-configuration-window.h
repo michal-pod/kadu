@@ -18,12 +18,10 @@ class ConfigLineEdit;
 class ConfigurationUiHandlerRepository;
 class IconsManager;
 class IconThemeManager;
-class InfoPanelStyleManager;
 class KaduWindowService;
 class LanguagesManager;
 class PathsProvider;
 class PluginListWidget;
-class Preview;
 class SyntaxEditorWindow;
 
 class MainConfigurationWindow;
@@ -38,7 +36,6 @@ class KADUAPI MainConfigurationWindow : public ConfigurationWindow, CompositingA
     QPointer<ConfigurationUiHandlerRepository> m_configurationUiHandlerRepository;
     QPointer<IconsManager> m_iconsManager;
     QPointer<IconThemeManager> m_iconThemeManager;
-    QPointer<InfoPanelStyleManager> m_infoPanelStyleManager;
     QPointer<KaduWindowService> m_kaduWindowService;
     QPointer<LanguagesManager> m_languagesManager;
     QPointer<PathsProvider> m_pathsProvider;
@@ -65,7 +62,6 @@ private slots:
     setConfigurationUiHandlerRepository(ConfigurationUiHandlerRepository *configurationUiHandlerRepository);
     INJEQT_SET void setIconsManager(IconsManager *iconsManager);
     INJEQT_SET void setIconThemeManager(IconThemeManager *iconThemeManager);
-    INJEQT_SET void setInfoPanelStyleManager(InfoPanelStyleManager *infoPanelStyleManager);
     INJEQT_SET void setKaduWindowService(KaduWindowService *kaduWindowService);
     INJEQT_SET void setLanguagesManager(LanguagesManager *languagesManager);
     INJEQT_SET void setPathsProvider(PathsProvider *pathsProvider);

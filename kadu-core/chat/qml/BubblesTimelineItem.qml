@@ -1,3 +1,22 @@
+/*
+ * %kadu copyright begin%
+ * Copyright 2026 Kadu Qt6 port
+ * %kadu copyright end%
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 import QtQuick
 
 Item {
@@ -18,8 +37,41 @@ Item {
     required property bool encrypted
     required property int decryptionState
     required property string errorText
+    property string colorScheme: "System"
+    property var customColors: ({ "enabled": false })
 
     implicitHeight: content.implicitHeight
+
+    SystemPalette {
+        id: systemPalette
+        colorGroup: SystemPalette.Active
+    }
+
+    readonly property bool darkSurface: colorScheme === "Dark" ||
+                                       (colorScheme !== "Light" && systemPalette.base.r * 0.2126 +
+                                        systemPalette.base.g * 0.7152 +
+                                        systemPalette.base.b * 0.0722 < 0.5)
+    readonly property bool usesCustomColors: customColors && customColors.enabled
+    readonly property color textColor: usesCustomColors ? customColors.buddyText
+                                                         : (colorScheme === "System" ? systemPalette.text
+                                                                                     : (darkSurface ? "#f2f4f8" : "#202020"))
+    readonly property color outgoingTextColor: usesCustomColors ? customColors.myText
+                                                                 : (colorScheme === "System" ? systemPalette.highlightedText
+                                                                                             : textColor)
+    readonly property color mutedTextColor: colorScheme === "System" ? systemPalette.mid
+                                                                : (darkSurface ? "#b6c0cf" : "#5c6470")
+    readonly property color incomingAvatarColor: usesCustomColors ? customColors.buddyNick
+                                                                   : (colorScheme === "System" ? systemPalette.accent
+                                                                                               : (darkSurface ? "#4f8ecb" : "#4f8ecb"))
+    readonly property color outgoingAvatarColor: usesCustomColors ? customColors.myNick
+                                                                   : (colorScheme === "System" ? systemPalette.highlight
+                                                                                               : (darkSurface ? "#7552a0" : "#7552a0"))
+    readonly property color incomingBubbleColor: usesCustomColors ? customColors.buddyBackground
+                                                                   : (colorScheme === "System" ? systemPalette.alternateBase
+                                                                                               : (darkSurface ? "#303946" : "#e7edf4"))
+    readonly property color outgoingBubbleColor: usesCustomColors ? customColors.myBackground
+                                                                   : (colorScheme === "System" ? systemPalette.highlight
+                                                                                               : (darkSurface ? "#4b3764" : "#eadff5"))
 
     function systemEvent() { return kind >= 7 }
     function messageText() {
@@ -46,7 +98,7 @@ Item {
             visible: root.startsNewDay
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDate(root.timestamp, "dddd, d MMMM")
-            color: "#b6c0cf"
+            color: root.mutedTextColor
             font.pixelSize: 12
         }
 
@@ -56,7 +108,7 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             text: root.plainText
-            color: "#b6c0cf"
+            color: root.mutedTextColor
             font.italic: true
         }
 
@@ -71,7 +123,7 @@ Item {
                 width: 28
                 height: 28
                 radius: width / 2
-                color: root.ownEvent ? "#7552a0" : "#4f8ecb"
+                color: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
                 Text { anchors.centerIn: parent; text: root.senderDisplayName.slice(0, 1).toUpperCase(); color: "white" }
             }
 
@@ -82,7 +134,7 @@ Item {
                 Text {
                     visible: root.showSender
                     text: root.ownEvent ? qsTr("You") : root.senderDisplayName
-                    color: "#cbd5e1"
+                    color: root.mutedTextColor
                     font.bold: true
                     font.pixelSize: 12
                 }
@@ -92,7 +144,7 @@ Item {
                     width: Math.min(parent.width, message.implicitWidth + 22)
                     implicitHeight: message.implicitHeight + 14
                     radius: 8
-                    color: root.ownEvent ? "#4b3764" : "#303946"
+                    color: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
 
                     TextEdit {
                         id: message
@@ -100,7 +152,7 @@ Item {
                         anchors.margins: 10
                         text: root.redacted ? qsTr("Message removed") : root.messageText()
                         textFormat: TextEdit.RichText
-                        color: "#f2f4f8"
+                        color: root.ownEvent ? root.outgoingTextColor : root.textColor
                         wrapMode: TextEdit.Wrap
                         readOnly: true
                         selectByMouse: true
@@ -111,14 +163,14 @@ Item {
                 Text {
                     visible: root.showTimestamp
                     text: Qt.formatTime(root.timestamp, "HH:mm")
-                    color: "#aeb8c7"
+                    color: root.mutedTextColor
                     font.pixelSize: 11
                 }
 
                 Text {
                     visible: root.ownEvent && root.deliveryText().length > 0
                     text: root.deliveryText()
-                    color: root.deliveryState === 4 ? "#ff8b8b" : "#aeb8c7"
+                    color: root.deliveryState === 4 ? "#ff8b8b" : root.mutedTextColor
                     font.pixelSize: 11
                 }
             }

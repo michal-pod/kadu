@@ -180,13 +180,18 @@ add_library (libkadu SHARED ${kadu_SRCS} ${kadu_MOC_SRCS} ${kadu_SUBDIRS_SRCS})
 kadu_set_flags (libkadu)
 set_property (TARGET libkadu PROPERTY PREFIX "")
 
+find_package (Qt6 6.2 REQUIRED COMPONENTS QuickControls2)
+
 qt_add_qml_module (libkadu
 	URI Kadu.Chat
 	VERSION 1.0
 	NO_PLUGIN
+	IMPORTS QtQuick.Controls
 	QML_FILES
 		chat/qml/ChatPage.qml
+		chat/qml/BubblesTimelineStyle.qml
 		chat/qml/BubblesTimelineItem.qml
+		chat/qml/KaduClassicTimelineStyle.qml
 		chat/qml/KaduClassicTimelineItem.qml
 		widgets/qml/InfoPanel.qml
 		widgets/qml/info-panel-styles/Classic.qml
@@ -203,7 +208,7 @@ endif ()
 
 target_link_libraries (libkadu LINK_PRIVATE
 		Qt6::Core Qt6::StateMachine Qt6::Gui Qt6::Network
-		Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::Widgets Qt6::Xml
+		Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickWidgets Qt6::Widgets Qt6::Xml
 )
 if (UNIX AND NOT APPLE)
 	# X11Extras is gone in Qt6 -- absorbed into QtGui.
@@ -251,7 +256,7 @@ if (WIN32)
 
 	install (TARGETS kadu_c DESTINATION ${KADU_INSTALL_BIN_DIR})
 
-	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt-plugins\nTranslations = translations\n")
+	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt-plugins\nQml2Imports = qml\nTranslations = translations\n")
 	install (FILES "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "kadu.ico" DESTINATION "${KADU_INSTALL_BIN_DIR}")
 endif ()
 

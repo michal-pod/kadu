@@ -174,9 +174,6 @@
 		</tab>
 		<tab name="Information">
 			<group-box name="Information Panel">
-				<combo-box caption="Style" config-section="Look" config-item="InfoPanelStyle" id="infoPanelStyle"
-					tool-tip="Choose information panel style" />
-				<preview caption="Preview" id="infoPanelSyntaxPreview" height="190" />
 			</group-box>
 		</tab>
 		<tab name="Advanced">

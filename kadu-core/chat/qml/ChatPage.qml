@@ -1,4 +1,24 @@
+/*
+ * %kadu copyright begin%
+ * Copyright 2026 Kadu Qt6 port
+ * %kadu copyright end%
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 import QtQuick
+import QtQuick.Controls
 
 Item {
     id: root
@@ -6,14 +26,65 @@ Item {
     property var chatViewModel: _chatViewModel
     // A configuration preview supplies this property while the real chat keeps
     // it empty and follows the globally selected theme from ChatViewModel.
-    property string themeOverride: ""
-    readonly property string activeTheme: themeOverride.length > 0
-                                         ? themeOverride
-                                         : (chatViewModel ? chatViewModel.theme : "KaduClassic")
+    property url themeSourceOverride: ""
+    property string themeColorSchemeOverride: ""
+    readonly property url activeThemeSource: themeSourceOverride.toString().length > 0
+                                            ? themeSourceOverride
+                                            : (chatViewModel ? chatViewModel.themeSource : "")
+    readonly property string activeThemeColorScheme: themeColorSchemeOverride.length > 0
+                                                    ? themeColorSchemeOverride
+                                                    : (chatViewModel ? chatViewModel.themeColorScheme : "System")
+    readonly property var activeCustomColors: chatViewModel ? chatViewModel.customColors : ({ "enabled": false })
+    readonly property var activeTheme: themeLoader.item
     property bool initialPositioned: false
     property bool followingTail: true
+    property bool scrollBarVisible: false
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
+
+    // These values also make the fallback renderer readable when a selected
+    // external style cannot be loaded.
+    SystemPalette {
+        id: systemPalette
+        colorGroup: SystemPalette.Active
+    }
+    readonly property bool systemDarkSurface: systemPalette.base.r * 0.2126 +
+                                             systemPalette.base.g * 0.7152 +
+                                             systemPalette.base.b * 0.0722 < 0.5
+
+    function themeValue(name, fallback) {
+        return activeTheme && activeTheme[name] !== undefined ? activeTheme[name] : fallback
+    }
+
+    readonly property bool darkSurface: themeValue("darkSurface", systemDarkSurface)
+    readonly property bool usesSystemColors: activeThemeColorScheme === "System"
+    readonly property color fallbackBackgroundColor: usesSystemColors ? systemPalette.base
+                                                                  : (darkSurface ? "#20242b" : "#f7f7f7")
+    readonly property color fallbackTextColor: usesSystemColors ? systemPalette.text
+                                                            : (darkSurface ? "#f2f4f8" : "#202020")
+    readonly property color fallbackMutedTextColor: usesSystemColors ? systemPalette.mid
+                                                                 : (darkSurface ? "#aeb8c7" : "#666666")
+    readonly property color fallbackSeparatorColor: usesSystemColors ? systemPalette.mid
+                                                                 : (darkSurface ? "#6d7785" : "#858585")
+
+    function bindTimelineItem(item, delegate) {
+        item.width = Qt.binding(function() { return delegate.width })
+        item.stableId = Qt.binding(function() { return delegate.stableId })
+        item.kind = Qt.binding(function() { return delegate.kind })
+        item.timestamp = Qt.binding(function() { return delegate.timestamp })
+        item.ownEvent = Qt.binding(function() { return delegate.ownEvent })
+        item.senderDisplayName = Qt.binding(function() { return delegate.senderDisplayName })
+        item.plainText = Qt.binding(function() { return delegate.plainText })
+        item.formattedText = Qt.binding(function() { return delegate.formattedText })
+        item.showSender = Qt.binding(function() { return delegate.showSender })
+        item.showTimestamp = Qt.binding(function() { return delegate.showTimestamp })
+        item.startsNewDay = Qt.binding(function() { return delegate.startsNewDay })
+        item.deliveryState = Qt.binding(function() { return delegate.deliveryState })
+        item.redacted = Qt.binding(function() { return delegate.redacted })
+        item.encrypted = Qt.binding(function() { return delegate.encrypted })
+        item.decryptionState = Qt.binding(function() { return delegate.decryptionState })
+        item.errorText = Qt.binding(function() { return delegate.errorText })
+    }
 
     function atBottom() {
         const maximum = Math.max(timeline.originY, timeline.contentHeight - timeline.height + timeline.originY)
@@ -23,6 +94,24 @@ Item {
     function scrollToBottom() {
         timeline.positionViewAtEnd()
         followingTail = true
+    }
+
+    function scrollPage(direction) {
+        const maximum = Math.max(timeline.originY, timeline.contentHeight - timeline.height + timeline.originY)
+        const pageSize = Math.max(1, timeline.height - 24)
+        timeline.contentY = Math.max(timeline.originY, Math.min(maximum, timeline.contentY + direction * pageSize))
+        revealScrollBar()
+    }
+
+    function revealScrollBar() {
+        scrollBarVisible = true
+        scrollBarHideTimer.restart()
+    }
+
+    Timer {
+        id: scrollBarHideTimer
+        interval: 900
+        onTriggered: root.scrollBarVisible = false
     }
 
     function requestOlder() {
@@ -51,26 +140,157 @@ Item {
         olderAnchorId = ""
     }
 
+    Loader {
+        id: themeLoader
+        source: root.activeThemeSource
+
+        onLoaded: {
+            item.colorScheme = root.activeThemeColorScheme
+            if (item.customColors !== undefined)
+                item.customColors = root.activeCustomColors
+        }
+    }
+
+    onActiveThemeColorSchemeChanged: {
+        if (themeLoader.item)
+            themeLoader.item.colorScheme = activeThemeColorScheme
+    }
+
+    onActiveCustomColorsChanged: {
+        if (themeLoader.item && themeLoader.item.customColors !== undefined)
+            themeLoader.item.customColors = activeCustomColors
+    }
+
     Rectangle {
         anchors.fill: parent
-        color: root.activeTheme === "Bubbles" ? "#20242b" : "#f7f7f7"
+        color: root.themeValue("backgroundColor", root.fallbackBackgroundColor)
+    }
+
+    Rectangle {
+        id: roomHeader
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: visible ? Math.max(56, roomHeaderContent.implicitHeight + 16) : 0
+        visible: root.chatViewModel && root.chatViewModel.roomInfoVisible
+        color: root.themeValue("roomHeaderBackgroundColor", root.darkSurface ? "#2d323a" : "#f4f6f8")
+        border.width: 1
+        border.color: root.themeValue("separatorColor", root.fallbackSeparatorColor)
+        clip: true
+
+        Row {
+            id: roomHeaderContent
+            x: 8
+            y: 8
+            width: parent.width - 16
+            spacing: 10
+
+            Item {
+                id: roomAvatar
+                width: 40
+                height: width
+                implicitHeight: height
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: root.darkSurface ? "#4b86c5" : "#5a8bbd"
+                    visible: !roomAvatarImage.visible
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.chatViewModel && root.chatViewModel.roomName.length > 0
+                          ? root.chatViewModel.roomName.slice(0, 1).toUpperCase()
+                          : "#"
+                    color: "#ffffff"
+                    font.bold: true
+                    font.pixelSize: 19
+                    visible: !roomAvatarImage.visible
+                }
+
+                Image {
+                    id: roomAvatarImage
+                    anchors.fill: parent
+                    source: root.chatViewModel ? root.chatViewModel.roomAvatarSource : ""
+                    fillMode: Image.PreserveAspectCrop
+                    visible: status === Image.Ready
+                }
+            }
+
+            Column {
+                width: parent.width - roomAvatar.width - parent.spacing
+                spacing: 2
+
+                Text {
+                    width: parent.width
+                    text: root.chatViewModel ? root.chatViewModel.roomName : ""
+                    color: root.themeValue("textColor", root.fallbackTextColor)
+                    elide: Text.ElideRight
+                    font.bold: true
+                    font.pixelSize: 14
+                }
+
+                Text {
+                    visible: text.length > 0
+                    width: parent.width
+                    text: root.chatViewModel ? root.chatViewModel.roomDescription : ""
+                    color: root.themeValue("textColor", root.fallbackTextColor)
+                    opacity: 0.70
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    font.pixelSize: 12
+                }
+            }
+        }
     }
 
     ListView {
         id: timeline
-        anchors.fill: parent
-        anchors.margins: root.activeTheme === "Bubbles" ? 12 : 16
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: roomHeader.bottom
+        anchors.bottom: parent.bottom
+        anchors.margins: root.themeValue("timelineMargin", 16)
         clip: true
-        spacing: 4
+        spacing: root.themeValue("timelineSpacing", 4)
         model: root.chatViewModel ? root.chatViewModel.timeline : null
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
+        focus: true
+
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_PageUp) {
+                root.scrollPage(-1)
+                event.accepted = true
+            } else if (event.key === Qt.Key_PageDown) {
+                root.scrollPage(1)
+                event.accepted = true
+            }
+        }
+
+        ScrollBar.vertical: ScrollBar {
+            id: verticalScrollBar
+            policy: ScrollBar.AsNeeded
+            opacity: timeline.moving || timeline.dragging || pressed || hovered || root.scrollBarVisible
+                     ? 1.0 : 0.0
+
+            Behavior on opacity {
+                NumberAnimation { duration: 140 }
+            }
+
+            onPressedChanged: if (pressed) root.revealScrollBar()
+        }
 
         onContentYChanged: {
+            if (moving || dragging)
+                root.revealScrollBar()
             followingTail = root.atBottom()
             if (contentY <= originY + 64)
                 root.requestOlder()
         }
+        onMovementStarted: root.revealScrollBar()
+        onMovementEnded: scrollBarHideTimer.restart()
         onAtYBeginningChanged: if (atYBeginning) root.requestOlder()
 
         header: Item {
@@ -81,13 +301,13 @@ Item {
                 anchors.centerIn: parent
                 visible: root.chatViewModel && !root.chatViewModel.hasOlder && !root.chatViewModel.loadingInitial
                 spacing: 8
-                Rectangle { width: 70; height: 1; color: "#858585" }
+                Rectangle { width: 70; height: 1; color: root.themeValue("separatorColor", root.fallbackSeparatorColor) }
                 Text {
                     text: qsTr("Beginning of history")
-                    color: root.activeTheme === "Bubbles" ? "#b6c0cf" : "#666666"
+                    color: root.themeValue("mutedTextColor", root.fallbackMutedTextColor)
                     font.pixelSize: 12
                 }
-                Rectangle { width: 70; height: 1; color: "#858585" }
+                Rectangle { width: 70; height: 1; color: root.themeValue("separatorColor", root.fallbackSeparatorColor) }
             }
         }
 
@@ -110,56 +330,52 @@ Item {
             required property string errorText
 
             width: timeline.width
-            height: renderer.item ? renderer.item.implicitHeight : 0
+            property var rendererItem: null
 
-            Loader {
-                id: renderer
-                anchors.left: parent.left
-                anchors.right: parent.right
-                sourceComponent: root.activeTheme === "Bubbles" ? bubblesTheme : classicTheme
-            }
+            height: rendererItem ? rendererItem.implicitHeight : 0
 
-            Component {
-                id: bubblesTheme
-                BubblesTimelineItem {
-                    width: delegateRoot.width
-                    stableId: delegateRoot.stableId
-                    kind: delegateRoot.kind
-                    timestamp: delegateRoot.timestamp
-                    ownEvent: delegateRoot.ownEvent
-                    senderDisplayName: delegateRoot.senderDisplayName
-                    plainText: delegateRoot.plainText
-                    formattedText: delegateRoot.formattedText
-                    showSender: delegateRoot.showSender
-                    showTimestamp: delegateRoot.showTimestamp
-                    startsNewDay: delegateRoot.startsNewDay
-                    deliveryState: delegateRoot.deliveryState
-                    redacted: delegateRoot.redacted
-                    encrypted: delegateRoot.encrypted
-                    decryptionState: delegateRoot.decryptionState
-                    errorText: delegateRoot.errorText
+            function createRenderer() {
+                if (rendererItem) {
+                    rendererItem.destroy()
+                    rendererItem = null
                 }
+
+                const component = root.activeTheme ? root.activeTheme.timelineItem : null
+                if (!component)
+                    return
+
+                rendererItem = component.createObject(delegateRoot, {
+                    "width": delegateRoot.width,
+                    "stableId": delegateRoot.stableId,
+                    "kind": delegateRoot.kind,
+                    "timestamp": delegateRoot.timestamp,
+                    "ownEvent": delegateRoot.ownEvent,
+                    "senderDisplayName": delegateRoot.senderDisplayName,
+                    "plainText": delegateRoot.plainText,
+                    "formattedText": delegateRoot.formattedText,
+                    "showSender": delegateRoot.showSender,
+                    "showTimestamp": delegateRoot.showTimestamp,
+                    "startsNewDay": delegateRoot.startsNewDay,
+                    "deliveryState": delegateRoot.deliveryState,
+                    "redacted": delegateRoot.redacted,
+                    "encrypted": delegateRoot.encrypted,
+                    "decryptionState": delegateRoot.decryptionState,
+                    "errorText": delegateRoot.errorText
+                })
+                if (rendererItem)
+                    root.bindTimelineItem(rendererItem, delegateRoot)
             }
 
-            Component {
-                id: classicTheme
-                KaduClassicTimelineItem {
-                    width: delegateRoot.width
-                    stableId: delegateRoot.stableId
-                    kind: delegateRoot.kind
-                    timestamp: delegateRoot.timestamp
-                    ownEvent: delegateRoot.ownEvent
-                    senderDisplayName: delegateRoot.senderDisplayName
-                    plainText: delegateRoot.plainText
-                    formattedText: delegateRoot.formattedText
-                    showSender: delegateRoot.showSender
-                    showTimestamp: delegateRoot.showTimestamp
-                    startsNewDay: delegateRoot.startsNewDay
-                    deliveryState: delegateRoot.deliveryState
-                    redacted: delegateRoot.redacted
-                    encrypted: delegateRoot.encrypted
-                    decryptionState: delegateRoot.decryptionState
-                    errorText: delegateRoot.errorText
+            Component.onCompleted: createRenderer()
+            Component.onDestruction: {
+                if (rendererItem)
+                    rendererItem.destroy()
+            }
+
+            Connections {
+                target: root
+                function onActiveThemeChanged() {
+                    delegateRoot.createRenderer()
                 }
             }
         }
@@ -171,7 +387,7 @@ Item {
                 anchors.centerIn: parent
                 visible: root.chatViewModel && root.chatViewModel.loadingOlder
                 text: qsTr("Loading older messages…")
-                color: root.activeTheme === "Bubbles" ? "#b6c0cf" : "#666666"
+                color: root.themeValue("mutedTextColor", root.fallbackMutedTextColor)
             }
         }
     }
@@ -180,7 +396,7 @@ Item {
         anchors.centerIn: parent
         visible: root.chatViewModel && root.chatViewModel.loadingInitial
         text: qsTr("Loading messages…")
-        color: root.activeTheme === "Bubbles" ? "#f2f4f8" : "#202020"
+        color: root.themeValue("loadingTextColor", root.fallbackTextColor)
         z: 2
     }
 

@@ -24,6 +24,7 @@ Item {
 
     property var infoPanel: _infoPanel
     property url styleSource: infoPanel && infoPanel.styleSource ? infoPanel.styleSource : ""
+    property string colorScheme: infoPanel && infoPanel.colorScheme ? infoPanel.colorScheme : "System"
     readonly property string selectedText: styleLoader.item && styleLoader.item.selectedText
                                           ? styleLoader.item.selectedText
                                           : ""
@@ -38,6 +39,14 @@ Item {
         anchors.fill: parent
         source: root.styleSource
 
-        onLoaded: item.infoPanel = root.infoPanel
+        onLoaded: {
+            item.infoPanel = root.infoPanel
+            item.colorScheme = root.colorScheme
+        }
+    }
+
+    onColorSchemeChanged: {
+        if (styleLoader.item)
+            styleLoader.item.colorScheme = colorScheme
     }
 }

@@ -31,7 +31,6 @@
 #include <QtCore/QPair>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QFileDialog>
-#include <QtWidgets/QLabel>
 #include <QtWidgets/QStyleFactory>
 
 #include "configuration/config-file-data-manager.h"
@@ -63,7 +62,6 @@
 #include "widgets/configuration/config-path-list-edit.h"
 #include "widgets/configuration/config-preview.h"
 #include "widgets/configuration/configuration-widget.h"
-#include "widgets/info-panel-style-manager.h"
 #include "widgets/proxy-combo-box.h"
 #include "windows/kadu-window-service.h"
 #include "windows/kadu-window.h"
@@ -128,11 +126,6 @@ void MainConfigurationWindow::setIconThemeManager(IconThemeManager *iconThemeMan
     m_iconThemeManager = iconThemeManager;
 }
 
-void MainConfigurationWindow::setInfoPanelStyleManager(InfoPanelStyleManager *infoPanelStyleManager)
-{
-    m_infoPanelStyleManager = infoPanelStyleManager;
-}
-
 void MainConfigurationWindow::setKaduWindowService(KaduWindowService *kaduWindowService)
 {
     m_kaduWindowService = kaduWindowService;
@@ -189,33 +182,6 @@ void MainConfigurationWindow::init()
     connect(widget()->widgetById("startupStatus"), SIGNAL(activated(int)), this, SLOT(onChangeStartupStatus(int)));
     connect(widget()->widgetById("lookChatAdvanced"), SIGNAL(clicked()), this, SLOT(showLookChatAdvanced()));
     connect(widget()->widgetById("installIconTheme"), SIGNAL(clicked()), this, SLOT(installIconTheme()));
-
-    auto *infoPanelStylePreview = static_cast<Preview *>(widget()->widgetById("infoPanelSyntaxPreview"));
-    auto *infoPanelStyle = static_cast<ConfigComboBox *>(widget()->widgetById("infoPanelStyle"));
-    QStringList infoPanelStyleIds;
-    QStringList infoPanelStyleNames;
-    if (m_infoPanelStyleManager)
-    {
-        const auto styles = m_infoPanelStyleManager->availableStyles();
-        for (auto iterator = styles.cbegin(); iterator != styles.cend(); ++iterator)
-        {
-            infoPanelStyleIds.append(iterator.key());
-            infoPanelStyleNames.append(iterator.value().displayName);
-        }
-    }
-    infoPanelStyle->setItems(infoPanelStyleIds, infoPanelStyleNames);
-    infoPanelStyle->setCurrentItem(
-        m_infoPanelStyleManager
-            ? m_infoPanelStyleManager->normalizedStyleName(dataManager()->readEntry("Look", "InfoPanelStyle").toString())
-            : QStringLiteral("Classic"));
-    connect(infoPanelStyle, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            [this, infoPanelStylePreview, infoPanelStyle] {
-                infoPanelStylePreview->setStyleSource(
-                    m_infoPanelStyleManager ? m_infoPanelStyleManager->styleSource(infoPanelStyle->currentItemValue())
-                                            : QUrl{});
-            });
-    infoPanelStylePreview->setStyleSource(
-        m_infoPanelStyleManager ? m_infoPanelStyleManager->styleSource(infoPanelStyle->currentItemValue()) : QUrl{});
 
     widget()->widgetById("parseStatus")->setToolTip(QCoreApplication::translate("@default", SyntaxText));
 

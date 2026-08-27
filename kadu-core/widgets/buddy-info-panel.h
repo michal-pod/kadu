@@ -55,6 +55,8 @@ class BuddyInfoPanel : public QFrame, private ConfigurationAwareObject
     Q_PROPERTY(QString descriptionText READ descriptionText NOTIFY panelChanged)
     Q_PROPERTY(QString style READ style NOTIFY panelChanged)
     Q_PROPERTY(QUrl styleSource READ styleSource NOTIFY panelChanged)
+    Q_PROPERTY(QString colorScheme READ colorScheme NOTIFY panelChanged)
+    Q_PROPERTY(bool useCustomColors READ useCustomColors NOTIFY panelChanged)
     Q_PROPERTY(QString foregroundColor READ foregroundColor NOTIFY panelChanged)
     Q_PROPERTY(QString backgroundColor READ backgroundColor NOTIFY panelChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY panelChanged)
@@ -75,6 +77,8 @@ public:
     QString descriptionText() const;
     QString style() const;
     QUrl styleSource() const;
+    QString colorScheme() const;
+    bool useCustomColors() const;
     QString foregroundColor() const;
     QString backgroundColor() const;
     QString fontFamily() const;
@@ -111,6 +115,8 @@ private:
     QString m_descriptionText;
     QString m_style;
     QUrl m_styleSource;
+    QString m_colorScheme = QStringLiteral("System");
+    bool m_useCustomColors = false;
     QString m_foregroundColor;
     QString m_backgroundColor;
     QString m_fontFamily;

@@ -7,6 +7,14 @@
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -16,21 +24,21 @@
 #include <QtCore/QPointer>
 #include <injeqt/injeqt.h>
 
-class ChatStyleManager;
-class ChatTimelinePreview;
 class Configuration;
 class ConfigurationWidget;
+class InfoPanelStyleManager;
+class Preview;
 class QComboBox;
 class QCheckBox;
 class QLabel;
 
-class ChatStyleConfigurationUiHandler : public QObject, public ConfigurationUiHandler
+class InfoPanelStyleConfigurationUiHandler : public QObject, public ConfigurationUiHandler
 {
     Q_OBJECT
 
 public:
-    Q_INVOKABLE explicit ChatStyleConfigurationUiHandler(QObject *parent = nullptr);
-    ~ChatStyleConfigurationUiHandler() override;
+    Q_INVOKABLE explicit InfoPanelStyleConfigurationUiHandler(QObject *parent = nullptr);
+    ~InfoPanelStyleConfigurationUiHandler() override;
 
 protected:
     void mainConfigurationWindowCreated(MainConfigurationWindow *mainConfigurationWindow) override;
@@ -39,23 +47,22 @@ protected:
 
 private:
     QPointer<Configuration> m_configuration;
-    QPointer<ChatStyleManager> m_chatStyleManager;
-    QComboBox *m_themeListCombo = nullptr;
+    QPointer<InfoPanelStyleManager> m_infoPanelStyleManager;
+    QComboBox *m_styleCombo = nullptr;
     QComboBox *m_colorSchemeCombo = nullptr;
-    QLabel *m_themeAuthor = nullptr;
-    ChatTimelinePreview *m_themePreview = nullptr;
+    QLabel *m_styleAuthor = nullptr;
+    Preview *m_stylePreview = nullptr;
     QPointer<ConfigurationWidget> m_configurationWidget;
     QCheckBox *m_customColors = nullptr;
     QCheckBox *m_customBackground = nullptr;
-    QCheckBox *m_customTextEditColors = nullptr;
 
 private slots:
-    INJEQT_SET void setChatStyleManager(ChatStyleManager *chatStyleManager);
     INJEQT_SET void setConfiguration(Configuration *configuration);
-    void themeChanged(int index);
+    INJEQT_SET void setInfoPanelStyleManager(InfoPanelStyleManager *infoPanelStyleManager);
+    void styleChanged(int index);
     void colorSchemeChanged(int index);
 
 private:
-    void updateThemeDetails();
+    void updateStyleDetails();
     void updateCustomColorsAvailability();
 };

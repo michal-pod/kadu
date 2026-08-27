@@ -77,6 +77,7 @@
 #include "widgets/chat-widget/chat-widget-message-handler-configurator.h"
 #include "widgets/chat-widget/chat-widget-message-handler.h"
 #include "widgets/chat-widget/chat-widget-repository.h"
+#include "widgets/info-panel-style-configuration-ui-handler.h"
 #include "windows/chat-window/chat-window-manager.h"
 #include "windows/chat-window/chat-window-storage-configurator.h"
 #include "windows/chat-window/chat-window-storage.h"
@@ -260,6 +261,7 @@ void Core::createDefaultConfiguration()
     m_injector.get<Configuration>()->deprecatedApi()->addVariable(
         "Look", "InfoPanelBgColor", w.palette().base().color());
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelStyle", "Classic");
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelStyleVariant", "System");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NiceDateFormat", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoHeaderInterval", 30);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoHeaderRepeat", true);
@@ -279,6 +281,7 @@ void Core::createDefaultConfiguration()
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ShowMultilineDesc", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ShowStatusButton", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "Style", "kadu");
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ChatStyleVariant", "System");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "UserboxBackgroundDisplayStyle", "Stretched");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "UserboxTransparency", false);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "UserboxAlpha", 0);
@@ -526,6 +529,8 @@ void Core::runServices()
 
     m_injector.get<ConfigurationUiHandlerRepository>()->addConfigurationUiHandler(
         m_injector.get<ChatStyleConfigurationUiHandler>());
+    m_injector.get<ConfigurationUiHandlerRepository>()->addConfigurationUiHandler(
+        m_injector.get<InfoPanelStyleConfigurationUiHandler>());
 
     m_injector.instantiate_all_with_type_role(LISTENER);
 }
@@ -540,6 +545,8 @@ void Core::stopServices()
 {
     m_injector.get<ConfigurationUiHandlerRepository>()->removeConfigurationUiHandler(
         m_injector.get<ChatStyleConfigurationUiHandler>());
+    m_injector.get<ConfigurationUiHandlerRepository>()->removeConfigurationUiHandler(
+        m_injector.get<InfoPanelStyleConfigurationUiHandler>());
 
     auto chatWidgetRepository = m_injector.get<ChatWidgetRepository>();
     while (begin(chatWidgetRepository) != end(chatWidgetRepository))
