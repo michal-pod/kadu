@@ -51,31 +51,21 @@
 
 class AccountManager;
 class Account;
-class BuddyChatManager;
 class ChatWidget;
-class ChatWidgetRepository;
 class ClearHistoryAction;
 class Configuration;
 class HistorySaveThread;
 class HistoryWindow;
-class PluginInjectedFactory;
-class MenuInventory;
 class MessageManager;
 class ProtocolHistoryService;
-class ShowHistoryAction;
 
 class HISTORYAPI History : public QObject, ConfigurationAwareObject, CrashAwareObject
 {
     Q_OBJECT
 
     QPointer<AccountManager> m_accountManager;
-    QPointer<BuddyChatManager> m_buddyChatManager;
-    QPointer<ChatWidgetRepository> m_chatWidgetRepository;
     QPointer<ClearHistoryAction> m_clearHistoryAction;
     QPointer<Configuration> m_configuration;
-    QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
-    QPointer<MenuInventory> m_menuInventory;
-    QPointer<ShowHistoryAction> m_showHistoryAction;
 
     bool SaveChats;
     bool SaveChatsWithAnonymous;
@@ -103,8 +93,6 @@ class HISTORYAPI History : public QObject, ConfigurationAwareObject, CrashAwareO
 
     void createDefaultConfiguration();
 
-    void createActionDescriptions();
-    void deleteActionDescriptions();
     virtual void configurationUpdated();
 
     friend class HistorySaveThread;
@@ -117,14 +105,9 @@ class HISTORYAPI History : public QObject, ConfigurationAwareObject, CrashAwareO
 
 private slots:
     INJEQT_SET void setAccountManager(AccountManager *accountManager);
-    INJEQT_SET void setBuddyChatManager(BuddyChatManager *buddyChatManager);
-    INJEQT_SET void setChatWidgetRepository(ChatWidgetRepository *chatWidgetRepository);
     INJEQT_SET void setClearHistoryAction(ClearHistoryAction *clearHistoryAction);
     INJEQT_SET void setConfiguration(Configuration *configuration);
-    INJEQT_SET void setPluginInjectedFactory(PluginInjectedFactory *pluginInjectedFactory);
-    INJEQT_SET void setMenuInventory(MenuInventory *menuInventory);
     INJEQT_SET void setMessageManager(MessageManager *messageManager);
-    INJEQT_SET void setShowHistoryAction(ShowHistoryAction *showHistoryAction);
     INJEQT_INIT void init();
     INJEQT_DONE void done();
 
@@ -134,7 +117,6 @@ private slots:
     void enqueueMessage(const Message &);
     void contactStatusChanged(Contact contact, Status oldStatus);
 
-    void chatWidgetAdded(ChatWidget *chatWidget);
 
 protected:
     virtual void crash();

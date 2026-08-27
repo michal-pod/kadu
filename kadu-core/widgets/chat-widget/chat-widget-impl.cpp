@@ -28,7 +28,9 @@
 #include "actions/chat-widget/underline-action.h"
 #include "chat/chat-state-service-repository.h"
 #include "chat/chat-details-room.h"
+#include "chat/timeline/chat-view-model.h"
 #include "chat/type/chat-type-manager.h"
+#include "chat-style/chat-style-manager.h"
 #include "configuration/deprecated-configuration-api.h"
 #include "contacts/contact-set.h"
 #include "contacts/model/chat-adapter.h"
@@ -36,7 +38,6 @@
 #include "core/injected-factory.h"
 #include "gui/configuration/chat-configuration-holder.h"
 #include "gui/hot-key.h"
-#include "gui/web-view-highlighter.h"
 #include "html/html-conversion.h"
 #include "html/html-string.h"
 #include "icons/icons-manager.h"
@@ -56,10 +57,7 @@
 #include "widgets/chat-widget/chat-widget-title.h"
 #include "widgets/custom-input.h"
 #include "widgets/filtered-tree-view.h"
-#include "widgets/search-bar.h"
 #include "widgets/talkable-tree-view.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-factory.h"
-#include "widgets/webkit-messages-view/webkit-messages-view.h"
 #include "windows/kadu-window-service.h"
 #include "windows/kadu-window.h"
 #include "windows/message-dialog.h"
@@ -67,12 +65,14 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QMimeData>
 #include <QtGui/QKeyEvent>
+#include <QtQml/QQmlContext>
+#include <QtQuickWidgets/QQuickWidget>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMessageBox>
-#include <QtGui/QShortcut>
 #include <QtWidgets/QSplitter>
+#include <QtWidgets/QToolBar>
 #include <QtWidgets/QVBoxLayout>
 
 ChatWidgetImpl::ChatWidgetImpl(Chat chat, QWidget *parent)
@@ -85,6 +85,8 @@ ChatWidgetImpl::ChatWidgetImpl(Chat chat, QWidget *parent)
 ChatWidgetImpl::~ChatWidgetImpl()
 {
     ComposingTimer.stop();
+    if (m_chatViewModel)
+        m_chatViewModel->close();
 
     kaduStoreGeometry();
 
@@ -117,6 +119,11 @@ void ChatWidgetImpl::setChatEditBoxSizeManager(ChatEditBoxSizeManager *chatEditB
 void ChatWidgetImpl::setChatStateServiceRepository(ChatStateServiceRepository *chatStateServiceRepository)
 {
     m_chatStateServiceRepository = chatStateServiceRepository;
+}
+
+void ChatWidgetImpl::setChatStyleManager(ChatStyleManager *chatStyleManager)
+{
+    m_chatStyleManager = chatStyleManager;
 }
 
 void ChatWidgetImpl::setChatTypeManager(ChatTypeManager *chatTypeManager)
@@ -169,11 +176,6 @@ void ChatWidgetImpl::setUnderlineAction(UnderlineAction *underlineAction)
     m_underlineAction = underlineAction;
 }
 
-void ChatWidgetImpl::setWebkitMessagesViewFactory(WebkitMessagesViewFactory *webkitMessagesViewFactory)
-{
-    m_webkitMessagesViewFactory = webkitMessagesViewFactory;
-}
-
 void ChatWidgetImpl::init()
 {
     Title = m_injectedFactory->makeInjected<ChatWidgetTitle>(this);
@@ -182,6 +184,7 @@ void ChatWidgetImpl::init()
 
     createGui();
     configurationUpdated();
+    m_chatViewModel->open();
 
     ComposingTimer.setInterval(2 * 1000);
     connect(&ComposingTimer, SIGNAL(timeout()), this, SLOT(checkComposing()));
@@ -231,38 +234,17 @@ void ChatWidgetImpl::createGui()
     frameLayout->setContentsMargins(0, 0, 0, 0);
     frameLayout->setSpacing(0);
 
-    MessagesView = m_webkitMessagesViewFactory->createWebkitMessagesView(CurrentChat, true, frame);
-
-    frameLayout->addWidget(MessagesView.get());
-
-    WebViewHighlighter *highligher = new WebViewHighlighter(MessagesView.get());
-
-    SearchBar *messagesSearchBar = new SearchBar(frame);
-    frameLayout->addWidget(messagesSearchBar);
-
-    connect(messagesSearchBar, SIGNAL(searchPrevious(QString)), highligher, SLOT(selectPrevious(QString)));
-    connect(messagesSearchBar, SIGNAL(searchNext(QString)), highligher, SLOT(selectNext(QString)));
-    connect(messagesSearchBar, SIGNAL(clearSearch()), highligher, SLOT(clearSelect()));
-    connect(highligher, SIGNAL(somethingFound(bool)), messagesSearchBar, SLOT(somethingFound(bool)));
-
-    QShortcut *shortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_PageUp), this);
-    connect(shortcut, SIGNAL(activated()), MessagesView.get(), SLOT(pageUp()));
-
-    shortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_PageDown), this);
-    connect(shortcut, SIGNAL(activated()), MessagesView.get(), SLOT(pageDown()));
-
-    shortcut = new QShortcut(QKeySequence(Qt::ControlModifier | Qt::Key_PageUp), this);
-    connect(shortcut, SIGNAL(activated()), MessagesView.get(), SLOT(pageUp()));
-
-    shortcut = new QShortcut(QKeySequence(Qt::ControlModifier | Qt::Key_PageDown), this);
-    connect(shortcut, SIGNAL(activated()), MessagesView.get(), SLOT(pageDown()));
+    m_chatViewModel = new ChatViewModel(CurrentChat, nullptr, m_chatStyleManager, frame);
+    TimelineView = new QQuickWidget(frame);
+    TimelineView->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    TimelineView->rootContext()->setContextProperty(QStringLiteral("_chatViewModel"), m_chatViewModel);
+    TimelineView->setSource(QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/ChatPage.qml")});
+    frameLayout->addWidget(TimelineView);
     HorizontalSplitter->addWidget(frame);
 
     InputBox = m_injectedFactory->makeInjected<ChatEditBox>(CurrentChat, this);
     InputBox->setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
     InputBox->setMinimumHeight(10);
-
-    messagesSearchBar->setSearchWidget(InputBox->inputBox());
 
     auto *chatType = m_chatTypeManager->chatType(CurrentChat.type());
     if (chatType && chatType->name() != "Contact")
@@ -401,13 +383,6 @@ void ChatWidgetImpl::updateRoomDetails()
 
 bool ChatWidgetImpl::keyPressEventHandled(QKeyEvent *e)
 {
-    if (e->matches(QKeySequence::Copy) && !MessagesView->selectedText().isEmpty())
-    {
-        // Do not use triggerPageAction(), see bug #2345.
-        MessagesView->page()->action(QWebEnginePage::Copy)->trigger();
-        return true;
-    }
-
     if (HotKey::shortCut(m_configuration, e, "ShortCuts", "chat_clear"))
     {
         clearChatWindow();
@@ -466,15 +441,16 @@ void ChatWidgetImpl::addMessages(const SortedMessages &messages)
         return message.type() == MessageTypeReceived || message.type() == MessageTypeSystem;
     });
 
-    MessagesView->setForcePruneDisabled(true);
-    MessagesView->add(messages);
+    m_legacyMessages.merge(messages);
+    m_chatViewModel->addLegacyMessages(messages);
     if (unread)
         LastReceivedMessageTime = QDateTime::currentDateTime();
 }
 
 void ChatWidgetImpl::addMessage(const Message &message)
 {
-    MessagesView->add(message);
+    m_legacyMessages.add(message);
+    m_chatViewModel->addLegacyMessage(message);
 
     if (message.type() != MessageTypeReceived && message.type() != MessageTypeSystem)
         return;
@@ -485,7 +461,7 @@ void ChatWidgetImpl::addMessage(const Message &message)
 
 SortedMessages ChatWidgetImpl::messages() const
 {
-    return MessagesView->messages();
+    return m_legacyMessages;
 }
 
 void ChatWidgetImpl::appendSystemMessage(NormalizedHtmlString htmlContent)
@@ -497,7 +473,8 @@ void ChatWidgetImpl::appendSystemMessage(NormalizedHtmlString htmlContent)
     message.setReceiveDate(QDateTime::currentDateTime());
     message.setSendDate(QDateTime::currentDateTime());
 
-    MessagesView->add(message);
+    m_legacyMessages.add(message);
+    m_chatViewModel->addLegacyMessage(message);
 }
 
 void ChatWidgetImpl::resetEditBox()
@@ -528,8 +505,8 @@ void ChatWidgetImpl::clearChatWindow()
 
     if (!m_configuration->deprecatedApi()->readBoolEntry("Chat", "ConfirmChatClear") || dialog->ask())
     {
-        MessagesView->clearMessages();
-        MessagesView->setForcePruneDisabled(false);
+        m_legacyMessages.clear();
+        m_chatViewModel->timeline()->clear();
         activateWindow();
     }
 }
@@ -584,12 +561,12 @@ TalkableProxyModel *ChatWidgetImpl::talkableProxyModel() const
 
 int ChatWidgetImpl::countMessages() const
 {
-    return MessagesView ? MessagesView->countMessages() : 0;
+    return static_cast<int>(m_chatViewModel ? m_chatViewModel->timeline()->rowCount() : 0);
 }
 
 bool ChatWidgetImpl::decodeLocalFiles(QDropEvent *event, QStringList &files)
 {
-    if (!event->mimeData()->hasUrls() || event->source() == MessagesView.get())
+    if (!event->mimeData()->hasUrls())
         return false;
 
     QList<QUrl> urls = event->mimeData()->urls();
@@ -796,9 +773,6 @@ void ChatWidgetImpl::contactActivityChanged(const Contact &contact, ChatState st
     CurrentContactActivity = state;
     emit chatStateChanged(CurrentContactActivity);
 
-    if (m_chatConfigurationHolder->contactStateChats())
-        MessagesView->contactActivityChanged(contact, state);
-
     if (CurrentContactActivity == ChatState::Gone)
     {
         auto msg = QString{"[ " + tr("%1 ended the conversation").arg(contact.ownerBuddy().display()) + " ]"};
@@ -810,18 +784,13 @@ void ChatWidgetImpl::contactActivityChanged(const Contact &contact, ChatState st
         message.setSendDate(QDateTime::currentDateTime());
         message.setReceiveDate(QDateTime::currentDateTime());
 
-        MessagesView->add(message);
+        addMessage(message);
     }
 }
 
 void ChatWidgetImpl::keyPressedSlot(QKeyEvent *e, CustomInput *input, bool &handled)
 {
     Q_UNUSED(input)
-
-    if (e->key() == Qt::Key_Home && e->modifiers() == Qt::AltModifier)
-        MessagesView->scrollToTop();
-    else if (e->key() == Qt::Key_End && e->modifiers() == Qt::AltModifier)
-        MessagesView->forceScrollToBottom();
 
     if (handled)
         return;

@@ -33,7 +33,6 @@ class Message;
 class NormalizedHtmlString;
 class SortedMessages;
 class TalkableProxyModel;
-class WebkitMessagesView;
 
 enum class ChatState;
 
@@ -52,6 +51,7 @@ public:
     virtual void addMessage(const Message &message) = 0;
     virtual void appendSystemMessage(NormalizedHtmlString content) = 0;
     virtual SortedMessages messages() const = 0;
+    virtual int countMessages() const = 0;
 
     virtual const QDateTime &lastReceivedMessageTime() const = 0;
 
@@ -62,7 +62,6 @@ public:
     virtual ChatWidgetTitle *title() const = 0;
     virtual CustomInput *edit() const = 0;
     virtual TalkableProxyModel *talkableProxyModel() const = 0;
-    virtual WebkitMessagesView *chatMessagesView() const = 0;
 
 public slots:
     virtual void sendMessage() = 0;

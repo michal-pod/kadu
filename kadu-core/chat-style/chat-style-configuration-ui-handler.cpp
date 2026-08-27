@@ -1,53 +1,31 @@
 /*
  * %kadu copyright begin%
- * Copyright 2015 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "chat-style-configuration-ui-handler.h"
 #include "chat-style-configuration-ui-handler.moc"
 
 #include "chat-style/chat-style-manager.h"
-#include "chat-style/engine/chat-style-engine.h"
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
-#include "core/injected-factory.h"
-#include "misc/memory.h"
-#include "widgets/chat-style-preview.h"
+#include "widgets/chat-timeline-preview.h"
 #include "widgets/configuration/config-group-box.h"
 #include "widgets/configuration/configuration-widget.h"
 #include "windows/main-configuration-window.h"
 
-#include <algorithm>
 #include <QtCore/QCoreApplication>
-#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QLabel>
-#include <QtWidgets/QSizePolicy>
 
-ChatStyleConfigurationUiHandler::ChatStyleConfigurationUiHandler(QObject *parent)
-        : QObject{parent}, m_compositingEnabled{false}, m_syntaxListCombo{nullptr}, m_variantListCombo{nullptr},
-          m_turnOnTransparency{nullptr}, m_enginePreview{nullptr}
-{
-    triggerCompositingStateChanged();
-}
-
-ChatStyleConfigurationUiHandler::~ChatStyleConfigurationUiHandler()
-{
-}
+ChatStyleConfigurationUiHandler::ChatStyleConfigurationUiHandler(QObject *parent) : QObject{parent} {}
+ChatStyleConfigurationUiHandler::~ChatStyleConfigurationUiHandler() = default;
 
 void ChatStyleConfigurationUiHandler::setChatStyleManager(ChatStyleManager *chatStyleManager)
 {
@@ -59,134 +37,53 @@ void ChatStyleConfigurationUiHandler::setConfiguration(Configuration *configurat
     m_configuration = configuration;
 }
 
-void ChatStyleConfigurationUiHandler::setInjectedFactory(InjectedFactory *injectedFactory)
-{
-    m_injectedFactory = injectedFactory;
-}
-
 void ChatStyleConfigurationUiHandler::mainConfigurationWindowCreated(MainConfigurationWindow *mainConfigurationWindow)
 {
-    m_chatStyleManager->loadStyles();   // reload styles to allow style testing without application restart
+    if (!m_chatStyleManager)
+        return;
 
-    auto groupBox = mainConfigurationWindow->widget()->configGroupBox("Look", "Chat", "Style");
+    auto *groupBox = mainConfigurationWindow->widget()->configGroupBox("Look", "Chat", "Style");
+    auto *label = new QLabel(QCoreApplication::translate("@default", "Chat theme") + ':', groupBox->widget());
+    m_themeListCombo = new QComboBox(groupBox->widget());
+    m_themeListCombo->setToolTip(QCoreApplication::translate("@default", "Choose the global QML theme of chat windows"));
 
-    // editor
-    auto editorLabel = new QLabel(QCoreApplication::translate("@default", "Style") + ':');
-    editorLabel->setToolTip(QCoreApplication::translate("@default", "Choose style of chat window"));
+    const auto styles = m_chatStyleManager->availableStyles();
+    for (auto iterator = styles.cbegin(); iterator != styles.cend(); ++iterator)
+        m_themeListCombo->addItem(iterator.value().displayName, iterator.key());
 
-    // Put in the row itself, as the list of variants below it is. It used to sit inside a widget of
-    // its own holding nothing else, and that widget's layout kept six pixels to either side -- so
-    // the two lists, both the width of their row, still began and ended six pixels apart. Measured
-    // under Breeze at nine hundred pixels of window: one hundred to eight hundred and eighty-four
-    // against ninety-four to eight hundred and ninety.
-    m_syntaxListCombo = new QComboBox(groupBox->widget());
-    m_syntaxListCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    m_syntaxListCombo->setToolTip(QCoreApplication::translate("@default", "Choose style of chat window"));
-    auto styleNames = m_chatStyleManager->availableStyles().keys();
-    std::sort(styleNames.begin(), styleNames.end(), [](const QString &s1, const QString &s2) {
-        return s1.toLower() < s2.toLower();
-    });
-    m_syntaxListCombo->addItems(styleNames);
-    m_syntaxListCombo->setCurrentIndex(m_syntaxListCombo->findText(m_chatStyleManager->currentChatStyle().name()));
-    connect(m_syntaxListCombo, SIGNAL(textActivated(const QString &)), this, SLOT(styleChangedSlot(const QString &)));
+    m_themeListCombo->setCurrentIndex(m_themeListCombo->findData(m_chatStyleManager->currentChatStyle().name()));
+    if (m_themeListCombo->currentIndex() < 0)
+        m_themeListCombo->setCurrentIndex(0);
 
-    // preview
-    m_enginePreview = m_injectedFactory->makeInjected<ChatStylePreview>();
+    m_themePreview = new ChatTimelinePreview(groupBox->widget());
+    connect(m_themeListCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &ChatStyleConfigurationUiHandler::themeChanged);
 
-    // variants
-    m_variantListCombo = new QComboBox();
-    m_variantListCombo->addItems(
-        m_chatStyleManager->currentEngine()->styleVariants(m_chatStyleManager->currentChatStyle().name()));
-    auto defaultVariant =
-        m_chatStyleManager->currentEngine()->defaultVariant(m_chatStyleManager->currentChatStyle().name());
-    if (!defaultVariant.isEmpty() && m_variantListCombo->findText(defaultVariant) == -1)
-        m_variantListCombo->insertItem(0, defaultVariant);
-
-    auto newVariant = m_chatStyleManager->currentChatStyle().variant().isEmpty()
-                          ? defaultVariant
-                          : m_chatStyleManager->currentChatStyle().variant();
-    variantChangedSlot(newVariant);
-    m_variantListCombo->setCurrentIndex(m_variantListCombo->findText(newVariant));
-    m_variantListCombo->setEnabled(m_chatStyleManager->currentEngine()->supportVariants());
-
-    // The width of the row, as the list of styles above it has. A form layout asks the widget style
-    // which of its fields may grow, and Breeze answers only those that ask to: the list of styles
-    // does, through the widget it sits in, and this one did not -- so it stayed at whatever width
-    // its longest entry happened to want when it was first shown, and a variant named at any length
-    // was cut off. Measured at six hundred pixels of window: a hundred and seventy-one before,
-    // four hundred and fifty-six after, against the four hundred and forty-four above it.
-    m_variantListCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    connect(m_variantListCombo, SIGNAL(textActivated(const QString &)), this, SLOT(variantChangedSlot(const QString &)));
-    //
-    groupBox->addWidgets(editorLabel, m_syntaxListCombo);
-    groupBox->addWidgets(
-        new QLabel(QCoreApplication::translate("@default", "Style variant") + ':'), m_variantListCombo);
-    groupBox->addWidgets(
-        new QLabel(QCoreApplication::translate("@default", "Preview") + ':'), m_enginePreview,
-        Qt::AlignRight | Qt::AlignTop);
-
-    m_turnOnTransparency = static_cast<QCheckBox *>(mainConfigurationWindow->widget()->widgetById("useTransparency"));
-    m_turnOnTransparency->setVisible(m_compositingEnabled);
+    groupBox->addWidgets(label, m_themeListCombo);
+    groupBox->addWidgets(new QLabel(QCoreApplication::translate("@default", "Preview") + ':', groupBox->widget()),
+                         m_themePreview, Qt::AlignRight | Qt::AlignTop);
+    themeChanged(m_themeListCombo->currentIndex());
 }
 
 void ChatStyleConfigurationUiHandler::mainConfigurationWindowDestroyed()
 {
-    m_syntaxListCombo = 0;
-    m_variantListCombo = 0;
-    m_turnOnTransparency = 0;
+    m_themeListCombo = nullptr;
+    m_themePreview = nullptr;
 }
 
 void ChatStyleConfigurationUiHandler::mainConfigurationWindowApplied()
 {
-    m_configuration->deprecatedApi()->writeEntry("Look", "Style", m_syntaxListCombo->currentText());
-    m_configuration->deprecatedApi()->writeEntry("Look", "ChatStyleVariant", m_variantListCombo->currentText());
-}
-
-void ChatStyleConfigurationUiHandler::compositingEnabled()
-{
-    m_compositingEnabled = true;
-    if (m_turnOnTransparency)
-        m_turnOnTransparency->setEnabled(true);
-}
-
-void ChatStyleConfigurationUiHandler::compositingDisabled()
-{
-    m_compositingEnabled = false;
-    if (m_turnOnTransparency)
-        m_turnOnTransparency->setEnabled(false);
-}
-
-void ChatStyleConfigurationUiHandler::variantChangedSlot(const QString &variantName)
-{
-    auto styleName = m_syntaxListCombo->currentText();
-    if (!m_chatStyleManager->isChatStyleValid(styleName))
+    if (!m_configuration || !m_themeListCombo)
         return;
 
-    m_enginePreview->setRendererFactory(
-        m_chatStyleManager->availableStyles().value(styleName).engine->createRendererFactory({styleName, variantName}));
+    m_configuration->deprecatedApi()->writeEntry("Look", "Style", m_themeListCombo->currentData().toString());
+    m_configuration->deprecatedApi()->removeVariable("Look", "ChatStyleVariant");
 }
 
-void ChatStyleConfigurationUiHandler::styleChangedSlot(const QString &styleName)
+void ChatStyleConfigurationUiHandler::themeChanged(int index)
 {
-    if (!m_chatStyleManager->availableStyles().contains(styleName))
-        return;
+    Q_UNUSED(index)
 
-    auto engine = m_chatStyleManager->availableStyles().value(styleName).engine;
-    m_variantListCombo->clear();
-    m_variantListCombo->addItems(engine->styleVariants(styleName));
-
-    QString currentVariant;
-    if (m_chatStyleManager->availableStyles().contains(m_syntaxListCombo->currentText()))
-        if (m_chatStyleManager->availableStyles().value(m_syntaxListCombo->currentText()).engine)
-            currentVariant = m_chatStyleManager->availableStyles()
-                                 .value(m_syntaxListCombo->currentText())
-                                 .engine->defaultVariant(styleName);
-    if (!currentVariant.isEmpty() && m_variantListCombo->findText(currentVariant) == -1)
-        m_variantListCombo->insertItem(0, currentVariant);
-
-    m_variantListCombo->setCurrentIndex(m_variantListCombo->findText(currentVariant));
-    m_variantListCombo->setEnabled(engine->supportVariants());
-
-    m_enginePreview->setRendererFactory(engine->createRendererFactory({styleName, m_variantListCombo->currentText()}));
-    m_turnOnTransparency->setChecked(engine->styleUsesTransparencyByDefault(styleName));
+    if (m_themePreview && m_themeListCombo)
+        m_themePreview->setTheme(m_themeListCombo->currentData().toString());
 }

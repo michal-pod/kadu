@@ -26,9 +26,6 @@
 #include "widgets/chat-widget/actions/chat-widget-actions.h"
 #include "widgets/custom-input-menu-manager.h"
 #include "widgets/tool-tip-manager.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-display-factory.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-factory.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-handler-factory.h"
 #include "windows/buddy-data-window-repository.h"
 #include "windows/chat-data-window-repository.h"
 #include "windows/kadu-window-actions.h"
@@ -59,9 +56,6 @@ GuiModule::GuiModule()
     add_type<OpenChatWithService>();
     add_type<ProxyEditWindowService>();
     add_type<ToolTipManager>();
-    add_type<WebkitMessagesViewDisplayFactory>();
-    add_type<WebkitMessagesViewFactory>();
-    add_type<WebkitMessagesViewHandlerFactory>();
     add_type<WindowManager>();
     add_type<YourAccountsWindowService>();
 }

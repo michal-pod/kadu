@@ -181,6 +181,16 @@ add_library (libkadu SHARED ${kadu_SRCS} ${kadu_MOC_SRCS} ${kadu_SUBDIRS_SRCS})
 kadu_set_flags (libkadu)
 set_property (TARGET libkadu PROPERTY PREFIX "")
 
+qt_add_qml_module (libkadu
+	URI Kadu.Chat
+	VERSION 1.0
+	NO_PLUGIN
+	QML_FILES
+		chat/qml/ChatPage.qml
+		chat/qml/BubblesTimelineItem.qml
+		chat/qml/KaduClassicTimelineItem.qml
+)
+
 if (FAST_LINKING)
 	if (APPLE)
 		target_link_libraries (libkadu LINK_PRIVATE -Wl,-all_load ${kadu_SUBDIRS})
@@ -259,8 +269,6 @@ if (UNIX AND NOT APPLE)
 	install (FILES hi256-app-kadu.png DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps" RENAME kadu.png)
 endif ()
 
-install (FILES "chat-style/engine/chat-scripts.js" DESTINATION "${KADU_INSTALL_DATA_DIR}/scripts")
-
 # install api headers
 # how to get list: find . -name '*.h' -exec dirname {} +|sort|uniq|sed -e 's|\./||' -e 's|^|\t|'
 # TODO: consider using file (GLOB_RECURSE) command here
@@ -282,9 +290,6 @@ kadu_api_directories (kadu-core
 	chat
 	chat/model
 	chat/timeline
-	chat-style/engine/chat-engine-adium
-	chat-style/engine/chat-engine-kadu
-	chat-style/engine
 	chat/type
 	compression
 	configuration
@@ -349,7 +354,6 @@ kadu_api_directories (kadu-core
 	widgets/dialog
 	widgets/chat-widget
 	widgets/group-tab-bar
-	widgets/webkit-messages-view
 	windows
 	windows/open-chat-with
 )

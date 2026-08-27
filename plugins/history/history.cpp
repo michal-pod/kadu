@@ -32,35 +32,24 @@
 #include "accounts/account.h"
 #include "buddies/buddy-manager.h"
 #include "buddies/buddy.h"
-#include "chat/buddy-chat-manager.h"
 #include "chat/chat-details-buddy.h"
 #include "chat/chat-manager.h"
 #include "chat/chat.h"
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
 #include "contacts/contact-set.h"
-#include "menu/menu-inventory.h"
 #include "message/message-manager.h"
 #include "message/message.h"
 #include "message/sorted-messages.h"
-#include "plugin/plugin-injected-factory.h"
 #include "protocols/services/chat-service.h"
 #include "protocols/services/protocol-history-service.h"
-#include "widgets/chat-edit-box.h"
-#include "widgets/chat-widget/chat-widget-repository.h"
-#include "widgets/chat-widget/chat-widget.h"
-#include "widgets/webkit-messages-view/webkit-messages-view.h"
 #include "widgets/configuration/config-group-box.h"
 #include "widgets/configuration/configuration-widget.h"
 #include "windows/message-dialog.h"
 
 #include "actions/clear-history-action.h"
-#include "actions/show-history-action.h"
-#include "gui/windows/history-window.h"
-#include "history-messages-prepender.h"
 #include "history-query.h"
 #include "history-save-thread.h"
-#include "protocol-history-page-loader.h"
 
 #include "history.h"
 #include "history.moc"
@@ -78,16 +67,6 @@ void History::setAccountManager(AccountManager *accountManager)
     m_accountManager = accountManager;
 }
 
-void History::setBuddyChatManager(BuddyChatManager *buddyChatManager)
-{
-    m_buddyChatManager = buddyChatManager;
-}
-
-void History::setChatWidgetRepository(ChatWidgetRepository *chatWidgetRepository)
-{
-    m_chatWidgetRepository = chatWidgetRepository;
-}
-
 void History::setClearHistoryAction(ClearHistoryAction *clearHistoryAction)
 {
     m_clearHistoryAction = clearHistoryAction;
@@ -98,33 +77,16 @@ void History::setConfiguration(Configuration *configuration)
     m_configuration = configuration;
 }
 
-void History::setPluginInjectedFactory(PluginInjectedFactory *pluginInjectedFactory)
-{
-    m_pluginInjectedFactory = pluginInjectedFactory;
-}
-
-void History::setMenuInventory(MenuInventory *menuInventory)
-{
-    m_menuInventory = menuInventory;
-}
-
 void History::setMessageManager(MessageManager *messageManager)
 {
     connect(messageManager, SIGNAL(messageReceived(Message)), this, SLOT(enqueueMessage(Message)));
     connect(messageManager, SIGNAL(messageSent(Message)), this, SLOT(enqueueMessage(Message)));
 }
 
-void History::setShowHistoryAction(ShowHistoryAction *showHistoryAction)
-{
-    m_showHistoryAction = showHistoryAction;
-}
-
 void History::init()
 {
-    createActionDescriptions();
     connect(m_accountManager, SIGNAL(accountAdded(Account)), this, SLOT(accountAdded(Account)));
     connect(m_accountManager, SIGNAL(accountRemoved(Account)), this, SLOT(accountRemoved(Account)));
-    connect(m_chatWidgetRepository, SIGNAL(chatWidgetAdded(ChatWidget *)), this, SLOT(chatWidgetAdded(ChatWidget *)));
 
     createDefaultConfiguration();
     configurationUpdated();
@@ -133,58 +95,6 @@ void History::init()
 void History::done()
 {
     stopSaveThread();
-    deleteActionDescriptions();
-}
-
-void History::createActionDescriptions()
-{
-    m_menuInventory->menu("buddy-list")->addAction(m_showHistoryAction, KaduMenu::SectionView, 100)->update();
-    m_menuInventory->menu("main")->addAction(m_showHistoryAction, KaduMenu::SectionRecentChats)->update();
-}
-
-void History::deleteActionDescriptions()
-{
-    m_menuInventory->menu("buddy-list")->removeAction(m_showHistoryAction)->update();
-    m_menuInventory->menu("main")->removeAction(m_showHistoryAction)->update();
-}
-
-void History::chatWidgetAdded(ChatWidget *chatWidget)
-{
-    if (!chatWidget)
-        return;
-
-    auto chatMessagesView = chatWidget->chatMessagesView();
-    if (!chatMessagesView)
-        return;
-
-    auto chat = m_buddyChatManager->buddyChat(chatWidget->chat());
-
-    HistoryQuery query;
-    query.setTalkable(chat ? chat : chatWidget->chat());
-    query.setFromDateTime(QDateTime::currentDateTime().addSecs(ChatHistoryQuotationTime * 3600));
-    query.setLimit(m_configuration->deprecatedApi()->readNumEntry("History", "ChatHistoryCitation", 10));
-
-    const auto protocolChat = protocolHistoryChat(chatWidget->chat());
-    if (auto *service = historyService(protocolChat))
-    {
-        if (chatMessagesView->findChild<ProtocolHistoryPageLoader *>())
-            return;
-
-        ProtocolHistoryRequest request;
-        request.setChat(protocolChat);
-        request.setLimit(query.limit());
-        new ProtocolHistoryPageLoader(service, request, chatMessagesView, chatMessagesView);
-        return;
-    }
-
-    auto *protocol = protocolChat ? protocolChat.chatAccount().protocolHandler() : nullptr;
-    if (protocol && !protocol->isLocalHistorySupported())
-        return;
-
-    if (!CurrentStorage)
-        return;
-
-    new HistoryMessagesPrepender(CurrentStorage->messages(query), chatMessagesView);
 }
 
 void History::accountAdded(Account account)
@@ -393,10 +303,6 @@ void History::registerStorage(HistoryStorage *storage)
         return;
 
     startSaveThread();
-
-    if (m_chatWidgetRepository)
-        for (ChatWidget *chat : m_chatWidgetRepository.data())
-            chatWidgetAdded(chat);
 
     for (auto const &account : m_accountManager->items())
         accountAdded(account);

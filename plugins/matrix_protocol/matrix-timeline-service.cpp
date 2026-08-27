@@ -339,6 +339,8 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
     item.sender.displayName = event.senderId();
     item.sender.own = m_connection && event.senderId() == m_connection->userId();
     item.content.plainText = event.plainBody();
+    item.content.formattedText = item.content.plainText.toHtmlEscaped();
+    item.content.formattedText.replace(QStringLiteral("\n"), QStringLiteral("<br/>"));
     item.state.deliveryState = item.sender.own ? ChatTimelineDeliveryState::Sent
                                                 : ChatTimelineDeliveryState::Delivered;
     item.state.encrypted = encrypted;

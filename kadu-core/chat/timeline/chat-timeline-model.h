@@ -81,8 +81,8 @@ public:
 
     QVector<ChatTimelineItem> items() const;
     ChatTimelineItem item(const QString &stableId) const;
-    int rowForStableId(const QString &stableId) const;
-    int rowForTransactionId(const QString &transactionId) const;
+    Q_INVOKABLE int rowForStableId(const QString &stableId) const;
+    Q_INVOKABLE int rowForTransactionId(const QString &transactionId) const;
 
     void reset(const QVector<ChatTimelineItem> &items);
     void prepend(const ChatTimelinePage &page);

@@ -24,7 +24,6 @@
 #include "widgets/chat-edit-box.h"
 #include "widgets/chat-edit-widget.h"
 #include "widgets/chat-widget/chat-widget.h"
-#include "widgets/webkit-messages-view/webkit-messages-view.h"
 
 ClearChatAction::ClearChatAction(QObject *parent)
         :   // using C++ initializers breaks Qt's lupdate
@@ -46,7 +45,6 @@ void ClearChatAction::actionInstanceCreated(Action *action)
     if (!chatEditBox)
         return;
 
-    connect(chatEditBox->chatWidget()->chatMessagesView(), SIGNAL(messagesUpdated()), action, SLOT(checkState()));
     updateActionState(action);
 }
 
@@ -70,5 +68,5 @@ void ClearChatAction::updateActionState(Action *action)
         return;
     }
 
-    action->setEnabled(0 != chatEditBox->chatWidget()->chatMessagesView()->countMessages());
+    action->setEnabled(0 != chatEditBox->chatWidget()->countMessages());
 }

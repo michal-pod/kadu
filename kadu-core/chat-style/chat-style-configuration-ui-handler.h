@@ -1,72 +1,47 @@
 /*
  * %kadu copyright begin%
- * Copyright 2015 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
 #include "configuration/gui/configuration-ui-handler.h"
-#include "os/generic/compositing-aware-object.h"
 
 #include <QtCore/QPointer>
 #include <injeqt/injeqt.h>
 
 class ChatStyleManager;
-class ChatStylePreview;
+class ChatTimelinePreview;
 class Configuration;
-class InjectedFactory;
-
-class QCheckBox;
 class QComboBox;
 
-class ChatStyleConfigurationUiHandler : public QObject, CompositingAwareObject, public ConfigurationUiHandler
+class ChatStyleConfigurationUiHandler : public QObject, public ConfigurationUiHandler
 {
     Q_OBJECT
 
 public:
     Q_INVOKABLE explicit ChatStyleConfigurationUiHandler(QObject *parent = nullptr);
-    virtual ~ChatStyleConfigurationUiHandler();
+    ~ChatStyleConfigurationUiHandler() override;
 
 protected:
-    virtual void mainConfigurationWindowCreated(MainConfigurationWindow *mainConfigurationWindow) override;
-    virtual void mainConfigurationWindowDestroyed() override;
-    virtual void mainConfigurationWindowApplied() override;
-
-    virtual void compositingEnabled() override;
-    virtual void compositingDisabled() override;
+    void mainConfigurationWindowCreated(MainConfigurationWindow *mainConfigurationWindow) override;
+    void mainConfigurationWindowDestroyed() override;
+    void mainConfigurationWindowApplied() override;
 
 private:
     QPointer<Configuration> m_configuration;
-    QPointer<InjectedFactory> m_injectedFactory;
-
-    bool m_compositingEnabled;
-
-    ChatStyleManager *m_chatStyleManager;
-
-    QComboBox *m_syntaxListCombo;
-    QComboBox *m_variantListCombo;
-    QCheckBox *m_turnOnTransparency;
-    ChatStylePreview *m_enginePreview;
+    QPointer<ChatStyleManager> m_chatStyleManager;
+    QComboBox *m_themeListCombo = nullptr;
+    ChatTimelinePreview *m_themePreview = nullptr;
 
 private slots:
     INJEQT_SET void setChatStyleManager(ChatStyleManager *chatStyleManager);
     INJEQT_SET void setConfiguration(Configuration *configuration);
-    INJEQT_SET void setInjectedFactory(InjectedFactory *injectedFactory);
-
-    void styleChangedSlot(const QString &styleName);
-    void variantChangedSlot(const QString &variantName);
+    void themeChanged(int index);
 };

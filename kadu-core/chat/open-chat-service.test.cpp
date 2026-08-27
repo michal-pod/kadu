@@ -79,6 +79,10 @@ public:
     {
         return {};
     }
+    virtual int countMessages() const override
+    {
+        return 0;
+    }
 
     virtual const QDateTime &lastReceivedMessageTime() const override
     {
@@ -108,11 +112,6 @@ public:
     {
         return {};
     }
-    virtual WebkitMessagesView *chatMessagesView() const override
-    {
-        return {};
-    }
-
 public slots:
     virtual void sendMessage() override
     {

@@ -59,7 +59,7 @@ set (widgets_SRCS
 	chat-edit-widget.cpp
 	chat-groups-configuration-widget.cpp
 	chat-room-edit-widget.cpp
-	chat-style-preview.cpp
+	chat-timeline-preview.cpp
 	chat-top-bar-container-widget.cpp
 	chat-top-bar-widget-factory.cpp
 	chat-top-bar-widget-factory-repository.cpp
@@ -107,15 +107,6 @@ set (widgets_SRCS
 	tool-tip-manager.cpp
 	tool-tip-widget.cpp
 	wait-overlay.cpp
-	webkit-messages-view/message-limiter.cpp
-	webkit-messages-view/webkit-messages-view.cpp
-	webkit-messages-view/webkit-messages-view-clearing-display.cpp
-	webkit-messages-view/webkit-messages-view-display.cpp
-	webkit-messages-view/webkit-messages-view-display-factory.cpp
-	webkit-messages-view/webkit-messages-view-factory.cpp
-	webkit-messages-view/webkit-messages-view-handler.cpp
-	webkit-messages-view/webkit-messages-view-handler-factory.cpp
-	webkit-messages-view/webkit-messages-view-removing-display.cpp
 
 	configuration/buddy-list-background-colors-widget.cpp
 	configuration/config-action-button.cpp

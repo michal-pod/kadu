@@ -8,7 +8,6 @@ set (gui_SRCS
 	hot-key.cpp
 	scoped-updates-disabler.cpp
 	status-icon.cpp
-	web-view-highlighter.cpp
 )
 
 kadu_subdirectory (gui "${gui_SRCS}")
