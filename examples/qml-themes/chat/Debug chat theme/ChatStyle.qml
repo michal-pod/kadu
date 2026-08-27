@@ -24,6 +24,7 @@ Item {
 
     visible: false
     property string colorScheme: "System"
+    property var openUrl: null
 
     SystemPalette {
         id: systemPalette
@@ -67,6 +68,7 @@ Item {
             required property int decryptionState
             required property string errorText
             property string colorScheme: root.colorScheme
+            property var openUrl: root.openUrl
 
             implicitHeight: card.implicitHeight
 
@@ -121,7 +123,10 @@ Item {
                         color: root.textColor
                         wrapMode: TextEdit.Wrap
                         text: item.formattedText.length > 0 ? item.formattedText : item.plainText
-                        onLinkActivated: Qt.openUrlExternally(link)
+                        onLinkActivated: {
+                            if (item.openUrl)
+                                item.openUrl(link)
+                        }
                     }
 
                     Text {

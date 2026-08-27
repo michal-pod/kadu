@@ -18,3 +18,8 @@ in `[Colors]` add fixed schemes. The selected scheme is assigned to the QML
 root's writable `colorScheme` property. The examples visibly print every
 property that Kadu supplies, so they are also useful when debugging a changed
 theme contract.
+
+Chat themes can additionally declare a writable `openUrl` property on their
+root item and pass it to their timeline-item component. Invoke it for links
+from `TextEdit`; it routes URLs through Kadu's `UrlHandlerManager` instead of
+bypassing protocol handlers with `Qt.openUrlExternally()`.

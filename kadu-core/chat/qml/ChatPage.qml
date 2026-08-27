@@ -56,6 +56,11 @@ Item {
         return activeTheme && activeTheme[name] !== undefined ? activeTheme[name] : fallback
     }
 
+    function openUrl(url) {
+        if (chatViewModel)
+            chatViewModel.openUrl(url)
+    }
+
     readonly property bool darkSurface: themeValue("darkSurface", systemDarkSurface)
     readonly property bool usesSystemColors: activeThemeColorScheme === "System"
     readonly property color fallbackBackgroundColor: usesSystemColors ? systemPalette.base
@@ -148,6 +153,8 @@ Item {
             item.colorScheme = root.activeThemeColorScheme
             if (item.customColors !== undefined)
                 item.customColors = root.activeCustomColors
+            if (item.openUrl !== undefined)
+                item.openUrl = root.openUrl
         }
     }
 

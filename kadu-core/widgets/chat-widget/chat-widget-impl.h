@@ -66,6 +66,7 @@ class Protocol;
 class SortedMessages;
 class TalkableProxyModel;
 class UnderlineAction;
+class UrlHandlerManager;
 class QQuickWidget;
 
 class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObject
@@ -91,6 +92,7 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
     QPointer<MessageManager> m_messageManager;
     QPointer<MessageStorage> m_messageStorage;
     QPointer<UnderlineAction> m_underlineAction;
+    QPointer<UrlHandlerManager> m_urlHandlerManager;
 
     Chat CurrentChat;
     ChatTopBarContainerWidget *TopBarContainer;
@@ -138,6 +140,7 @@ private slots:
     INJEQT_SET void setMessageManager(MessageManager *messageManager);
     INJEQT_SET void setMessageStorage(MessageStorage *messageStorage);
     INJEQT_SET void setUnderlineAction(UnderlineAction *underlineAction);
+    INJEQT_SET void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
     INJEQT_INIT void init();
 
     virtual void configurationUpdated() override;

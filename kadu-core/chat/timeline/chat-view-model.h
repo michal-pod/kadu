@@ -34,6 +34,7 @@ class ChatStyleManager;
 class Message;
 class ProtocolTimelineService;
 class SortedMessages;
+class UrlHandlerManager;
 
 /**
  * @short QML-facing state of one chat card.
@@ -83,6 +84,9 @@ public:
 
     void addLegacyMessage(const Message &message);
     void addLegacyMessages(const SortedMessages &messages);
+    void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
+
+    Q_INVOKABLE void openUrl(const QString &url);
 
 public slots:
     void open();
@@ -103,6 +107,7 @@ private:
     LegacyMessageTimelineAdapter m_legacyAdapter;
     ChatStyleManager *m_chatStyleManager = nullptr;
     QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
+    QPointer<UrlHandlerManager> m_urlHandlerManager;
     bool m_roomInfoVisible = false;
     QString m_roomAvatarSource;
     QString m_roomName;

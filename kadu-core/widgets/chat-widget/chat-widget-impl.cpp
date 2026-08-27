@@ -49,6 +49,7 @@
 #include "protocols/services/chat-state.h"
 #include "talkable/filter/name-talkable-filter.h"
 #include "talkable/model/talkable-proxy-model.h"
+#include "url-handlers/url-handler-manager.h"
 #include "widgets/chat-edit-box-size-manager.h"
 #include "widgets/chat-edit-box.h"
 #include "widgets/chat-top-bar-container-widget.h"
@@ -175,6 +176,13 @@ void ChatWidgetImpl::setUnderlineAction(UnderlineAction *underlineAction)
     m_underlineAction = underlineAction;
 }
 
+void ChatWidgetImpl::setUrlHandlerManager(UrlHandlerManager *urlHandlerManager)
+{
+    m_urlHandlerManager = urlHandlerManager;
+    if (m_chatViewModel)
+        m_chatViewModel->setUrlHandlerManager(m_urlHandlerManager);
+}
+
 void ChatWidgetImpl::init()
 {
     Title = m_injectedFactory->makeInjected<ChatWidgetTitle>(this);
@@ -227,6 +235,7 @@ void ChatWidgetImpl::createGui()
     frameLayout->setSpacing(0);
 
     m_chatViewModel = new ChatViewModel(CurrentChat, nullptr, m_chatStyleManager, m_chatConfigurationHolder, frame);
+    m_chatViewModel->setUrlHandlerManager(m_urlHandlerManager);
     TimelineView = new QQuickWidget(frame);
     TimelineView->setResizeMode(QQuickWidget::SizeRootObjectToView);
     TimelineView->setFocusPolicy(Qt::StrongFocus);

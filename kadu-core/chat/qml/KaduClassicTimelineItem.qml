@@ -39,6 +39,7 @@ Item {
     required property string errorText
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var openUrl: null
 
     implicitHeight: content.implicitHeight
 
@@ -210,7 +211,10 @@ Item {
                         readOnly: true
                         selectByMouse: true
                         font.pixelSize: 13
-                        onLinkActivated: Qt.openUrlExternally(link)
+                        onLinkActivated: {
+                            if (root.openUrl)
+                                root.openUrl(link)
+                        }
                     }
 
                     Text {

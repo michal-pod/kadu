@@ -24,6 +24,7 @@ Item {
     visible: false
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var openUrl: null
 
     SystemPalette {
         id: systemPalette
@@ -59,6 +60,7 @@ Item {
         KaduClassicTimelineItem {
             colorScheme: root.colorScheme
             customColors: root.customColors
+            openUrl: root.openUrl
         }
     }
 }

@@ -28,6 +28,7 @@
 #include "message/sorted-messages.h"
 #include "protocols/protocol.h"
 #include "protocols/services/protocol-timeline-service.h"
+#include "url-handlers/url-handler-manager.h"
 
 #include <QtCore/QBuffer>
 #include <QtCore/QByteArray>
@@ -175,6 +176,17 @@ void ChatViewModel::addLegacyMessages(const SortedMessages &messages)
 
     for (const auto &message : messages.messages())
         addLegacyMessage(message);
+}
+
+void ChatViewModel::setUrlHandlerManager(UrlHandlerManager *urlHandlerManager)
+{
+    m_urlHandlerManager = urlHandlerManager;
+}
+
+void ChatViewModel::openUrl(const QString &url)
+{
+    if (m_urlHandlerManager && !url.isEmpty())
+        m_urlHandlerManager->openUrl(url.toUtf8());
 }
 
 void ChatViewModel::open()

@@ -39,6 +39,7 @@ Item {
     required property string errorText
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var openUrl: null
 
     implicitHeight: content.implicitHeight
 
@@ -156,7 +157,10 @@ Item {
                         wrapMode: TextEdit.Wrap
                         readOnly: true
                         selectByMouse: true
-                        onLinkActivated: Qt.openUrlExternally(link)
+                        onLinkActivated: {
+                            if (root.openUrl)
+                                root.openUrl(link)
+                        }
                     }
                 }
 
