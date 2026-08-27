@@ -1,9 +1,5 @@
 /*
  * %kadu copyright begin%
- * Copyright 2009, 2010, 2011 Piotr Galiszewski (piotr.galiszewski@kadu.im)
- * Copyright 2011 Piotr Dąbrowski (ultr@ultr.pl)
- * Copyright 2010, 2011, 2014 Bartosz Brachaczek (b.brachaczek@gmail.com)
- * Copyright 2008, 2009, 2010, 2011, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
  * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
@@ -21,25 +17,27 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+import QtQuick
 
-#include <QtCore/QString>
-#include <QtCore/QUrl>
-#include <QtWidgets/QFrame>
+Item {
+    id: root
 
-class QQuickWidget;
+    property var infoPanel: _infoPanel
+    property url styleSource: infoPanel && infoPanel.styleSource ? infoPanel.styleSource : ""
+    readonly property string selectedText: styleLoader.item && styleLoader.item.selectedText
+                                          ? styleLoader.item.selectedText
+                                          : ""
 
-class Preview : public QFrame
-{
-    Q_OBJECT
+    function copySelection() {
+        if (styleLoader.item && styleLoader.item.copySelection)
+            styleLoader.item.copySelection()
+    }
 
-public:
-    explicit Preview(QWidget *parent = nullptr);
-    ~Preview() override;
+    Loader {
+        id: styleLoader
+        anchors.fill: parent
+        source: root.styleSource
 
-public slots:
-    void setStyleSource(const QUrl &source);
-
-private:
-    QQuickWidget *m_view = nullptr;
-};
+        onLoaded: item.infoPanel = root.infoPanel
+    }
+}

@@ -66,8 +66,6 @@
 #include "talkable/talkable-module.h"
 #include "task/task-module.h"
 #include "themes/themes-module.h"
-#include "web/kadu-image-scheme-handler.h"
-#include "web/web-module.h"
 #include "widgets/chat-widget/chat-widget-module.h"
 #include "windows/chat-window/chat-window-module.h"
 
@@ -192,10 +190,6 @@ int main(int argc, char *argv[]) try
 {
     WSAHandler wsaHandler;
 
-    // Has to happen before QApplication: QtWebEngine reads the scheme registry while starting up
-    // and ignores anything registered afterwards.
-    KaduImageSchemeHandler::registerScheme();
-
     QApplication application{argc, argv};
     application.setApplicationName("Kadu");
 
@@ -259,7 +253,6 @@ int main(int argc, char *argv[]) try
     modules.emplace_back(std::make_unique<TalkableModule>());
     modules.emplace_back(std::make_unique<TaskModule>());
     modules.emplace_back(std::make_unique<ThemesModule>());
-    modules.emplace_back(std::make_unique<WebModule>());
 
     auto injector = injeqt::injector{std::move(modules)};
 

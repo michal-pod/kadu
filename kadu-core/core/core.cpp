@@ -259,7 +259,7 @@ void Core::createDefaultConfiguration()
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelBgFilled", false);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable(
         "Look", "InfoPanelBgColor", w.palette().base().color());
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelSyntaxFile", "ultr");
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelStyle", "Classic");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NiceDateFormat", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoHeaderInterval", 30);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoHeaderRepeat", true);

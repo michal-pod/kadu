@@ -48,6 +48,7 @@ set (widgets_SRCS
 	buddy-personal-info-configuration-widget.cpp
 	buddy-options-configuration-widget.cpp
 	buddy-info-panel.cpp
+	info-panel-style-manager.cpp
 	categorized-list-view.cpp
 	categorized-list-view-painter.cpp
 	chat-configuration-widget.cpp
@@ -78,7 +79,6 @@ set (widgets_SRCS
 	kadu-text-edit.cpp
 	kadu-tree-view.cpp
 	kadu-tree-view-delegate.cpp
-	kadu-web-view.cpp
 	line-edit-clear-button.cpp
 	line-edit-with-clear-button.cpp
 	modal-configuration-widget.cpp
