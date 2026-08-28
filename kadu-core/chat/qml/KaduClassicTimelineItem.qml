@@ -18,6 +18,7 @@
  */
 
 import QtQuick
+import QtQuick.Controls
 
 Item {
     id: root
@@ -42,6 +43,11 @@ Item {
     property var customColors: ({ "enabled": false })
     property var openUrl: null
     property var openImage: null
+    property var timelineActions: null
+    property var executeTimelineAction: null
+    property var copyText: null
+    property string contextSelectedText: ""
+    property string contextLink: ""
 
     implicitHeight: content.implicitHeight
 
@@ -73,6 +79,8 @@ Item {
 
     function systemEvent() { return kind >= 7 }
     function messageText() {
+        if (attachments.length === 1 && plainText.trim() === attachments[0].fileName.trim())
+            return ""
         if (formattedText.length > 0)
             return formattedText
         return plainText
@@ -85,6 +93,80 @@ Item {
         if (deliveryState === 4)
             return qsTr("failed")
         return ""
+    }
+    function availableActions() {
+        return timelineActions ? timelineActions(stableId) : []
+    }
+    function actionSymbol(actionKey) {
+        if (actionKey === "reply")
+            return "↩"
+        if (actionKey === "edit")
+            return "✎"
+        if (actionKey === "delete")
+            return "⌫"
+        if (actionKey === "saveAttachment")
+            return "⇩"
+        return "⋯"
+    }
+    function triggerAction(action) {
+        if (executeTimelineAction)
+            executeTimelineAction(stableId, action)
+    }
+    function actionId(actionKey) {
+        const actions = availableActions()
+        for (let index = 0; index < actions.length; ++index)
+            if (actions[index].key === actionKey)
+                return actions[index].id
+        return -1
+    }
+
+    Menu {
+        id: selectedTextMenu
+
+        MenuItem {
+            text: qsTr("Copy")
+            enabled: root.contextSelectedText.length > 0
+            onTriggered: {
+                if (root.copyText)
+                    root.copyText(root.contextSelectedText)
+            }
+        }
+    }
+
+    Menu {
+        id: linkMenu
+
+        MenuItem {
+            text: qsTr("Open link")
+            enabled: root.contextLink.length > 0
+            onTriggered: {
+                if (root.openUrl)
+                    root.openUrl(root.contextLink)
+            }
+        }
+
+        MenuItem {
+            text: qsTr("Copy link")
+            enabled: root.contextLink.length > 0
+            onTriggered: {
+                if (root.copyText)
+                    root.copyText(root.contextLink)
+            }
+        }
+    }
+
+    Menu {
+        id: eventMenu
+
+        Repeater {
+            model: root.availableActions()
+
+            delegate: MenuItem {
+                required property var modelData
+                text: modelData.text
+                onTriggered: root.triggerAction(modelData.id)
+            }
+        }
     }
 
     Column {
@@ -164,6 +246,39 @@ Item {
                 opacity: root.usesCustomColors ? 1.0 : (hoverHandler.hovered ? 0.08 : 0.0)
             }
 
+            Row {
+                id: actionButtons
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: 4
+                spacing: 2
+                visible: hoverHandler.hovered && !root.redacted && root.availableActions().length > 0
+                z: 2
+
+                Repeater {
+                    model: root.availableActions()
+
+                    delegate: ToolButton {
+                        required property var modelData
+                        visible: index < 3
+                        text: root.actionSymbol(modelData.key)
+                        font.pixelSize: 14
+                        ToolTip.visible: hovered
+                        ToolTip.text: modelData.text
+                        onClicked: root.triggerAction(modelData.id)
+                    }
+                }
+
+                ToolButton {
+                    visible: root.availableActions().length > 3
+                    text: "⋯"
+                    font.pixelSize: 16
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("More actions")
+                    onClicked: eventMenu.popup()
+                }
+            }
+
             Column {
                 id: messageContent
                 x: 8
@@ -219,6 +334,22 @@ Item {
                         }
                     }
 
+                    MouseArea {
+                        id: messageContextArea
+                        anchors.fill: message
+                        acceptedButtons: Qt.RightButton
+                        onClicked: function(mouse) {
+                            root.contextSelectedText = message.selectedText
+                            root.contextLink = message.linkAt(mouse.x, mouse.y)
+                            if (root.contextSelectedText.length > 0)
+                                selectedTextMenu.popup()
+                            else if (root.contextLink.length > 0)
+                                linkMenu.popup()
+                            else
+                                eventMenu.popup()
+                        }
+                    }
+
                     Text {
                         id: trailingTimestamp
                         visible: !root.showSender && root.showTimestamp
@@ -228,6 +359,22 @@ Item {
                         color: root.mutedTextColor
                         opacity: 0.50
                         font.pixelSize: 11
+                    }
+                }
+
+                Repeater {
+                    model: root.attachments
+
+                    delegate: ChatFileAttachment {
+                        required property var modelData
+                        width: parent ? parent.width : 1
+                        attachment: modelData
+                        textColor: root.textColor
+                        linkColor: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
+                        backgroundColor: "transparent"
+                        borderColor: root.separatorColor
+                        saveAttachment: root.actionId("saveAttachment") >= 0
+                                        ? function() { root.triggerAction(root.actionId("saveAttachment")) } : null
                     }
                 }
 

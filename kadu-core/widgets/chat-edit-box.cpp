@@ -281,7 +281,7 @@ void ChatEditBox::setAttachment(const QUrl &fileUrl)
         return;
 
     m_attachmentPath = fileInfo.absoluteFilePath();
-    m_attachmentDescription = tr("Attachment: %1").arg(fileInfo.fileName());
+    m_attachmentDescription.clear();
     InputBox->setPlainText(m_attachmentDescription);
 
     const QPixmap preview{m_attachmentPath};

@@ -24,10 +24,21 @@
 #include "protocols/services/account-service.h"
 
 #include <QtCore/QFuture>
+#include <QtCore/QFlags>
 #include <QtCore/QSize>
 #include <QtCore/QUrl>
 
 class QImage;
+
+enum class ChatTimelineAction
+{
+    Reply = 0x1,
+    Edit = 0x2,
+    Delete = 0x4,
+    SaveAttachment = 0x8
+};
+Q_DECLARE_FLAGS(ChatTimelineActions, ChatTimelineAction)
+Q_DECLARE_OPERATORS_FOR_FLAGS(ChatTimelineActions)
 
 /**
  * @short Source of protocol-native timeline pages and live events.
@@ -51,6 +62,20 @@ public:
      * order. A page can be empty while still carrying a usable next cursor.
      */
     virtual QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) = 0;
+
+    /**
+     * @short Return operations offered by the protocol for one timeline event.
+     *
+     * The QML view only receives the event ID and an action identifier.  The
+     * protocol remains responsible for locating the event and any attachment
+     * data, so protocol internals and local paths never cross the QML boundary.
+     */
+    virtual ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const;
+
+    /**
+     * @short Execute an operation previously returned by availableActions().
+     */
+    virtual bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action);
 
     /**
      * @short Return a cached timeline attachment image and start loading it when necessary.

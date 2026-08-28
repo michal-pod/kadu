@@ -30,6 +30,16 @@ ProtocolTimelineService::~ProtocolTimelineService()
 {
 }
 
+ChatTimelineActions ProtocolTimelineService::availableActions(const Chat &, const QString &) const
+{
+    return {};
+}
+
+bool ProtocolTimelineService::executeAction(const Chat &, const QString &, ChatTimelineAction)
+{
+    return false;
+}
+
 QImage ProtocolTimelineService::requestAttachmentImage(const Chat &, const QUrl &, const QSize &)
 {
     return {};

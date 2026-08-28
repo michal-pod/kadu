@@ -61,6 +61,20 @@ Item {
             chatViewModel.openUrl(url)
     }
 
+    function timelineActions(stableId) {
+        return chatViewModel ? chatViewModel.timelineActions(stableId) : []
+    }
+
+    function executeTimelineAction(stableId, action) {
+        if (chatViewModel)
+            chatViewModel.executeTimelineAction(stableId, action)
+    }
+
+    function copyText(text) {
+        if (chatViewModel)
+            chatViewModel.copyText(text)
+    }
+
     function openImage(sourceUri, title, width, height, state) {
         imageViewer.openFor(sourceUri, title, width, height, state)
     }
@@ -97,6 +111,12 @@ Item {
         item.errorText = Qt.binding(function() { return delegate.errorText })
         if (item.openImage !== undefined)
             item.openImage = root.openImage
+        if (item.timelineActions !== undefined)
+            item.timelineActions = root.timelineActions
+        if (item.executeTimelineAction !== undefined)
+            item.executeTimelineAction = root.executeTimelineAction
+        if (item.copyText !== undefined)
+            item.copyText = root.copyText
     }
 
     function atBottom() {
@@ -163,6 +183,12 @@ Item {
                 item.customColors = root.activeCustomColors
             if (item.openUrl !== undefined)
                 item.openUrl = root.openUrl
+            if (item.timelineActions !== undefined)
+                item.timelineActions = root.timelineActions
+            if (item.executeTimelineAction !== undefined)
+                item.executeTimelineAction = root.executeTimelineAction
+            if (item.copyText !== undefined)
+                item.copyText = root.copyText
         }
     }
 

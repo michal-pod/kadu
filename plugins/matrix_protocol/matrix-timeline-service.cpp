@@ -42,7 +42,10 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFutureWatcher>
+#include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
+#include <QtWidgets/QFileDialog>
+#include <QtWidgets/QMessageBox>
 
 #include <algorithm>
 #include <limits>
@@ -79,6 +82,7 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_attachmentProgress.clear();
     m_attachmentErrors.clear();
     m_attachmentSources.clear();
+    m_attachmentFileNames.clear();
     if (!m_connection)
         return;
 
@@ -100,6 +104,89 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimeline(const ChatTimel
     }
 
     return requestTimelineForRoom(request, roomForChat(request.chat));
+}
+
+ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, const QString &stableId) const
+{
+    auto *room = roomForChat(chat);
+    if (!room || stableId.isEmpty())
+        return {};
+
+    for (const auto &timelineItem : room->messageEvents())
+    {
+        if (timelineItem->id() != stableId)
+            continue;
+
+        const auto *event = timelineItem.viewAs<Quotient::RoomMessageEvent>();
+        Quotient::RoomEventPtr decryptedEvent;
+        if (!event)
+        {
+            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+            {
+                decryptedEvent = room->decryptMessage(*encryptedEvent);
+                event = Quotient::eventCast<const Quotient::RoomMessageEvent>(decryptedEvent);
+            }
+        }
+        if (!event || event->isRedacted())
+            return {};
+
+        ChatTimelineActions actions{ChatTimelineAction::Reply};
+        if (m_connection && event->senderId() == m_connection->userId())
+        {
+            actions |= ChatTimelineAction::Edit;
+            actions |= ChatTimelineAction::Delete;
+        }
+        if (event->get<Quotient::EventContent::FileContentBase>())
+            actions |= ChatTimelineAction::SaveAttachment;
+        return actions;
+    }
+    return {};
+}
+
+bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action)
+{
+    auto *room = roomForChat(chat);
+    if (!room || !availableActions(chat, stableId).testFlag(action))
+        return false;
+
+    if (action == ChatTimelineAction::Delete)
+    {
+        room->redactEvent(stableId);
+        return true;
+    }
+    if (action != ChatTimelineAction::SaveAttachment)
+        return false;
+
+    const auto source = m_attachmentSources.constFind(stableId);
+    if (source == m_attachmentSources.cend())
+    {
+        QMessageBox::warning(nullptr, tr("Save attachment"), tr("The attachment is no longer available locally."));
+        return false;
+    }
+
+    const auto fileName = m_attachmentFileNames.value(stableId, tr("attachment"));
+    const auto downloadsPath = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    const auto destination = QFileDialog::getSaveFileName(
+        nullptr, tr("Save attachment"), QDir{downloadsPath}.filePath(fileName));
+    if (destination.isEmpty())
+        return false;
+
+    Quotient::DownloadFileJob *job = nullptr;
+    if (const auto encryptedFile = std::get_if<Quotient::EncryptedFileMetadata>(&source.value()))
+        job = m_connection->downloadFile(encryptedFile->url, *encryptedFile, destination);
+    else if (const auto fileUrl = std::get_if<QUrl>(&source.value()))
+        job = m_connection->downloadFile(*fileUrl, destination);
+
+    if (!job)
+    {
+        QMessageBox::warning(nullptr, tr("Save attachment"), tr("Could not start downloading the attachment."));
+        return false;
+    }
+
+    connect(job, &Quotient::BaseJob::failure, this, [job] {
+        QMessageBox::warning(nullptr, tr("Save attachment"), tr("Could not save the attachment: %1").arg(job->errorString()));
+    });
+    return true;
 }
 
 QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &)
@@ -320,6 +407,15 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
             });
     connect(room, &Quotient::Room::baseStateLoaded, this,
             [this, room] { m_loadedRooms.insert(room); });
+    connect(room, &Quotient::Room::replacedEvent, this,
+            [this, room](const Quotient::RoomEvent *newEvent, const Quotient::RoomEvent *) {
+                if (!newEvent || !newEvent->isRedacted())
+                    return;
+
+                const auto chat = chatForRoom(room);
+                if (chat)
+                    emit eventRedacted(chat, newEvent->id(), newEvent->redactionReason());
+            });
     connect(room, &QObject::destroyed, this, [this, room] {
         m_watchedRooms.remove(room);
         m_loadedRooms.remove(room);
@@ -460,6 +556,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
         attachment.progress = m_attachmentProgress.value(eventId, 0.0);
         attachment.errorText = m_attachmentErrors.value(eventId);
         m_attachmentSources.insert(eventId, fileInfo.source);
+        m_attachmentFileNames.insert(eventId, attachment.fileName);
 
         switch (event.msgtype())
         {

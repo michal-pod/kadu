@@ -55,6 +55,8 @@ public:
     void setConnection(Quotient::Connection *connection);
 
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
+    ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const override;
+    bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
 
 private:
@@ -71,6 +73,7 @@ private:
     QHash<QString, QString> m_attachmentErrors;
     QHash<QString, QString> m_attachmentDownloadPaths;
     mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
+    mutable QHash<QString, QString> m_attachmentFileNames;
 
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;

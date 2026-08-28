@@ -21,9 +21,13 @@
 
 #include <algorithm>
 
+#include <QtCore/QBuffer>
+#include <QtCore/QFileInfo>
 #include <QtCore/QVariantList>
 #include <QtCore/QVariantMap>
 #include <QtCore/QtGlobal>
+#include <QtGui/QPixmap>
+#include <QtWidgets/QFileIconProvider>
 
 ChatTimelineModel::ChatTimelineModel(QObject *parent) : QAbstractListModel{parent}
 {
@@ -348,6 +352,23 @@ QVariantList ChatTimelineModel::attachmentData(const QVector<ChatTimelineAttachm
         data.insert(QStringLiteral("progress"), attachment.progress);
         data.insert(QStringLiteral("localResourceId"), attachment.localResourceId);
         data.insert(QStringLiteral("errorText"), attachment.errorText);
+
+        static QHash<QString, QString> iconSources;
+        const auto iconKey = QFileInfo{attachment.fileName}.suffix().toCaseFolded();
+        auto iconSource = iconSources.value(iconKey);
+        if (iconSource.isEmpty())
+        {
+            const auto icon = QFileIconProvider{}.icon(QFileInfo{attachment.fileName});
+            const auto pixmap = icon.pixmap(32, 32);
+            QByteArray imageData;
+            QBuffer buffer{&imageData};
+            if (buffer.open(QIODevice::WriteOnly) && pixmap.save(&buffer, "PNG"))
+            {
+                iconSource = QStringLiteral("data:image/png;base64,") + QString::fromLatin1(imageData.toBase64());
+                iconSources.insert(iconKey, iconSource);
+            }
+        }
+        data.insert(QStringLiteral("iconSource"), iconSource);
         result.append(data);
     }
     return result;

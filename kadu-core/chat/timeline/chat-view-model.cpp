@@ -32,6 +32,9 @@
 
 #include <QtCore/QBuffer>
 #include <QtCore/QByteArray>
+#include <QtGui/QClipboard>
+#include <QtGui/QGuiApplication>
+#include <QtWidgets/QMessageBox>
 
 ChatViewModel::ChatViewModel(
     Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
@@ -187,6 +190,85 @@ void ChatViewModel::openUrl(const QString &url)
 {
     if (m_urlHandlerManager && !url.isEmpty())
         m_urlHandlerManager->openUrl(url.toUtf8());
+}
+
+void ChatViewModel::copyText(const QString &text)
+{
+    if (auto *clipboard = QGuiApplication::clipboard(); clipboard && !text.isEmpty())
+        clipboard->setText(text);
+}
+
+QVariantList ChatViewModel::timelineActions(const QString &stableId) const
+{
+    if (stableId.isEmpty())
+        return {};
+
+    const auto item = m_timeline->item(stableId);
+    if (item.stableId.isEmpty() || item.state.redacted)
+        return {};
+
+    QVariantList actions;
+    if (!item.content.plainText.isEmpty())
+        actions.append(QVariantMap{{QStringLiteral("id"), 0}, {QStringLiteral("key"), QStringLiteral("copy")},
+                                   {QStringLiteral("text"), tr("Copy message")}});
+
+    auto *service = timelineService(nullptr);
+    if (!service)
+        return actions;
+
+    const auto available = service->availableActions(m_chat, stableId);
+    if (available.testFlag(ChatTimelineAction::Reply))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Reply)},
+                                   {QStringLiteral("key"), QStringLiteral("reply")},
+                                   {QStringLiteral("text"), tr("Reply")}});
+    if (available.testFlag(ChatTimelineAction::Edit))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Edit)},
+                                   {QStringLiteral("key"), QStringLiteral("edit")},
+                                   {QStringLiteral("text"), tr("Edit message")}});
+    if (available.testFlag(ChatTimelineAction::SaveAttachment))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::SaveAttachment)},
+                                   {QStringLiteral("key"), QStringLiteral("saveAttachment")},
+                                   {QStringLiteral("text"), tr("Save attachment")}});
+    if (available.testFlag(ChatTimelineAction::Delete))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Delete)},
+                                   {QStringLiteral("key"), QStringLiteral("delete")},
+                                   {QStringLiteral("text"), tr("Delete message")},
+                                   {QStringLiteral("destructive"), true}});
+    return actions;
+}
+
+void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
+{
+    if (stableId.isEmpty())
+        return;
+
+    if (action == 0)
+    {
+        copyText(m_timeline->item(stableId).content.plainText);
+        return;
+    }
+
+    const auto timelineAction = static_cast<ChatTimelineAction>(action);
+    auto *service = timelineService(nullptr);
+    if (!service || !service->availableActions(m_chat, stableId).testFlag(timelineAction))
+        return;
+
+    if (timelineAction == ChatTimelineAction::Reply)
+    {
+        QMessageBox::information(nullptr, tr("Reply"), tr("Replying to a timeline message is not implemented yet."));
+        return;
+    }
+    if (timelineAction == ChatTimelineAction::Edit)
+    {
+        QMessageBox::information(nullptr, tr("Edit message"), tr("Editing a timeline message is not implemented yet."));
+        return;
+    }
+    if (timelineAction == ChatTimelineAction::Delete &&
+        QMessageBox::question(nullptr, tr("Delete message"), tr("Do you want to delete this message?"),
+                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+        return;
+
+    service->executeAction(m_chat, stableId, timelineAction);
 }
 
 void ChatViewModel::open()

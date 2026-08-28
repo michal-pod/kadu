@@ -26,6 +26,7 @@
 
 #include <QtCore/QPointer>
 #include <QtCore/QUrl>
+#include <QtCore/QVariantList>
 #include <QtCore/QVariantMap>
 
 class ChatTimelineController;
@@ -87,6 +88,9 @@ public:
     void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
 
     Q_INVOKABLE void openUrl(const QString &url);
+    Q_INVOKABLE void copyText(const QString &text);
+    Q_INVOKABLE QVariantList timelineActions(const QString &stableId) const;
+    Q_INVOKABLE void executeTimelineAction(const QString &stableId, int action);
 
 public slots:
     void open();

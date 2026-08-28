@@ -25,6 +25,9 @@ Item {
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
     property var openUrl: null
+    property var timelineActions: null
+    property var executeTimelineAction: null
+    property var copyText: null
 
     SystemPalette {
         id: systemPalette
@@ -59,6 +62,9 @@ Item {
             colorScheme: root.colorScheme
             customColors: root.customColors
             openUrl: root.openUrl
+            timelineActions: root.timelineActions
+            executeTimelineAction: root.executeTimelineAction
+            copyText: root.copyText
         }
     }
 }
