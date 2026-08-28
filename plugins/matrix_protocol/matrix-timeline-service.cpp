@@ -25,9 +25,13 @@
 #include "chat/type/chat-type-contact.h"
 #include "chat/type/chat-type-room.h"
 #include "contacts/contact-manager.h"
+#include "html/html-conversion.h"
+#include "html/html-string.h"
+#include "html/sanitized-html-string.h"
 
 #include <Quotient/connection.h>
 #include <Quotient/events/encryptedevent.h>
+#include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
 #include <Quotient/room.h>
@@ -339,8 +343,11 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
     item.sender.displayName = event.senderId();
     item.sender.own = m_connection && event.senderId() == m_connection->userId();
     item.content.plainText = event.plainBody();
-    item.content.formattedText = item.content.plainText.toHtmlEscaped();
-    item.content.formattedText.replace(QStringLiteral("\n"), QStringLiteral("<br/>"));
+    if (const auto textContent = event.get<Quotient::EventContent::TextContent>();
+        textContent && textContent->mimeType.inherits(QStringLiteral("text/html")))
+    {
+        item.content.formattedText = sanitizeHtml(HtmlString{textContent->body}).string();
+    }
     item.state.deliveryState = item.sender.own ? ChatTimelineDeliveryState::Sent
                                                 : ChatTimelineDeliveryState::Delivered;
     item.state.encrypted = encrypted;

@@ -1,6 +1,6 @@
 /*
  * %kadu copyright begin%
- * Copyright 2016 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -21,12 +21,32 @@
 
 #include "exports.h"
 
-class HtmlString;
-class NormalizedHtmlString;
-class SanitizedHtmlString;
+#include <QtCore/QString>
 
-KADUAPI QString htmlToPlain(const HtmlString &html);
-KADUAPI QString htmlToPlain(const NormalizedHtmlString &html);
-KADUAPI HtmlString plainToHtml(const QString &plain);
-KADUAPI NormalizedHtmlString normalizeHtml(const HtmlString &html);
-KADUAPI SanitizedHtmlString sanitizeHtml(const HtmlString &html);
+class HtmlString;
+class HtmlSanitizer;
+
+class KADUAPI SanitizedHtmlString
+{
+public:
+    SanitizedHtmlString() = default;
+
+    const QString &string() const;
+
+    friend bool operator==(const SanitizedHtmlString &x, const SanitizedHtmlString &y)
+    {
+        return x.m_string == y.m_string;
+    }
+
+    friend bool operator!=(const SanitizedHtmlString &x, const SanitizedHtmlString &y)
+    {
+        return !(x == y);
+    }
+
+private:
+    friend class HtmlSanitizer;
+    friend KADUAPI SanitizedHtmlString sanitizeHtml(const HtmlString &html);
+
+    explicit SanitizedHtmlString(QString string);
+    QString m_string;
+};

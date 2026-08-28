@@ -78,7 +78,7 @@ Item {
     function messageText() {
         if (formattedText.length > 0)
             return formattedText
-        return plainText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>")
+        return plainText
     }
     function deliveryText() {
         if (deliveryState === 1)
@@ -152,7 +152,7 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 10
                         text: root.redacted ? qsTr("Message removed") : root.messageText()
-                        textFormat: TextEdit.RichText
+                        textFormat: root.formattedText.length > 0 ? TextEdit.RichText : TextEdit.PlainText
                         color: root.ownEvent ? root.outgoingTextColor : root.textColor
                         wrapMode: TextEdit.Wrap
                         readOnly: true

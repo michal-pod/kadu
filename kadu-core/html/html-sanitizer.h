@@ -1,6 +1,6 @@
 /*
  * %kadu copyright begin%
- * Copyright 2016 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -21,12 +21,23 @@
 
 #include "exports.h"
 
-class HtmlString;
-class NormalizedHtmlString;
-class SanitizedHtmlString;
+#include <QtCore/QString>
 
-KADUAPI QString htmlToPlain(const HtmlString &html);
-KADUAPI QString htmlToPlain(const NormalizedHtmlString &html);
-KADUAPI HtmlString plainToHtml(const QString &plain);
-KADUAPI NormalizedHtmlString normalizeHtml(const HtmlString &html);
-KADUAPI SanitizedHtmlString sanitizeHtml(const HtmlString &html);
+class HtmlString;
+class SanitizedHtmlString;
+class QDomElement;
+class QDomNode;
+
+class KADUAPI HtmlSanitizer
+{
+public:
+    SanitizedHtmlString sanitize(const HtmlString &html) const;
+
+private:
+    static QString prepareFragment(QString html);
+    static bool isRejectedElement(const QString &tagName);
+    static bool isSafeHref(const QString &href);
+    static QString applySupportedSpanFormatting(const QDomElement &element, QString content);
+    static QString sanitizeElement(const QDomElement &element);
+    static QString sanitizeChildren(const QDomNode &node);
+};

@@ -21,7 +21,9 @@
 
 #include "contacts/contact.h"
 #include "html/html-conversion.h"
+#include "html/html-string.h"
 #include "html/normalized-html-string.h"
+#include "html/sanitized-html-string.h"
 #include "message/message.h"
 #include "message/sorted-messages.h"
 
@@ -35,7 +37,7 @@ ChatTimelineItem LegacyMessageTimelineAdapter::item(const Message &message) cons
     timelineItem.timestamp = message.receiveDate().isValid() ? message.receiveDate() : message.sendDate();
     timelineItem.kind = message.type() == MessageTypeSystem ? ChatTimelineItemKind::LocalNotice
                                                             : ChatTimelineItemKind::TextMessage;
-    timelineItem.content.formattedText = message.content().string();
+    timelineItem.content.formattedText = sanitizeHtml(HtmlString{message.content().string()}).string();
     timelineItem.content.plainText = htmlToPlain(message.content());
 
     timelineItem.sender.own = message.type() == MessageTypeSent;

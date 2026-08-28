@@ -23,3 +23,9 @@ Chat themes can additionally declare a writable `openUrl` property on their
 root item and pass it to their timeline-item component. Invoke it for links
 from `TextEdit`; it routes URLs through Kadu's `UrlHandlerManager` instead of
 bypassing protocol handlers with `Qt.openUrlExternally()`.
+
+`plainText` is always literal text and must be shown with `TextEdit.PlainText`.
+`formattedText`, when non-empty, is the sanitized rich-text subset supplied by
+the protocol and may be shown with `TextEdit.RichText`. It contains semantic
+formatting and links, never caller-controlled colours, fonts, media, scripts or
+other active content.

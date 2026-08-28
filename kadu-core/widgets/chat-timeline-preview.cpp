@@ -81,7 +81,6 @@ void ChatTimelinePreview::populateTimeline()
     received.sender.id = QStringLiteral("friend@example.org");
     received.sender.displayName = tr("Your friend");
     received.content.plainText = tr("This is how received messages look.");
-    received.content.formattedText = received.content.plainText;
 
     ChatTimelineItem sent;
     sent.stableId = QStringLiteral("preview-sent");
@@ -92,7 +91,6 @@ void ChatTimelinePreview::populateTimeline()
     sent.sender.displayName = tr("You");
     sent.sender.own = true;
     sent.content.plainText = tr("And this is your reply.");
-    sent.content.formattedText = sent.content.plainText;
     sent.state.deliveryState = ChatTimelineDeliveryState::Delivered;
 
     ChatTimelineItem notice;
@@ -101,7 +99,6 @@ void ChatTimelinePreview::populateTimeline()
     notice.timestamp = now.addSecs(-60);
     notice.kind = ChatTimelineItemKind::LocalNotice;
     notice.content.plainText = tr("Timeline also shows room events.");
-    notice.content.formattedText = notice.content.plainText;
 
     m_viewModel->timeline()->reset({received, sent, notice});
 }

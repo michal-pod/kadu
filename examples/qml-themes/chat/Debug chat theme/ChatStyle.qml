@@ -119,7 +119,7 @@ Item {
                         height: contentHeight
                         readOnly: true
                         selectByMouse: true
-                        textFormat: TextEdit.RichText
+                        textFormat: item.formattedText.length > 0 ? TextEdit.RichText : TextEdit.PlainText
                         color: root.textColor
                         wrapMode: TextEdit.Wrap
                         text: item.formattedText.length > 0 ? item.formattedText : item.plainText

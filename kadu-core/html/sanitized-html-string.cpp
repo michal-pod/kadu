@@ -1,6 +1,6 @@
 /*
  * %kadu copyright begin%
- * Copyright 2016 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -17,16 +17,15 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include "sanitized-html-string.h"
 
-#include "exports.h"
+#include <utility>
 
-class HtmlString;
-class NormalizedHtmlString;
-class SanitizedHtmlString;
+SanitizedHtmlString::SanitizedHtmlString(QString string) : m_string{std::move(string)}
+{
+}
 
-KADUAPI QString htmlToPlain(const HtmlString &html);
-KADUAPI QString htmlToPlain(const NormalizedHtmlString &html);
-KADUAPI HtmlString plainToHtml(const QString &plain);
-KADUAPI NormalizedHtmlString normalizeHtml(const HtmlString &html);
-KADUAPI SanitizedHtmlString sanitizeHtml(const HtmlString &html);
+const QString &SanitizedHtmlString::string() const
+{
+    return m_string;
+}

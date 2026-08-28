@@ -20,6 +20,7 @@
 #include "html/html-conversion.h"
 #include "html/html-string.h"
 #include "html/normalized-html-string.h"
+#include "html/sanitized-html-string.h"
 
 #include <QtTest/QtTest>
 #include <QtXml/QDomDocument>
@@ -40,6 +41,9 @@ private slots:
 
     void shouldRemoveScriptTag_data();
     void shouldRemoveScriptTag();
+
+    void shouldSanitizeHtml_data();
+    void shouldSanitizeHtml();
 };
 
 void HtmlConversionTest::shouldProperlyConvertHtmlToPlainText_data()
@@ -156,6 +160,32 @@ void HtmlConversionTest::shouldRemoveScriptTag()
     auto result = normalizeHtml(HtmlString{html}).string();
 
     QVERIFY(!result.contains("<script"));
+}
+
+void HtmlConversionTest::shouldSanitizeHtml_data()
+{
+    QTest::addColumn<QString>("html");
+    QTest::addColumn<QString>("sanitizedHtml");
+
+    QTest::newRow("allowed formatting") << R"(<p>Plain <strong>bold</strong><script>bad()</script></p>)"
+                                         << R"(<p>Plain <b>bold</b></p>)";
+    QTest::newRow("legacy inline formatting")
+        << R"(<span style="color: red; font-weight: 600; font-style: italic; text-decoration: underline line-through">Formatted</span>)"
+        << R"(<s><u><i><b>Formatted</b></i></u></s>)";
+    QTest::newRow("links and attributes")
+        << R"html(<a href="https://example.org" onclick="bad()">safe</a><a href="javascript:bad()">unsafe</a>)html"
+        << R"html(<a href="https://example.org">safe</a>unsafe)html";
+    QTest::newRow("unsupported elements") << R"(<div id="ignored">one<br class="ignored">two<img src="image">three</div>)"
+                                             << R"(<p>one<br/>twothree</p>)";
+    QTest::newRow("invalid markup") << R"(<b>broken)" << R"(&lt;b&gt;broken)";
+}
+
+void HtmlConversionTest::shouldSanitizeHtml()
+{
+    QFETCH(QString, html);
+    QFETCH(QString, sanitizedHtml);
+
+    QCOMPARE(sanitizeHtml(HtmlString{html}).string(), sanitizedHtml);
 }
 
 QTEST_APPLESS_MAIN(HtmlConversionTest)
