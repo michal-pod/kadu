@@ -75,6 +75,15 @@ Item {
             chatViewModel.copyText(text)
     }
 
+    function applyTimelineStyleProperties() {
+        if (!chatViewModel || !chatViewModel.timeline)
+            return
+
+        const configuredInterval = Number(themeValue("groupingIntervalSeconds", 300))
+        chatViewModel.timeline.groupingIntervalSeconds = isNaN(configuredInterval)
+                                                      ? 300 : Math.max(0, Math.round(configuredInterval))
+    }
+
     function openImage(sourceUri, title, width, height, state) {
         imageViewer.openFor(sourceUri, title, width, height, state)
     }
@@ -189,8 +198,11 @@ Item {
                 item.executeTimelineAction = root.executeTimelineAction
             if (item.copyText !== undefined)
                 item.copyText = root.copyText
+            root.applyTimelineStyleProperties()
         }
     }
+
+    onActiveThemeChanged: applyTimelineStyleProperties()
 
     onActiveThemeColorSchemeChanged: {
         if (themeLoader.item)

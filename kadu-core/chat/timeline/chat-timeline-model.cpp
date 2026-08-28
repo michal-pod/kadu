@@ -103,6 +103,23 @@ ChatTimelineItem ChatTimelineModel::item(const QString &stableId) const
 int ChatTimelineModel::rowForStableId(const QString &stableId) const { return m_rowsByStableId.value(stableId, -1); }
 int ChatTimelineModel::rowForTransactionId(const QString &transactionId) const { return m_rowsByTransactionId.value(transactionId, -1); }
 
+int ChatTimelineModel::groupingIntervalSeconds() const
+{
+    return m_groupingIntervalSeconds;
+}
+
+void ChatTimelineModel::setGroupingIntervalSeconds(int seconds)
+{
+    const auto interval = std::max(0, seconds);
+    if (m_groupingIntervalSeconds == interval)
+        return;
+
+    m_groupingIntervalSeconds = interval;
+    emit groupingIntervalChanged();
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1), presentationRoles());
+}
+
 void ChatTimelineModel::reset(const QVector<ChatTimelineItem> &items)
 {
     beginResetModel();
@@ -265,9 +282,9 @@ ChatTimelineModel::GroupPosition ChatTimelineModel::groupPositionAt(int row) con
     if (!isMessage(timelineItem))
         return GroupPosition::Single;
 
-    const auto matches = [&timelineItem](const ChatTimelineItem &candidate) {
+    const auto matches = [this, &timelineItem](const ChatTimelineItem &candidate) {
         return isMessage(candidate) && candidate.sender.id == timelineItem.sender.id &&
-               qAbs(candidate.timestamp.secsTo(timelineItem.timestamp)) <= 5 * 60;
+               qAbs(candidate.timestamp.secsTo(timelineItem.timestamp)) <= m_groupingIntervalSeconds;
     };
     const auto previous = row > 0 && matches(m_items.at(row - 1));
     const auto next = row + 1 < m_items.size() && matches(m_items.at(row + 1));

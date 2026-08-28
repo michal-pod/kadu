@@ -56,6 +56,7 @@ Item {
                                                                   : (darkSurface ? "#2d323a" : "#f4f6f8")
     property int timelineMargin: 8
     property int timelineSpacing: 1
+    property int groupingIntervalSeconds: 300
     property Component timelineItem: timelineItemComponent
 
     Component {

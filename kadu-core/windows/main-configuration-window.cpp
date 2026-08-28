@@ -180,7 +180,6 @@ void MainConfigurationWindow::init()
     connect(onStartupSetLastDescription, SIGNAL(activated(int)), this, SLOT(onChangeStartupDescription(int)));
 
     connect(widget()->widgetById("startupStatus"), SIGNAL(activated(int)), this, SLOT(onChangeStartupStatus(int)));
-    connect(widget()->widgetById("lookChatAdvanced"), SIGNAL(clicked()), this, SLOT(showLookChatAdvanced()));
     connect(widget()->widgetById("installIconTheme"), SIGNAL(clicked()), this, SLOT(installIconTheme()));
 
     widget()->widgetById("parseStatus")->setToolTip(QCoreApplication::translate("@default", SyntaxText));
@@ -343,17 +342,4 @@ void MainConfigurationWindow::setIconThemes()
 
     iconThemes->setIconSize(QSize(iconPaths.count() * 36, 36));
     iconThemes->setIcons(icons);
-}
-
-void MainConfigurationWindow::showLookChatAdvanced()
-{
-    if (!lookChatAdvanced)
-    {
-        lookChatAdvanced = injectedFactory()->makeInjected<ConfigurationWindow>(
-            "LookChatAdvanced", tr("Advanced chat's look configuration"), "General", dataManager());
-        lookChatAdvanced.data()->widget()->appendUiFile(
-            m_pathsProvider->dataPath() + QStringLiteral("configuration/dialog-look-chat-advanced.ui"));
-    }
-
-    lookChatAdvanced.data()->show();
 }

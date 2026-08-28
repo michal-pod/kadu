@@ -40,8 +40,6 @@ class KADUAPI MainConfigurationWindow : public ConfigurationWindow, CompositingA
     QPointer<LanguagesManager> m_languagesManager;
     QPointer<PathsProvider> m_pathsProvider;
 
-    QPointer<ConfigurationWindow> lookChatAdvanced;
-
     QCheckBox *onStartupSetLastDescription;
     QLineEdit *onStartupSetDescription;
     QCheckBox *userboxTransparency;
@@ -70,7 +68,6 @@ private slots:
     void onChangeStartupStatus(int index);
     void onChangeStartupDescription(int index);
     void onChangeShutdownStatus(int index);
-    void showLookChatAdvanced();
     void installIconTheme();
     void setIconThemes();
     void applied();

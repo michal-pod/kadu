@@ -253,6 +253,7 @@ Item {
                             model: root.availableActions()
 
                             delegate: ToolButton {
+                                required property int index
                                 required property var modelData
                                 visible: index < 3
                                 text: root.actionSymbol(modelData.key)

@@ -146,9 +146,6 @@
 				<check-box caption="Use descriptive date format" config-section="Look" config-item="NiceDateFormat"
 					tool-tip="Display dates like Today, Yesterday or Friday, 2:30PM" />
 			</group-box>
-			<group-box name="Chat syntax">
-				<action-button caption="Configure..." id="lookChatAdvanced" />
-			</group-box>
 		</tab>
 	</section>
 

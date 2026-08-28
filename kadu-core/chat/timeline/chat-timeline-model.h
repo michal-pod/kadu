@@ -32,6 +32,8 @@ class KADUAPI ChatTimelineModel : public QAbstractListModel
 {
     Q_OBJECT
 
+    Q_PROPERTY(int groupingIntervalSeconds READ groupingIntervalSeconds WRITE setGroupingIntervalSeconds NOTIFY groupingIntervalChanged)
+
 public:
     enum Role
     {
@@ -83,6 +85,8 @@ public:
     ChatTimelineItem item(const QString &stableId) const;
     Q_INVOKABLE int rowForStableId(const QString &stableId) const;
     Q_INVOKABLE int rowForTransactionId(const QString &transactionId) const;
+    int groupingIntervalSeconds() const;
+    void setGroupingIntervalSeconds(int seconds);
 
     void reset(const QVector<ChatTimelineItem> &items);
     void prepend(const ChatTimelinePage &page);
@@ -94,10 +98,14 @@ public:
     void remove(const QString &stableId);
     void clear();
 
+signals:
+    void groupingIntervalChanged();
+
 private:
     QVector<ChatTimelineItem> m_items;
     QHash<QString, int> m_rowsByStableId;
     QHash<QString, int> m_rowsByTransactionId;
+    int m_groupingIntervalSeconds = 5 * 60;
 
     static bool comesBefore(const ChatTimelineItem &left, const ChatTimelineItem &right);
     static bool isMessage(const ChatTimelineItem &item);
