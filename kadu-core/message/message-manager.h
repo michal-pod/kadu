@@ -23,6 +23,7 @@
 #include "message/message.h"
 
 #include <QtCore/QObject>
+#include <QtCore/QString>
 
 class FormattedString;
 class NormalizedHtmlString;
@@ -72,6 +73,19 @@ public:
      * Raw messages will not invoke messageSent signals.
      */
     virtual bool sendRawMessage(const Chat &chat, const QByteArray &content) = 0;
+
+    /**
+     * @short Hand a local file attachment to the chat protocol.
+     *
+     * Attachments are represented by protocol timeline events, not by the legacy Message storage model.
+     */
+    virtual bool sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(filePath)
+        Q_UNUSED(description)
+        return false;
+    }
 
 signals:
     /**

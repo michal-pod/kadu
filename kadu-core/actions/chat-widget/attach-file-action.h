@@ -17,20 +17,23 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "protocol-timeline-service.h"
-#include "protocol-timeline-service.moc"
+#pragma once
 
-#include <QtGui/QImage>
+#include "actions/action-description.h"
+#include "injeqt-type-roles.h"
 
-ProtocolTimelineService::ProtocolTimelineService(Account account, QObject *parent) : AccountService{account, parent}
+#include <injeqt/injeqt.h>
+
+class AttachFileAction final : public ActionDescription
 {
-}
+    Q_OBJECT
+    INJEQT_TYPE_ROLE(ACTION)
 
-ProtocolTimelineService::~ProtocolTimelineService()
-{
-}
+public:
+    Q_INVOKABLE explicit AttachFileAction(QObject *parent = nullptr);
+    ~AttachFileAction() override = default;
 
-QImage ProtocolTimelineService::requestAttachmentImage(const Chat &, const QUrl &, const QSize &)
-{
-    return {};
-}
+protected:
+    void actionTriggered(QAction *sender, bool toggled) override;
+    void updateActionState(Action *action) override;
+};

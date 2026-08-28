@@ -20,6 +20,7 @@
 #include "actions-module.h"
 
 #include "actions/chat-widget/auto-send-action.h"
+#include "actions/chat-widget/attach-file-action.h"
 #include "actions/chat-widget/block-user-action.h"
 #include "actions/chat-widget/bold-action.h"
 #include "actions/chat-widget/clear-chat-action.h"
@@ -85,6 +86,7 @@ ActionsModule::ActionsModule()
 
     // chat-widget
     add_type<AutoSendAction>();
+    add_type<AttachFileAction>();
     add_type<BlockUserAction>();
     add_type<BoldAction>();
     add_type<ClearChatAction>();

@@ -189,8 +189,11 @@ qt_add_qml_module (libkadu
 	IMPORTS QtQuick.Controls
 	QML_FILES
 		chat/qml/ChatPage.qml
+		chat/qml/ChatImageAttachment.qml
 		chat/qml/BubblesTimelineStyle.qml
 		chat/qml/BubblesTimelineItem.qml
+		chat/qml/ImageViewerDialog.qml
+		chat/qml/KaduImage.qml
 		chat/qml/KaduClassicTimelineStyle.qml
 		chat/qml/KaduClassicTimelineItem.qml
 		widgets/qml/InfoPanel.qml

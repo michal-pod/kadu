@@ -32,20 +32,31 @@
 #include <Quotient/connection.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
+#include <Quotient/events/filesourceinfo.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
+#include <Quotient/jobs/downloadfilejob.h>
 #include <Quotient/room.h>
 #include <Quotient/user.h>
 
+#include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QFutureWatcher>
+#include <QtCore/QTemporaryFile>
 
 #include <algorithm>
 #include <limits>
 #include <utility>
+#include <variant>
 
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
         : ProtocolTimelineService{account, parent}
 {
+}
+
+MatrixTimelineService::~MatrixTimelineService()
+{
+    clearAttachmentDownloads();
 }
 
 void MatrixTimelineService::setConnection(Quotient::Connection *connection)
@@ -62,6 +73,12 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_watchedRooms.clear();
     m_loadedRooms.clear();
     m_historicalEventIds.clear();
+    clearAttachmentDownloads();
+    m_attachmentImages.clear();
+    m_attachmentStates.clear();
+    m_attachmentProgress.clear();
+    m_attachmentErrors.clear();
+    m_attachmentSources.clear();
     if (!m_connection)
         return;
 
@@ -83,6 +100,71 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimeline(const ChatTimel
     }
 
     return requestTimelineForRoom(request, roomForChat(request.chat));
+}
+
+QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &)
+{
+    const auto eventId = eventIdForAttachmentUri(sourceUri);
+    auto *room = roomForChat(chat);
+    if (eventId.isEmpty() || !room)
+        return {};
+
+    if (const auto image = m_attachmentImages.constFind(eventId); image != m_attachmentImages.cend())
+        return image.value();
+    if (m_attachmentDownloadPaths.contains(eventId))
+        return {};
+
+    QTemporaryFile temporaryFile{QDir::tempPath() + QStringLiteral("/kadu-matrix-image-XXXXXX")};
+    temporaryFile.setAutoRemove(false);
+    if (!temporaryFile.open())
+    {
+        m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
+        m_attachmentErrors.insert(eventId, tr("Could not create a temporary file for the image."));
+        updateAttachmentEvent(room, eventId);
+        return {};
+    }
+
+    const auto temporaryPath = temporaryFile.fileName();
+    temporaryFile.close();
+    m_attachmentDownloadPaths.insert(eventId, temporaryPath);
+    m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Downloading);
+    m_attachmentProgress.insert(eventId, 0.0);
+    updateAttachmentEvent(room, eventId);
+
+    const auto source = m_attachmentSources.constFind(eventId);
+    if (source == m_attachmentSources.cend())
+    {
+        handleAttachmentDownloadFailed(room, eventId, tr("The image source is not available."));
+        return {};
+    }
+
+    Quotient::DownloadFileJob *job = nullptr;
+    if (const auto encryptedFile = std::get_if<Quotient::EncryptedFileMetadata>(&source.value()))
+        job = m_connection->downloadFile(encryptedFile->url, *encryptedFile, temporaryPath);
+    else if (const auto fileUrl = std::get_if<QUrl>(&source.value()))
+        job = m_connection->downloadFile(*fileUrl, temporaryPath);
+
+    if (!job)
+    {
+        handleAttachmentDownloadFailed(room, eventId, tr("Could not start downloading the image."));
+        return {};
+    }
+
+    const QPointer<Quotient::Room> downloadRoom{room};
+    connect(job, &Quotient::BaseJob::downloadProgress, this,
+            [this, downloadRoom, eventId](qint64 received, qint64 total) {
+                if (downloadRoom)
+                    handleAttachmentDownloadProgress(downloadRoom.data(), eventId, received, total);
+            });
+    connect(job, &Quotient::BaseJob::success, this, [this, downloadRoom, eventId, job] {
+        if (downloadRoom)
+            handleAttachmentDownloadCompleted(downloadRoom.data(), eventId, QUrl::fromLocalFile(job->targetFileName()));
+    });
+    connect(job, &Quotient::BaseJob::failure, this, [this, downloadRoom, eventId, job] {
+        if (downloadRoom)
+            handleAttachmentDownloadFailed(downloadRoom.data(), eventId, job->errorString());
+    });
+    return {};
 }
 
 QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const ChatTimelineRequest &request,
@@ -356,11 +438,159 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
 
     switch (event.msgtype())
     {
+    case Quotient::RoomMessageEvent::MsgType::Image: item.kind = ChatTimelineItemKind::ImageMessage; break;
+    case Quotient::RoomMessageEvent::MsgType::File: item.kind = ChatTimelineItemKind::FileMessage; break;
+    case Quotient::RoomMessageEvent::MsgType::Audio: item.kind = ChatTimelineItemKind::AudioMessage; break;
+    case Quotient::RoomMessageEvent::MsgType::Video: item.kind = ChatTimelineItemKind::VideoMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Notice: item.kind = ChatTimelineItemKind::NoticeMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Emote: item.kind = ChatTimelineItemKind::EmoteMessage; break;
     default: item.kind = ChatTimelineItemKind::TextMessage; break;
     }
+
+    if (const auto fileContent = event.get<Quotient::EventContent::FileContentBase>())
+    {
+        const auto fileInfo = fileContent->commonInfo();
+        ChatTimelineAttachment attachment;
+        attachment.fileName = fileInfo.originalName.isEmpty() ? event.fileNameToDownload() : fileInfo.originalName;
+        attachment.mimeType = fileInfo.mimeType.name();
+        attachment.size = fileInfo.payloadSize;
+        attachment.sourceUri = attachmentUri(eventId);
+        attachment.localResourceId = eventId;
+        attachment.state = m_attachmentStates.value(eventId, ChatTimelineAttachmentState::NotRequested);
+        attachment.progress = m_attachmentProgress.value(eventId, 0.0);
+        attachment.errorText = m_attachmentErrors.value(eventId);
+        m_attachmentSources.insert(eventId, fileInfo.source);
+
+        switch (event.msgtype())
+        {
+        case Quotient::RoomMessageEvent::MsgType::Image:
+        {
+            attachment.kind = ChatTimelineAttachmentKind::Image;
+            if (const auto imageContent = event.get<Quotient::EventContent::ImageContent>())
+                attachment.dimensions = imageContent->imageSize;
+            break;
+        }
+        case Quotient::RoomMessageEvent::MsgType::Audio: attachment.kind = ChatTimelineAttachmentKind::Audio; break;
+        case Quotient::RoomMessageEvent::MsgType::Video:
+        {
+            attachment.kind = ChatTimelineAttachmentKind::Video;
+            if (const auto videoContent = event.get<Quotient::EventContent::VideoContent>())
+            {
+                attachment.dimensions = videoContent->imageSize;
+                attachment.duration = videoContent->duration;
+            }
+            break;
+        }
+        default: attachment.kind = ChatTimelineAttachmentKind::File; break;
+        }
+        item.content.attachments.append(std::move(attachment));
+    }
     return item;
+}
+
+void MatrixTimelineService::updateAttachmentEvent(Quotient::Room *room, const QString &eventId)
+{
+    const auto chat = chatForRoom(room);
+    if (!chat || !room)
+        return;
+
+    for (const auto &timelineItem : room->messageEvents())
+    {
+        if (timelineItem->id() != eventId)
+            continue;
+
+        const auto *event = timelineItem.viewAs<Quotient::RoomMessageEvent>();
+        Quotient::RoomEventPtr decryptedEvent;
+        auto encrypted = false;
+        if (!event)
+        {
+            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+            {
+                encrypted = true;
+                decryptedEvent = room->decryptMessage(*encryptedEvent);
+                event = Quotient::eventCast<const Quotient::RoomMessageEvent>(decryptedEvent);
+            }
+        }
+        if (!event)
+            return;
+
+        emit eventUpdated(chat, itemForEvent(*event, eventId, timelineItem.index(), encrypted));
+        return;
+    }
+}
+
+void MatrixTimelineService::handleAttachmentDownloadProgress(Quotient::Room *room, const QString &eventId,
+                                                             qint64 received, qint64 total)
+{
+    if (!m_attachmentDownloadPaths.contains(eventId))
+        return;
+
+    m_attachmentProgress.insert(eventId, total > 0 ? qreal(received) / qreal(total) : 0.0);
+    updateAttachmentEvent(room, eventId);
+}
+
+void MatrixTimelineService::handleAttachmentDownloadCompleted(Quotient::Room *room, const QString &eventId,
+                                                              const QUrl &localFile)
+{
+    if (!m_attachmentDownloadPaths.contains(eventId))
+        return;
+
+    const auto temporaryPath = m_attachmentDownloadPaths.take(eventId);
+    const auto localPath = localFile.toLocalFile().isEmpty() ? temporaryPath : localFile.toLocalFile();
+    const QImage image{localPath};
+    QFile::remove(temporaryPath);
+    if (localPath != temporaryPath)
+        QFile::remove(localPath);
+
+    if (image.isNull())
+    {
+        m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
+        m_attachmentErrors.insert(eventId, tr("The downloaded attachment is not a valid image."));
+    }
+    else
+    {
+        m_attachmentImages.insert(eventId, image);
+        m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Available);
+        m_attachmentProgress.insert(eventId, 1.0);
+        m_attachmentErrors.remove(eventId);
+    }
+    updateAttachmentEvent(room, eventId);
+}
+
+void MatrixTimelineService::handleAttachmentDownloadFailed(Quotient::Room *room, const QString &eventId,
+                                                           const QString &errorMessage)
+{
+    const auto temporaryPath = m_attachmentDownloadPaths.take(eventId);
+    if (temporaryPath.isEmpty())
+        return;
+
+    QFile::remove(temporaryPath);
+    m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
+    m_attachmentProgress.remove(eventId);
+    m_attachmentErrors.insert(eventId, errorMessage.isEmpty() ? tr("Could not download the image.") : errorMessage);
+    updateAttachmentEvent(room, eventId);
+}
+
+void MatrixTimelineService::clearAttachmentDownloads()
+{
+    for (const auto &temporaryPath : std::as_const(m_attachmentDownloadPaths))
+        QFile::remove(temporaryPath);
+    m_attachmentDownloadPaths.clear();
+}
+
+QUrl MatrixTimelineService::attachmentUri(const QString &eventId)
+{
+    QUrl uri;
+    uri.setScheme(QStringLiteral("kaduimg"));
+    uri.setPath(QStringLiteral("/") + eventId);
+    return uri;
+}
+
+QString MatrixTimelineService::eventIdForAttachmentUri(const QUrl &sourceUri)
+{
+    if (sourceUri.scheme() != QStringLiteral("kaduimg"))
+        return {};
+    return sourceUri.path(QUrl::FullyDecoded).mid(1);
 }
 
 QByteArray MatrixTimelineService::sourceOrderForIndex(qint64 timelineIndex) const

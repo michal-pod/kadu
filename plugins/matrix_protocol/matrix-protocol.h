@@ -67,6 +67,14 @@ public:
     {
         return true;
     }
+    virtual bool isAttachmentsSupported() const override
+    {
+        return true;
+    }
+    virtual qint64 maximumAttachmentSize() const override
+    {
+        return m_maximumAttachmentSize;
+    }
     virtual RemoteHistorySearchCapabilities isRemoteSearchSupported() const override
     {
         return RemoteHistorySearchCapability::Messages;
@@ -98,6 +106,7 @@ private:
     MatrixTimelineService *m_timelineService = nullptr;
     MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;
+    qint64 m_maximumAttachmentSize = 0;
     bool m_recoveryKeyRestorePrompted = false;
     bool m_applicationQuitting = false;
 

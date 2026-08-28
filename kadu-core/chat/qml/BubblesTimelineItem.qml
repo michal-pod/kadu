@@ -29,6 +29,7 @@ Item {
     required property string senderDisplayName
     required property string plainText
     required property string formattedText
+    property var attachments: []
     required property bool showSender
     required property bool showTimestamp
     required property bool startsNewDay
@@ -40,6 +41,7 @@ Item {
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
     property var openUrl: null
+    property var openImage: null
 
     implicitHeight: content.implicitHeight
 
@@ -88,6 +90,12 @@ Item {
         if (deliveryState === 4)
             return qsTr("failed")
         return ""
+    }
+    function hasImageAttachments() {
+        for (let index = 0; index < attachments.length; ++index)
+            if (attachments[index].kind === 0)
+                return true
+        return false
     }
 
     Column {
@@ -142,24 +150,44 @@ Item {
 
                 Rectangle {
                     id: bubble
-                    width: Math.min(parent.width, message.implicitWidth + 22)
-                    implicitHeight: message.implicitHeight + 14
+                    width: root.hasImageAttachments() ? parent.width : Math.min(parent.width, message.implicitWidth + 22)
+                    implicitHeight: bubbleContent.implicitHeight + 14
                     radius: 8
                     color: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
 
-                    TextEdit {
-                        id: message
+                    Column {
+                        id: bubbleContent
                         anchors.fill: parent
                         anchors.margins: 10
-                        text: root.redacted ? qsTr("Message removed") : root.messageText()
-                        textFormat: root.formattedText.length > 0 ? TextEdit.RichText : TextEdit.PlainText
-                        color: root.ownEvent ? root.outgoingTextColor : root.textColor
-                        wrapMode: TextEdit.Wrap
-                        readOnly: true
-                        selectByMouse: true
-                        onLinkActivated: {
-                            if (root.openUrl)
-                                root.openUrl(link)
+                        spacing: 4
+
+                        TextEdit {
+                            id: message
+                            width: parent.width
+                            text: root.redacted ? qsTr("Message removed") : root.messageText()
+                            textFormat: root.formattedText.length > 0 ? TextEdit.RichText : TextEdit.PlainText
+                            color: root.ownEvent ? root.outgoingTextColor : root.textColor
+                            wrapMode: TextEdit.Wrap
+                            readOnly: true
+                            selectByMouse: true
+                            onLinkActivated: {
+                                if (root.openUrl)
+                                    root.openUrl(link)
+                            }
+                        }
+
+                        Repeater {
+                            model: root.attachments
+
+                            delegate: ChatImageAttachment {
+                                required property var modelData
+                                width: parent ? parent.width : 1
+                                visible: modelData.kind === 0
+                                attachment: modelData
+                                placeholderColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
+                                placeholderTextColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                                openImage: root.openImage
+                            }
                         }
                     }
                 }

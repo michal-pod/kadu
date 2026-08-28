@@ -21,9 +21,13 @@
 
 #include "protocols/services/protocol-timeline-service.h"
 
+#include <Quotient/events/filesourceinfo.h>
+
 #include <QtCore/QPointer>
 #include <QtCore/QPromise>
 #include <QtCore/QSet>
+#include <QtCore/QHash>
+#include <QtGui/QImage>
 #include <injeqt/injeqt.h>
 
 #include <memory>
@@ -35,6 +39,7 @@ class ContactManager;
 namespace Quotient
 {
 class Connection;
+class DownloadFileJob;
 class Room;
 class RoomMessageEvent;
 }
@@ -45,11 +50,12 @@ class MatrixTimelineService final : public ProtocolTimelineService
 
 public:
     explicit MatrixTimelineService(Account account, QObject *parent = nullptr);
-    virtual ~MatrixTimelineService() = default;
+    virtual ~MatrixTimelineService();
 
     void setConnection(Quotient::Connection *connection);
 
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
+    QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
 
 private:
     QPointer<ChatManager> m_chatManager;
@@ -59,6 +65,12 @@ private:
     QSet<Quotient::Room *> m_watchedRooms;
     QSet<Quotient::Room *> m_loadedRooms;
     QSet<QString> m_historicalEventIds;
+    QHash<QString, QImage> m_attachmentImages;
+    QHash<QString, ChatTimelineAttachmentState> m_attachmentStates;
+    QHash<QString, qreal> m_attachmentProgress;
+    QHash<QString, QString> m_attachmentErrors;
+    QHash<QString, QString> m_attachmentDownloadPaths;
+    mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
 
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;
@@ -69,6 +81,15 @@ private:
     ChatTimelinePage pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room) const;
     ChatTimelineItem itemForEvent(const Quotient::RoomMessageEvent &event, const QString &eventId,
                                   qint64 timelineIndex, bool encrypted) const;
+    void updateAttachmentEvent(Quotient::Room *room, const QString &eventId);
+    void handleAttachmentDownloadProgress(Quotient::Room *room, const QString &eventId, qint64 received,
+                                          qint64 total);
+    void handleAttachmentDownloadCompleted(Quotient::Room *room, const QString &eventId,
+                                           const QUrl &localFile);
+    void handleAttachmentDownloadFailed(Quotient::Room *room, const QString &eventId, const QString &errorMessage);
+    void clearAttachmentDownloads();
+    static QUrl attachmentUri(const QString &eventId);
+    static QString eventIdForAttachmentUri(const QUrl &sourceUri);
     QByteArray sourceOrderForIndex(qint64 timelineIndex) const;
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const;
     void finishRequest(const std::shared_ptr<QPromise<ChatTimelinePage>> &promise, ChatTimelinePage page) const;

@@ -41,13 +41,21 @@
 
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
+#include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
 #include <QtCore/QDateTime>
+#include <QtCore/QFileInfo>
+#include <QtCore/QMimeDatabase>
+#include <QtCore/QObject>
+#include <QtCore/QSize>
+#include <QtCore/QUrl>
 #include <QtGui/QPixmap>
+
+#include <memory>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
@@ -176,6 +184,84 @@ void MatrixChatService::postText(Quotient::Room *room, const QString &text,
     room->post(std::move(event));
 }
 
+bool MatrixChatService::sendAttachmentToRoom(const Chat &chat, const QString &filePath, const QString &description)
+{
+    if (!m_connection || !m_connection->isLoggedIn() || !QFileInfo{filePath}.isFile())
+        return false;
+
+    if (const auto id = roomId(chat); !id.isEmpty())
+    {
+        auto *room = m_connection->room(id, Quotient::JoinState::Join);
+        if (!isSupportedRoom(room))
+            return false;
+
+        postAttachment(room, filePath, description);
+        return true;
+    }
+
+    const auto recipientId = directChatId(chat);
+    if (recipientId.isEmpty())
+        return false;
+
+    m_connection->getDirectChat(recipientId).then(
+        this, [this, filePath, description](Quotient::Room *room) { postAttachment(room, filePath, description); });
+    return true;
+}
+
+void MatrixChatService::postAttachment(Quotient::Room *room, const QString &filePath, const QString &description)
+{
+    const QFileInfo fileInfo{filePath};
+    if (!room || !m_connection || !fileInfo.isFile())
+        return;
+
+    const auto plainText = description.isEmpty() ? fileInfo.fileName() : description;
+    const auto mimeType = QMimeDatabase{}.mimeTypeForFile(fileInfo);
+    const auto uploadId = m_connection->generateTxnId();
+    const QPointer<Quotient::Room> uploadRoom{room};
+    auto *uploadContext = new QObject{room};
+
+    // Room::postFile() creates a pending event with the local file URL and replaces it after uploading. In the
+    // libQuotient version used by Kadu, the replacement leaves that local URL next to encrypted `file` metadata.
+    // Upload first and construct the event from FileSourceInfo so only the server media URL is serialised.
+    connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
+            [uploadRoom, uploadId, plainText, fileInfo, mimeType, uploadContext](
+                const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
+                if (completedId != uploadId)
+                    return;
+
+                if (uploadRoom)
+                {
+                    std::unique_ptr<Quotient::EventContent::FileContentBase> content;
+                    if (mimeType.name().startsWith(QStringLiteral("image/")))
+                    {
+                        content = std::make_unique<Quotient::EventContent::ImageContent>(
+                            fileMetadata, fileInfo.size(), mimeType, QSize{}, fileInfo.fileName());
+                    }
+                    else
+                    {
+                        content = std::make_unique<Quotient::EventContent::FileContent>(
+                            fileMetadata, fileInfo.size(), mimeType, fileInfo.fileName());
+                    }
+
+                    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(
+                        plainText, Quotient::RoomMessageEvent::rawMsgTypeForFile(fileInfo), std::move(content));
+                    uploadRoom->post(std::move(event));
+                }
+
+                uploadContext->deleteLater();
+            });
+    connect(room, &Quotient::Room::fileTransferFailed, uploadContext,
+            [uploadId, uploadContext](const QString &failedId, const QString &) {
+                if (failedId == uploadId)
+                    uploadContext->deleteLater();
+            });
+
+    // In the libQuotient version used by Kadu, Connection::uploadContent() opens the QFile only when the
+    // override content type is empty. Keep the MIME type above for Matrix event metadata, but let the upload
+    // path determine it and open its source file itself.
+    room->uploadFile(uploadId, QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+}
+
 bool MatrixChatService::sendMessage(const Message &message)
 {
     if (!m_formattedStringFactory)
@@ -196,6 +282,11 @@ bool MatrixChatService::sendMessage(const Message &message)
 bool MatrixChatService::sendRawMessage(const Chat &chat, const QByteArray &rawMessage)
 {
     return sendText(chat, QString::fromUtf8(rawMessage));
+}
+
+bool MatrixChatService::sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+{
+    return sendAttachmentToRoom(chat, filePath, description);
 }
 
 void MatrixChatService::leaveChat(const Chat &chat)

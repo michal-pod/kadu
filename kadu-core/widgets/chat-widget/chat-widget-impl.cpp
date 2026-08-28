@@ -28,6 +28,7 @@
 #include "actions/chat-widget/underline-action.h"
 #include "chat/chat-state-service-repository.h"
 #include "chat/timeline/chat-view-model.h"
+#include "chat/timeline/timeline-image-provider.h"
 #include "chat/type/chat-type-manager.h"
 #include "chat-style/chat-style-manager.h"
 #include "configuration/deprecated-configuration-api.h"
@@ -68,6 +69,7 @@
 #include <QtCore/QVariant>
 #include <QtGui/QKeyEvent>
 #include <QtQml/QQmlContext>
+#include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtQuickWidgets/QQuickWidget>
 #include <QtWidgets/QApplication>
@@ -239,6 +241,11 @@ void ChatWidgetImpl::createGui()
     TimelineView = new QQuickWidget(frame);
     TimelineView->setResizeMode(QQuickWidget::SizeRootObjectToView);
     TimelineView->setFocusPolicy(Qt::StrongFocus);
+    auto *timelineService = CurrentChat.chatAccount() && CurrentChat.chatAccount().protocolHandler()
+                                ? CurrentChat.chatAccount().protocolHandler()->timelineService()
+                                : nullptr;
+    TimelineView->engine()->addImageProvider(
+        QStringLiteral("kaduimg"), new TimelineImageProvider{CurrentChat, timelineService});
     TimelineView->rootContext()->setContextProperty(QStringLiteral("_chatViewModel"), m_chatViewModel);
     TimelineView->setSource(QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/ChatPage.qml")});
     frameLayout->addWidget(TimelineView);
@@ -434,6 +441,7 @@ void ChatWidgetImpl::appendSystemMessage(NormalizedHtmlString htmlContent)
 
 void ChatWidgetImpl::resetEditBox()
 {
+    InputBox->clearAttachment();
     InputBox->inputBox()->clear();
 
     Action *action;
@@ -469,7 +477,9 @@ void ChatWidgetImpl::clearChatWindow()
 /* sends the message typed */
 void ChatWidgetImpl::sendMessage()
 {
-    if (InputBox->inputBox()->toPlainText().isEmpty())
+    const auto attachmentPath = InputBox->attachmentPath();
+    const auto description = InputBox->inputBox()->toPlainText();
+    if (description.isEmpty() && attachmentPath.isEmpty())
         return;
 
     emit messageSendRequested(this);
@@ -486,7 +496,10 @@ void ChatWidgetImpl::sendMessage()
         return;
     }
 
-    if (!m_messageManager->sendMessage(CurrentChat, InputBox->inputBox()->htmlMessage()))
+    const auto sent = attachmentPath.isEmpty()
+                          ? m_messageManager->sendMessage(CurrentChat, InputBox->inputBox()->htmlMessage())
+                          : m_messageManager->sendAttachment(CurrentChat, attachmentPath, description);
+    if (!sent)
         return;
 
     resetEditBox();

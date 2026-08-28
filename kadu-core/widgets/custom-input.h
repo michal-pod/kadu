@@ -23,6 +23,7 @@
 #pragma once
 
 #include <QtCore/QPointer>
+#include <QtCore/QUrl>
 #include <QtWidgets/QTextEdit>
 #include <injeqt/injeqt.h>
 
@@ -53,8 +54,10 @@ class KADUAPI CustomInput : public QTextEdit, PasteAcceptor
     bool CopyPossible;
 
     virtual void acceptPlainText(QString plainText) override;
-    virtual void acceptFileUrl(QUrl imageUrl) override;
+    virtual void acceptFileUrl(QUrl fileUrl) override;
     virtual void acceptImageData(QByteArray imageData) override;
+
+    bool supportsAttachments() const;
 
 private slots:
     INJEQT_SET void setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder);
@@ -92,4 +95,5 @@ signals:
     void keyReleased(QKeyEvent *e, CustomInput *sender, bool &handled);
 
     void fontChanged(QFont font);
+    void attachmentSelected(const QUrl &fileUrl);
 };

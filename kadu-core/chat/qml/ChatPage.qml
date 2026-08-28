@@ -61,6 +61,10 @@ Item {
             chatViewModel.openUrl(url)
     }
 
+    function openImage(sourceUri, title, width, height, state) {
+        imageViewer.openFor(sourceUri, title, width, height, state)
+    }
+
     readonly property bool darkSurface: themeValue("darkSurface", systemDarkSurface)
     readonly property bool usesSystemColors: activeThemeColorScheme === "System"
     readonly property color fallbackBackgroundColor: usesSystemColors ? systemPalette.base
@@ -81,6 +85,8 @@ Item {
         item.senderDisplayName = Qt.binding(function() { return delegate.senderDisplayName })
         item.plainText = Qt.binding(function() { return delegate.plainText })
         item.formattedText = Qt.binding(function() { return delegate.formattedText })
+        if (item.attachments !== undefined)
+            item.attachments = Qt.binding(function() { return delegate.attachments })
         item.showSender = Qt.binding(function() { return delegate.showSender })
         item.showTimestamp = Qt.binding(function() { return delegate.showTimestamp })
         item.startsNewDay = Qt.binding(function() { return delegate.startsNewDay })
@@ -89,6 +95,8 @@ Item {
         item.encrypted = Qt.binding(function() { return delegate.encrypted })
         item.decryptionState = Qt.binding(function() { return delegate.decryptionState })
         item.errorText = Qt.binding(function() { return delegate.errorText })
+        if (item.openImage !== undefined)
+            item.openImage = root.openImage
     }
 
     function atBottom() {
@@ -327,6 +335,7 @@ Item {
             required property string senderDisplayName
             required property string plainText
             required property string formattedText
+            required property var attachments
             required property bool showSender
             required property bool showTimestamp
             required property bool startsNewDay
@@ -405,6 +414,11 @@ Item {
         text: qsTr("Loading messages…")
         color: root.themeValue("loadingTextColor", root.fallbackTextColor)
         z: 2
+    }
+
+    ImageViewerDialog {
+        id: imageViewer
+        parentItem: root
     }
 
     Connections {

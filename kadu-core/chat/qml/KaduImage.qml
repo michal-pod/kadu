@@ -17,20 +17,28 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "protocol-timeline-service.h"
-#include "protocol-timeline-service.moc"
+import QtQuick
 
-#include <QtGui/QImage>
+Item {
+    id: root
 
-ProtocolTimelineService::ProtocolTimelineService(Account account, QObject *parent) : AccountService{account, parent}
-{
-}
+    required property url sourceUri
+    property int resourceState: 0
+    property alias fillMode: image.fillMode
+    property alias status: image.status
+    property alias sourceSize: image.sourceSize
 
-ProtocolTimelineService::~ProtocolTimelineService()
-{
-}
+    function providerSource() {
+        const uri = root.sourceUri.toString()
+        if (!uri.startsWith("kaduimg:"))
+            return ""
+        return "image://kaduimg/" + encodeURIComponent(uri) + "?state=" + root.resourceState
+    }
 
-QImage ProtocolTimelineService::requestAttachmentImage(const Chat &, const QUrl &, const QSize &)
-{
-    return {};
+    Image {
+        id: image
+        anchors.fill: parent
+        source: root.providerSource()
+        asynchronous: false
+    }
 }

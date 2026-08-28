@@ -40,6 +40,7 @@
 #include "gui/matrix-restore-recovery-key-dialog.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/csapi/authed-content-repo.h>
 #include <Quotient/database.h>
 #include <Quotient/keyverificationsession.h>
 #include <Quotient/room.h>
@@ -165,6 +166,11 @@ void MatrixProtocol::createConnection()
             return;
 
         MatrixAccountData{account()}.setDeviceId(m_connection->deviceId());
+        m_connection->callApi<Quotient::GetConfigAuthedJob>(Quotient::BackgroundRequest)
+            .then(this, [this](Quotient::GetConfigAuthedJob *job) {
+                if (job)
+                    m_maximumAttachmentSize = job->uploadSize().value_or(0);
+            });
         if (m_contactAvatarService)
             m_contactAvatarService->observeContact(m_connection->userId());
         m_connection->syncLoop();

@@ -24,6 +24,10 @@
 #include "protocols/services/account-service.h"
 
 #include <QtCore/QFuture>
+#include <QtCore/QSize>
+#include <QtCore/QUrl>
+
+class QImage;
 
 /**
  * @short Source of protocol-native timeline pages and live events.
@@ -47,6 +51,16 @@ public:
      * order. A page can be empty while still carrying a usable next cursor.
      */
     virtual QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) = 0;
+
+    /**
+     * @short Return a cached timeline attachment image and start loading it when necessary.
+     *
+     * The QML image provider calls this method with a protocol-owned kaduimg:
+     * URI. Implementations must return promptly; an empty image means that the
+     * attachment is still being retrieved. Once it becomes available, the
+     * implementation updates the matching timeline event through eventUpdated().
+     */
+    virtual QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize);
 
 signals:
     /**

@@ -146,4 +146,10 @@ bool MessageManagerImpl::sendRawMessage(const Chat &chat, const QByteArray &cont
         return false;
 }
 
+bool MessageManagerImpl::sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+{
+    auto chatService = m_chatServiceRepository->chatService(chat.chatAccount());
+    return chatService && chatService->sendAttachment(chat, filePath, description);
+}
+
 #include "message-manager-impl.moc"

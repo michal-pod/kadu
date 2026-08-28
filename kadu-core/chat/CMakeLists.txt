@@ -17,6 +17,7 @@ set (chat_SRCS
 	timeline/chat-timeline-controller.cpp
 	timeline/chat-timeline-model.cpp
 	timeline/chat-view-model.cpp
+	timeline/timeline-image-provider.cpp
 	timeline/legacy-message-timeline-adapter.cpp
 	open-chat-repository.cpp
 	open-chat-service.cpp

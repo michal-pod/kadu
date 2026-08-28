@@ -29,6 +29,7 @@ Item {
     required property string senderDisplayName
     required property string plainText
     required property string formattedText
+    property var attachments: []
     required property bool showSender
     required property bool showTimestamp
     required property bool startsNewDay
@@ -40,6 +41,7 @@ Item {
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
     property var openUrl: null
+    property var openImage: null
 
     implicitHeight: content.implicitHeight
 
@@ -226,6 +228,20 @@ Item {
                         color: root.mutedTextColor
                         opacity: 0.50
                         font.pixelSize: 11
+                    }
+                }
+
+                Repeater {
+                    model: root.attachments
+
+                    delegate: ChatImageAttachment {
+                        required property var modelData
+                        width: parent ? parent.width : 1
+                        visible: modelData.kind === 0
+                        attachment: modelData
+                        placeholderColor: root.darkSurface ? "#5a6472" : "#b7c0cc"
+                        placeholderTextColor: root.textColor
+                        openImage: root.openImage
                     }
                 }
 

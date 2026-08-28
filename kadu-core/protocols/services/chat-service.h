@@ -31,6 +31,7 @@
 #include "protocols/services/account-service.h"
 
 #include <QtCore/QPointer>
+#include <QtCore/QString>
 #include <injeqt/injeqt.h>
 
 class FormattedString;
@@ -95,6 +96,20 @@ public slots:
      * This message won't be altered by RawMessageTransformerService.
      */
     virtual bool sendRawMessage(const Chat &chat, const QByteArray &rawMessage) = 0;
+
+    /**
+     * @short Send a file attachment with a plain-text description.
+     *
+     * The default keeps attachments opt-in for individual protocols. Unlike sendMessage(), this does not create a
+     * legacy Message because the protocol owns both the upload and the resulting timeline event.
+     */
+    virtual bool sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(filePath)
+        Q_UNUSED(description)
+        return false;
+    }
 
     /**
      * @short Leave @p chat.
