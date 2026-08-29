@@ -163,7 +163,13 @@ void ChatTimelineController::markVisible(const QString &stableId)
     if (row < 0)
         return;
 
+    const auto currentReadRow = m_timeline->rowForStableId(m_readMarkerId);
+    if (currentReadRow >= row)
+        return;
+
     setReadMarkerId(stableId);
+    if (m_timelineService)
+        m_timelineService->markTimelineItemRead(m_chat, stableId);
     if (row == m_timeline->rowCount() - 1)
         setNewEventsBelow(0);
 }

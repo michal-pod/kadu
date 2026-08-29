@@ -28,8 +28,13 @@ Item {
     property var openImage: null
 
     readonly property size dimensions: attachment && attachment.dimensions ? attachment.dimensions : Qt.size(0, 0)
-    readonly property int imageWidth: Math.max(1, dimensions.width)
-    readonly property int imageHeight: Math.max(1, dimensions.height)
+    readonly property real imageWidth: Number(dimensions.width) > 0 ? Number(dimensions.width) : 4
+    readonly property real imageHeight: Number(dimensions.height) > 0 ? Number(dimensions.height) : 3
+    readonly property string thumbnailSource: attachment && attachment.thumbnailUri
+                                             ? attachment.thumbnailUri.toString() : ""
+    readonly property url displaySourceUri: thumbnailSource.length > 0
+                                           ? attachment.thumbnailUri
+                                           : (attachment ? attachment.sourceUri : "")
     readonly property bool downloading: attachment && attachment.state === 1
     readonly property bool failed: attachment && attachment.state === 3
     readonly property real progress: attachment && attachment.progress !== undefined ? attachment.progress : 0.0
@@ -47,7 +52,10 @@ Item {
     KaduImage {
         id: image
         anchors.fill: parent
-        sourceUri: root.attachment ? root.attachment.sourceUri : ""
+        // A missing thumbnail is represented as an empty QUrl in the model;
+        // test its string value, otherwise QML can select an empty source.
+        // The full resource is still passed to the image viewer after a click.
+        sourceUri: root.displaySourceUri
         resourceState: root.attachment ? root.attachment.state : 0
         fillMode: Image.PreserveAspectFit
         sourceSize.width: Math.max(1, Math.round(root.width * 2))

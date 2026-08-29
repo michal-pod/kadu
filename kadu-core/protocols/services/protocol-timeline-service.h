@@ -79,6 +79,14 @@ public:
     virtual bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action);
 
     /**
+     * @short Mark a timeline event as read in the native protocol.
+     *
+     * The controller calls this only while the event is visibly read.  A
+     * protocol without read receipts can retain the default no-op behaviour.
+     */
+    virtual void markTimelineItemRead(const Chat &chat, const QString &stableId);
+
+    /**
      * @short Return a cached timeline attachment image and start loading it when necessary.
      *
      * The QML image provider calls this method with a protocol-owned kaduimg:

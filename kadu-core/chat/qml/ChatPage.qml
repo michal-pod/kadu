@@ -41,6 +41,7 @@ Item {
     property bool scrollBarVisible: false
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
+    readonly property int newEventsBelow: chatViewModel ? chatViewModel.newEventsBelow : 0
 
     // These values also make the fallback renderer readable when a selected
     // external style cannot be loaded.
@@ -158,6 +159,8 @@ Item {
     function scrollToBottom() {
         timeline.positionViewAtEnd()
         followingTail = true
+        if (chatViewModel)
+            chatViewModel.setTimelineAtNewest(true)
     }
 
     function scrollPage(direction) {
@@ -165,7 +168,19 @@ Item {
         const pageSize = Math.max(1, timeline.height - 24)
         timeline.contentY = Math.max(timeline.originY, Math.min(maximum, timeline.contentY + direction * pageSize))
         followingTail = root.atBottom()
+        if (chatViewModel)
+            chatViewModel.setTimelineAtNewest(followingTail)
         revealScrollBar()
+    }
+
+    function updateVisibleTimelineItem() {
+        if (!chatViewModel || timeline.count === 0)
+            return
+
+        const row = timeline.indexAt(timeline.width / 2, timeline.contentY + timeline.height - 2)
+        const item = timeline.itemAtIndex(Math.max(0, row))
+        if (item)
+            chatViewModel.markTimelineItemVisible(item.stableId)
     }
 
     function revealScrollBar() {
@@ -334,6 +349,9 @@ Item {
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
         focus: true
+        Accessible.role: Accessible.List
+        Accessible.name: qsTr("Conversation history")
+        Accessible.description: qsTr("Use Page Up and Page Down to browse messages, Home for the beginning and End for the newest message.")
 
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_PageUp) {
@@ -341,6 +359,16 @@ Item {
                 event.accepted = true
             } else if (event.key === Qt.Key_PageDown) {
                 root.scrollPage(1)
+                event.accepted = true
+            } else if (event.key === Qt.Key_Home) {
+                timeline.positionViewAtBeginning()
+                root.followingTail = false
+                if (root.chatViewModel)
+                    root.chatViewModel.setTimelineAtNewest(false)
+                root.revealScrollBar()
+                event.accepted = true
+            } else if (event.key === Qt.Key_End) {
+                root.scrollToBottom()
                 event.accepted = true
             }
         }
@@ -363,6 +391,11 @@ Item {
                 root.revealScrollBar()
             if (moving || dragging || verticalScrollBar.pressed)
                 followingTail = root.atBottom()
+            if (moving || dragging || verticalScrollBar.pressed) {
+                if (root.chatViewModel)
+                    root.chatViewModel.setTimelineAtNewest(followingTail)
+                root.updateVisibleTimelineItem()
+            }
             if (contentY <= originY + 64)
                 root.requestOlder()
         }
@@ -426,7 +459,33 @@ Item {
             width: timeline.width
             property var rendererItem: null
 
-            height: rendererItem ? rendererItem.implicitHeight : 0
+            readonly property bool isFirstNewEvent: root.newEventsBelow > 0 && index === timeline.count - root.newEventsBelow
+            height: (isFirstNewEvent ? newMessagesMarker.implicitHeight : 0) + (rendererItem ? rendererItem.implicitHeight : 0)
+            Accessible.role: Accessible.ListItem
+            Accessible.name: senderDisplayName.length > 0
+                             ? senderDisplayName + ": " + plainText
+                             : plainText
+
+            Item {
+                id: newMessagesMarker
+                width: parent.width
+                implicitHeight: visible ? 30 : 0
+                visible: delegateRoot.isFirstNewEvent
+                Accessible.role: Accessible.Separator
+                Accessible.name: qsTr("New messages")
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 8
+                    Rectangle { width: 64; height: 1; color: root.themeValue("separatorColor", root.fallbackSeparatorColor) }
+                    Text {
+                        text: qsTr("New messages")
+                        color: root.themeValue("mutedTextColor", root.fallbackMutedTextColor)
+                        font.pixelSize: 12
+                    }
+                    Rectangle { width: 64; height: 1; color: root.themeValue("separatorColor", root.fallbackSeparatorColor) }
+                }
+            }
 
             function createRenderer() {
                 if (rendererItem) {
@@ -466,8 +525,10 @@ Item {
                     "decryptionState": delegateRoot.decryptionState,
                     "errorText": delegateRoot.errorText
                 })
-                if (rendererItem)
+                if (rendererItem) {
+                    rendererItem.y = Qt.binding(function() { return newMessagesMarker.implicitHeight })
                     root.bindTimelineItem(rendererItem, delegateRoot)
+                }
             }
 
             Component.onCompleted: createRenderer()
@@ -502,6 +563,18 @@ Item {
         text: qsTr("Loading messages…")
         color: root.themeValue("loadingTextColor", root.fallbackTextColor)
         z: 2
+    }
+
+    Button {
+        id: newMessagesButton
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 14
+        visible: root.newEventsBelow > 0
+        text: root.newEventsBelow === 1 ? qsTr("1 new message") : qsTr("%1 new messages").arg(root.newEventsBelow)
+        z: 3
+        Accessible.name: text
+        onClicked: root.scrollToBottom()
     }
 
     ImageViewerDialog {

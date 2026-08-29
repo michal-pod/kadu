@@ -40,6 +40,10 @@ bool ProtocolTimelineService::executeAction(const Chat &, const QString &, ChatT
     return false;
 }
 
+void ProtocolTimelineService::markTimelineItemRead(const Chat &, const QString &)
+{
+}
+
 QImage ProtocolTimelineService::requestAttachmentImage(const Chat &, const QUrl &, const QSize &)
 {
     return {};

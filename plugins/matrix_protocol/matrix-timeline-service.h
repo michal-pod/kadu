@@ -29,6 +29,7 @@
 #include <QtCore/QPointer>
 #include <QtCore/QPromise>
 #include <QtCore/QSet>
+#include <QtCore/QSize>
 #include <QtGui/QImage>
 #include <injeqt/injeqt.h>
 
@@ -61,6 +62,7 @@ public:
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
     ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const override;
     bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action) override;
+    void markTimelineItemRead(const Chat &chat, const QString &stableId) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
 
 private:
@@ -72,10 +74,12 @@ private:
     QSet<Quotient::Room *> m_loadedRooms;
     QSet<QString> m_historicalEventIds;
     QHash<QString, QImage> m_attachmentImages;
+    QHash<QString, QSize> m_attachmentImageDimensions;
     QHash<QString, ChatTimelineAttachmentState> m_attachmentStates;
     QHash<QString, qreal> m_attachmentProgress;
     QHash<QString, QString> m_attachmentErrors;
     QHash<QString, QString> m_attachmentDownloadPaths;
+    QSet<QString> m_attachmentThumbnailRequests;
     mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
     mutable QHash<QString, QString> m_attachmentFileNames;
     mutable QHash<QString, QJsonObject> m_decryptedEventSources;
@@ -100,14 +104,17 @@ private:
     void updateTimelineEventsForMegolmSession(Quotient::Room *room, const QString &sessionId);
     void showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const;
     void updateAttachmentEvent(Quotient::Room *room, const QString &eventId);
-    void handleAttachmentDownloadProgress(Quotient::Room *room, const QString &eventId, qint64 received,
-                                          qint64 total);
-    void handleAttachmentDownloadCompleted(Quotient::Room *room, const QString &eventId,
+    void handleAttachmentDownloadProgress(Quotient::Room *room, const QString &resourceId, const QString &eventId,
+                                          qint64 received, qint64 total);
+    void handleAttachmentDownloadCompleted(Quotient::Room *room, const QString &resourceId, const QString &eventId,
                                            const QUrl &localFile);
-    void handleAttachmentDownloadFailed(Quotient::Room *room, const QString &eventId, const QString &errorMessage);
+    void handleAttachmentDownloadFailed(Quotient::Room *room, const QString &resourceId, const QString &eventId,
+                                        const QString &errorMessage);
     void clearAttachmentDownloads();
-    static QUrl attachmentUri(const QString &eventId);
+    static QUrl attachmentUri(const QString &eventId, bool thumbnail = false);
     static QString eventIdForAttachmentUri(const QUrl &sourceUri);
+    static bool isAttachmentThumbnailUri(const QUrl &sourceUri);
+    static QString attachmentResourceId(const QString &eventId, bool thumbnail);
     static QString localEchoId(const QString &transactionId);
     static QString transactionIdForLocalEcho(const QString &stableId);
     QByteArray sourceOrderForIndex(qint64 timelineIndex) const;

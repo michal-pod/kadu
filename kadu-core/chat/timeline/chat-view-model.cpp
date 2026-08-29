@@ -55,6 +55,12 @@ ChatViewModel::ChatViewModel(
         connect(
             m_timelineController, &ChatTimelineController::hasOlderChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
+        connect(
+            m_timelineController, &ChatTimelineController::readMarkerIdChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
+        connect(
+            m_timelineController, &ChatTimelineController::newEventsBelowChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
     }
     else
         m_timeline = new ChatTimelineModel{this};
@@ -162,6 +168,16 @@ bool ChatViewModel::loadingOlder() const
 bool ChatViewModel::hasOlder() const
 {
     return m_timelineController && m_timelineController->hasOlder();
+}
+
+QString ChatViewModel::readMarkerId() const
+{
+    return m_timelineController ? m_timelineController->readMarkerId() : QString{};
+}
+
+int ChatViewModel::newEventsBelow() const
+{
+    return m_timelineController ? m_timelineController->newEventsBelow() : 0;
 }
 
 void ChatViewModel::addLegacyMessage(const Message &message)
@@ -273,6 +289,18 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
         return;
 
     service->executeAction(m_chat, stableId, timelineAction);
+}
+
+void ChatViewModel::setTimelineAtNewest(bool atNewest)
+{
+    if (m_timelineController)
+        m_timelineController->setAtNewest(atNewest);
+}
+
+void ChatViewModel::markTimelineItemVisible(const QString &stableId)
+{
+    if (m_timelineController && !stableId.isEmpty())
+        m_timelineController->markVisible(stableId);
 }
 
 void ChatViewModel::open()

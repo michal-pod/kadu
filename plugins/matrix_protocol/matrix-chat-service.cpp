@@ -53,6 +53,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QUrl>
+#include <QtGui/QImageReader>
 #include <QtGui/QPixmap>
 
 #include <memory>
@@ -216,6 +217,9 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
 
     const auto plainText = description.isEmpty() ? fileInfo.fileName() : description;
     const auto mimeType = QMimeDatabase{}.mimeTypeForFile(fileInfo);
+    const auto imageSize = mimeType.name().startsWith(QStringLiteral("image/"))
+                               ? QImageReader{fileInfo.absoluteFilePath()}.size()
+                               : QSize{};
     const auto uploadId = m_connection->generateTxnId();
     const QPointer<Quotient::Room> uploadRoom{room};
     auto *uploadContext = new QObject{room};
@@ -224,7 +228,7 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
     // libQuotient version used by Kadu, the replacement leaves that local URL next to encrypted `file` metadata.
     // Upload first and construct the event from FileSourceInfo so only the server media URL is serialised.
     connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
-            [uploadRoom, uploadId, plainText, fileInfo, mimeType, uploadContext](
+            [uploadRoom, uploadId, plainText, fileInfo, mimeType, imageSize, uploadContext](
                 const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
                 if (completedId != uploadId)
                     return;
@@ -235,7 +239,7 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
                     if (mimeType.name().startsWith(QStringLiteral("image/")))
                     {
                         content = std::make_unique<Quotient::EventContent::ImageContent>(
-                            fileMetadata, fileInfo.size(), mimeType, QSize{}, fileInfo.fileName());
+                            fileMetadata, fileInfo.size(), mimeType, imageSize, fileInfo.fileName());
                     }
                     else
                     {

@@ -61,6 +61,8 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(bool loadingInitial READ loadingInitial NOTIFY timelineStateChanged)
     Q_PROPERTY(bool loadingOlder READ loadingOlder NOTIFY timelineStateChanged)
     Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY timelineStateChanged)
+    Q_PROPERTY(QString readMarkerId READ readMarkerId NOTIFY timelineStateChanged)
+    Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
 
 public:
     explicit ChatViewModel(Chat chat, ProtocolTimelineService *timelineService = nullptr,
@@ -82,6 +84,8 @@ public:
     bool loadingInitial() const;
     bool loadingOlder() const;
     bool hasOlder() const;
+    QString readMarkerId() const;
+    int newEventsBelow() const;
 
     void addLegacyMessage(const Message &message);
     void addLegacyMessages(const SortedMessages &messages);
@@ -91,6 +95,8 @@ public:
     Q_INVOKABLE void copyText(const QString &text);
     Q_INVOKABLE QVariantList timelineActions(const QString &stableId) const;
     Q_INVOKABLE void executeTimelineAction(const QString &stableId, int action);
+    Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
+    Q_INVOKABLE void markTimelineItemVisible(const QString &stableId);
 
 public slots:
     void open();
