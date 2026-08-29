@@ -22,11 +22,13 @@
 #include "protocols/services/protocol-timeline-service.h"
 
 #include <Quotient/events/filesourceinfo.h>
+#include <Quotient/events/roomevent.h>
 
 #include <QtCore/QPointer>
 #include <QtCore/QPromise>
 #include <QtCore/QSet>
 #include <QtCore/QHash>
+#include <QtCore/QJsonObject>
 #include <QtGui/QImage>
 #include <injeqt/injeqt.h>
 
@@ -41,7 +43,7 @@ namespace Quotient
 class Connection;
 class DownloadFileJob;
 class Room;
-class RoomMessageEvent;
+class TimelineItem;
 }
 
 class MatrixTimelineService final : public ProtocolTimelineService
@@ -74,6 +76,7 @@ private:
     QHash<QString, QString> m_attachmentDownloadPaths;
     mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
     mutable QHash<QString, QString> m_attachmentFileNames;
+    mutable QHash<QString, QJsonObject> m_decryptedEventSources;
 
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;
@@ -82,8 +85,13 @@ private:
     QFuture<ChatTimelinePage> waitForRoomInitialState(const ChatTimelineRequest &request, Quotient::Room *room);
     QFuture<ChatTimelinePage> requestTimelineForRoom(const ChatTimelineRequest &request, Quotient::Room *room);
     ChatTimelinePage pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room) const;
-    ChatTimelineItem itemForEvent(const Quotient::RoomMessageEvent &event, const QString &eventId,
+    const Quotient::RoomEvent *eventForTimelineItem(Quotient::Room *room, const Quotient::TimelineItem &timelineItem,
+                                                    Quotient::RoomEventPtr &decryptedEvent, bool &encrypted) const;
+    ChatTimelineItem itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event, const QString &eventId,
                                   qint64 timelineIndex, bool encrypted) const;
+    void updateTimelineEvent(Quotient::Room *room, const QString &eventId);
+    void updateTimelineEventsForMember(Quotient::Room *room, const QString &memberId);
+    void showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const;
     void updateAttachmentEvent(Quotient::Room *room, const QString &eventId);
     void handleAttachmentDownloadProgress(Quotient::Room *room, const QString &eventId, qint64 received,
                                           qint64 total);

@@ -41,6 +41,7 @@ enum class ChatTimelineItemKind
     AudioMessage,
     VideoMessage,
     TopicChanged,
+    RoomNameChanged,
     RoomAvatarChanged,
     MemberJoined,
     MemberLeft,
@@ -51,6 +52,9 @@ enum class ChatTimelineItemKind
     RoomCreated,
     EncryptionEnabled,
     CallEvent,
+    ReactionAdded,
+    MessageEdited,
+    MessageRedacted,
     LocalNotice,
     ErrorNotice,
     UnsupportedEvent
@@ -146,6 +150,7 @@ struct KADUAPI ChatTimelineItem
 {
     QString stableId;
     QString transactionId;
+    QString protocolEventType;
     QByteArray sourceOrder;
     QDateTime timestamp;
     quint64 revision = 0;

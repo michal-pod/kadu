@@ -102,18 +102,34 @@ Item {
     function bindTimelineItem(item, delegate) {
         item.width = Qt.binding(function() { return delegate.width })
         item.stableId = Qt.binding(function() { return delegate.stableId })
+        if (item.protocolEventType !== undefined)
+            item.protocolEventType = Qt.binding(function() { return delegate.protocolEventType })
         item.kind = Qt.binding(function() { return delegate.kind })
         item.timestamp = Qt.binding(function() { return delegate.timestamp })
         item.ownEvent = Qt.binding(function() { return delegate.ownEvent })
         item.senderDisplayName = Qt.binding(function() { return delegate.senderDisplayName })
+        if (item.senderAvatarSource !== undefined)
+            item.senderAvatarSource = Qt.binding(function() { return delegate.senderAvatarSource })
+        if (item.senderColor !== undefined)
+            item.senderColor = Qt.binding(function() { return delegate.senderColor })
         item.plainText = Qt.binding(function() { return delegate.plainText })
         item.formattedText = Qt.binding(function() { return delegate.formattedText })
+        if (item.replyToId !== undefined)
+            item.replyToId = Qt.binding(function() { return delegate.replyToId })
         if (item.attachments !== undefined)
             item.attachments = Qt.binding(function() { return delegate.attachments })
+        if (item.reactions !== undefined)
+            item.reactions = Qt.binding(function() { return delegate.reactions })
         item.showSender = Qt.binding(function() { return delegate.showSender })
+        if (item.showAvatar !== undefined)
+            item.showAvatar = Qt.binding(function() { return delegate.showAvatar })
         item.showTimestamp = Qt.binding(function() { return delegate.showTimestamp })
         item.startsNewDay = Qt.binding(function() { return delegate.startsNewDay })
         item.deliveryState = Qt.binding(function() { return delegate.deliveryState })
+        if (item.edited !== undefined)
+            item.edited = Qt.binding(function() { return delegate.edited })
+        if (item.systemEvent !== undefined)
+            item.systemEvent = Qt.binding(function() { return delegate.systemEvent })
         item.redacted = Qt.binding(function() { return delegate.redacted })
         item.encrypted = Qt.binding(function() { return delegate.encrypted })
         item.decryptionState = Qt.binding(function() { return delegate.decryptionState })
@@ -367,17 +383,25 @@ Item {
         delegate: Item {
             id: delegateRoot
             required property string stableId
+            required property string protocolEventType
             required property int kind
             required property var timestamp
             required property bool ownEvent
             required property string senderDisplayName
+            required property url senderAvatarSource
+            required property color senderColor
             required property string plainText
             required property string formattedText
+            required property string replyToId
             required property var attachments
+            required property var reactions
             required property bool showSender
+            required property bool showAvatar
             required property bool showTimestamp
             required property bool startsNewDay
             required property int deliveryState
+            required property bool edited
+            required property bool systemEvent
             required property bool redacted
             required property bool encrypted
             required property int decryptionState
@@ -401,16 +425,25 @@ Item {
                 rendererItem = component.createObject(delegateRoot, {
                     "width": delegateRoot.width,
                     "stableId": delegateRoot.stableId,
+                    "protocolEventType": delegateRoot.protocolEventType,
                     "kind": delegateRoot.kind,
                     "timestamp": delegateRoot.timestamp,
                     "ownEvent": delegateRoot.ownEvent,
                     "senderDisplayName": delegateRoot.senderDisplayName,
+                    "senderAvatarSource": delegateRoot.senderAvatarSource,
+                    "senderColor": delegateRoot.senderColor,
                     "plainText": delegateRoot.plainText,
                     "formattedText": delegateRoot.formattedText,
+                    "replyToId": delegateRoot.replyToId,
+                    "attachments": delegateRoot.attachments,
+                    "reactions": delegateRoot.reactions,
                     "showSender": delegateRoot.showSender,
+                    "showAvatar": delegateRoot.showAvatar,
                     "showTimestamp": delegateRoot.showTimestamp,
                     "startsNewDay": delegateRoot.startsNewDay,
                     "deliveryState": delegateRoot.deliveryState,
+                    "edited": delegateRoot.edited,
+                    "systemEvent": delegateRoot.systemEvent,
                     "redacted": delegateRoot.redacted,
                     "encrypted": delegateRoot.encrypted,
                     "decryptionState": delegateRoot.decryptionState,

@@ -35,7 +35,8 @@ enum class ChatTimelineAction
     Reply = 0x1,
     Edit = 0x2,
     Delete = 0x4,
-    SaveAttachment = 0x8
+    SaveAttachment = 0x8,
+    ShowSource = 0x10
 };
 Q_DECLARE_FLAGS(ChatTimelineActions, ChatTimelineAction)
 Q_DECLARE_OPERATORS_FOR_FLAGS(ChatTimelineActions)

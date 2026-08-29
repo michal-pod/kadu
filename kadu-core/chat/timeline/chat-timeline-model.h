@@ -39,6 +39,7 @@ public:
     {
         StableIdRole = Qt::UserRole + 1,
         TransactionIdRole,
+        ProtocolEventTypeRole,
         KindRole,
         TimestampRole,
         DateRole,
@@ -58,6 +59,7 @@ public:
         EncryptedRole,
         DecryptionStateRole,
         ErrorTextRole,
+        SystemEventRole,
         GroupPositionRole,
         ShowSenderRole,
         ShowAvatarRole,

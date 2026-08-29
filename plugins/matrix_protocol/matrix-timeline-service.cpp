@@ -33,21 +33,35 @@
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
 #include <Quotient/events/filesourceinfo.h>
+#include <Quotient/events/reactionevent.h>
+#include <Quotient/events/redactionevent.h>
+#include <Quotient/events/roomavatarevent.h>
+#include <Quotient/events/roommemberevent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
+#include <Quotient/events/simplestateevents.h>
 #include <Quotient/jobs/downloadfilejob.h>
 #include <Quotient/room.h>
+#include <Quotient/roommember.h>
 #include <Quotient/user.h>
 
+#include <QtCore/QBuffer>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFutureWatcher>
+#include <QtCore/QJsonDocument>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
+#include <QtWidgets/QDialog>
+#include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMessageBox>
+#include <QtWidgets/QPlainTextEdit>
+#include <QtWidgets/QTabWidget>
+#include <QtWidgets/QVBoxLayout>
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <utility>
 #include <variant>
@@ -83,6 +97,7 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_attachmentErrors.clear();
     m_attachmentSources.clear();
     m_attachmentFileNames.clear();
+    m_decryptedEventSources.clear();
     if (!m_connection)
         return;
 
@@ -117,26 +132,24 @@ ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, co
         if (timelineItem->id() != stableId)
             continue;
 
-        const auto *event = timelineItem.viewAs<Quotient::RoomMessageEvent>();
         Quotient::RoomEventPtr decryptedEvent;
+        auto encrypted = false;
+        const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
         if (!event)
-        {
-            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
-            {
-                decryptedEvent = room->decryptMessage(*encryptedEvent);
-                event = Quotient::eventCast<const Quotient::RoomMessageEvent>(decryptedEvent);
-            }
-        }
-        if (!event || event->isRedacted())
             return {};
 
-        ChatTimelineActions actions{ChatTimelineAction::Reply};
-        if (m_connection && event->senderId() == m_connection->userId())
+        ChatTimelineActions actions{ChatTimelineAction::ShowSource};
+        const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+        if (!messageEvent || event->isRedacted())
+            return actions;
+
+        actions |= ChatTimelineAction::Reply;
+        if (m_connection && messageEvent->senderId() == m_connection->userId())
         {
             actions |= ChatTimelineAction::Edit;
             actions |= ChatTimelineAction::Delete;
         }
-        if (event->get<Quotient::EventContent::FileContentBase>())
+        if (messageEvent->get<Quotient::EventContent::FileContentBase>())
             actions |= ChatTimelineAction::SaveAttachment;
         return actions;
     }
@@ -148,6 +161,19 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
     auto *room = roomForChat(chat);
     if (!room || !availableActions(chat, stableId).testFlag(action))
         return false;
+
+    if (action == ChatTimelineAction::ShowSource)
+    {
+        for (const auto &timelineItem : room->messageEvents())
+        {
+            if (timelineItem->id() == stableId)
+            {
+                showEventSource(stableId, *timelineItem.event());
+                return true;
+            }
+        }
+        return false;
+    }
 
     if (action == ChatTimelineAction::Delete)
     {
@@ -391,6 +417,28 @@ Quotient::Room *MatrixTimelineService::roomForChat(const Chat &chat) const
     return nullptr;
 }
 
+const Quotient::RoomEvent *MatrixTimelineService::eventForTimelineItem(
+    Quotient::Room *room, const Quotient::TimelineItem &timelineItem, Quotient::RoomEventPtr &decryptedEvent,
+    bool &encrypted) const
+{
+    const auto *event = timelineItem.event();
+    if (!event)
+        return nullptr;
+
+    encrypted = !event->encryptedJson().isEmpty();
+    if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+    {
+        encrypted = true;
+        decryptedEvent = room->decryptMessage(*encryptedEvent);
+        if (decryptedEvent)
+        {
+            m_decryptedEventSources.insert(timelineItem->id(), decryptedEvent->fullJson());
+            event = decryptedEvent.get();
+        }
+    }
+    return event;
+}
+
 void MatrixTimelineService::watchRoom(Quotient::Room *room)
 {
     if (!room || m_watchedRooms.contains(room))
@@ -407,15 +455,23 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
             });
     connect(room, &Quotient::Room::baseStateLoaded, this,
             [this, room] { m_loadedRooms.insert(room); });
+    connect(room, &Quotient::Room::updatedEvent, this,
+            [this, room](const QString &eventId) { updateTimelineEvent(room, eventId); });
     connect(room, &Quotient::Room::replacedEvent, this,
             [this, room](const Quotient::RoomEvent *newEvent, const Quotient::RoomEvent *) {
-                if (!newEvent || !newEvent->isRedacted())
+                if (!newEvent)
                     return;
 
                 const auto chat = chatForRoom(room);
-                if (chat)
+                if (!chat)
+                    return;
+                if (newEvent->isRedacted())
                     emit eventRedacted(chat, newEvent->id(), newEvent->redactionReason());
+                else
+                    updateTimelineEvent(room, newEvent->id());
             });
+    connect(room, &Quotient::Room::memberAvatarUpdated, this,
+            [this, room](const Quotient::RoomMember &member) { updateTimelineEventsForMember(room, member.id()); });
     connect(room, &QObject::destroyed, this, [this, room] {
         m_watchedRooms.remove(room);
         m_loadedRooms.remove(room);
@@ -438,22 +494,24 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         if (m_historicalEventIds.remove(timelineItem->id()))
             continue;
 
-        const auto *event = timelineItem.viewAs<Quotient::RoomMessageEvent>();
         Quotient::RoomEventPtr decryptedEvent;
         auto encrypted = false;
+        const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
         if (!event)
-        {
-            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
-            {
-                encrypted = true;
-                decryptedEvent = room->decryptMessage(*encryptedEvent);
-                event = Quotient::eventCast<const Quotient::RoomMessageEvent>(decryptedEvent);
-            }
-        }
-        if (!event || event->isRedacted())
             continue;
 
-        emit eventReceived(chat, itemForEvent(*event, timelineItem->id(), timelineItem.index(), encrypted));
+        // An undecrypted m.room.encrypted envelope is transport state, not a
+        // timeline entry. Once Quotient decrypts it, updatedEvent/replacedEvent
+        // will feed the decrypted event through this service.
+        if (event->matrixType() == QStringLiteral("m.room.encrypted"))
+            continue;
+
+        if (event->isRedacted())
+        {
+            emit eventRedacted(chat, timelineItem->id(), event->redactionReason());
+            continue;
+        }
+        emit eventReceived(chat, itemForEvent(room, *event, timelineItem->id(), timelineItem.index(), encrypted));
     }
 }
 
@@ -479,22 +537,13 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
         if (index >= boundary)
             continue;
 
-        const auto *event = it->viewAs<Quotient::RoomMessageEvent>();
         Quotient::RoomEventPtr decryptedEvent;
         auto encrypted = false;
-        if (!event)
-        {
-            if (const auto *encryptedEvent = it->viewAs<Quotient::EncryptedEvent>())
-            {
-                encrypted = true;
-                decryptedEvent = room->decryptMessage(*encryptedEvent);
-                event = Quotient::eventCast<const Quotient::RoomMessageEvent>(decryptedEvent);
-            }
-        }
-        if (!event || event->isRedacted())
+        const auto *event = eventForTimelineItem(room, *it, decryptedEvent, encrypted);
+        if (!event || event->isRedacted() || event->matrixType() == QStringLiteral("m.room.encrypted"))
             continue;
 
-        page.items.append(itemForEvent(*event, (*it)->id(), index, encrypted));
+        page.items.append(itemForEvent(room, *event, (*it)->id(), index, encrypted));
         nextCursor = index;
         ++accepted;
         if (accepted == limit)
@@ -509,45 +558,216 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
     return page;
 }
 
-ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessageEvent &event, const QString &eventId,
-                                                      qint64 timelineIndex, bool encrypted) const
+ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event,
+                                                      const QString &eventId, qint64 timelineIndex, bool encrypted) const
 {
     ChatTimelineItem item;
     item.stableId = eventId;
     item.transactionId = event.transactionId();
+    item.protocolEventType = event.matrixType();
     item.sourceOrder = sourceOrderForIndex(timelineIndex);
     item.timestamp = event.originTimestamp().toLocalTime();
     item.sender.id = event.senderId();
     item.sender.displayName = event.senderId();
     item.sender.own = m_connection && event.senderId() == m_connection->userId();
-    item.content.plainText = event.plainBody();
-    if (const auto textContent = event.get<Quotient::EventContent::TextContent>();
-        textContent && textContent->mimeType.inherits(QStringLiteral("text/html")))
+    if (room && !event.senderId().isEmpty())
     {
-        item.content.formattedText = sanitizeHtml(HtmlString{textContent->body}).string();
+        const auto member = room->member(event.senderId());
+        if (!member.id().isEmpty())
+        {
+            item.sender.displayName = member.displayName();
+            item.sender.color = member.color();
+            const auto avatar = room->memberAvatar(member.id(), 48);
+            if (!avatar.isNull())
+            {
+                QByteArray avatarData;
+                QBuffer buffer{&avatarData};
+                if (buffer.open(QIODevice::WriteOnly) && avatar.save(&buffer, "PNG"))
+                    item.sender.avatarSource = QUrl{QStringLiteral("data:image/png;base64,") +
+                                                     QString::fromLatin1(avatarData.toBase64())};
+            }
+        }
     }
     item.state.deliveryState = item.sender.own ? ChatTimelineDeliveryState::Sent
                                                 : ChatTimelineDeliveryState::Delivered;
     item.state.encrypted = encrypted;
-    item.state.decryptionState = encrypted ? ChatTimelineDecryptionState::Decrypted
-                                            : ChatTimelineDecryptionState::NotEncrypted;
+    item.state.decryptionState = encrypted
+                                       ? (event.matrixType() == QStringLiteral("m.room.encrypted")
+                                              ? ChatTimelineDecryptionState::Pending
+                                              : ChatTimelineDecryptionState::Decrypted)
+                                       : ChatTimelineDecryptionState::NotEncrypted;
 
-    switch (event.msgtype())
+    const auto senderName = item.sender.displayName.isEmpty() ? item.sender.id : item.sender.displayName;
+    const auto eventType = event.matrixType();
+    const auto content = event.contentJson();
+    if (eventType == QStringLiteral("m.room.name"))
     {
+        item.kind = ChatTimelineItemKind::RoomNameChanged;
+        item.content.plainText = tr("%1 changed the room name to %2.").arg(senderName, content.value("name").toString());
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.topic"))
+    {
+        item.kind = ChatTimelineItemKind::TopicChanged;
+        item.content.plainText = tr("%1 changed the room topic to %2.").arg(senderName, content.value("topic").toString());
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.avatar"))
+    {
+        item.kind = ChatTimelineItemKind::RoomAvatarChanged;
+        item.content.plainText = tr("%1 changed the room avatar.").arg(senderName);
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.create"))
+    {
+        item.kind = ChatTimelineItemKind::RoomCreated;
+        item.content.plainText = tr("%1 created the room.").arg(senderName);
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.encryption"))
+    {
+        item.kind = ChatTimelineItemKind::EncryptionEnabled;
+        item.content.plainText = tr("%1 enabled end-to-end encryption.").arg(senderName);
+        return item;
+    }
+    if (const auto *memberEvent = Quotient::eventCast<const Quotient::RoomMemberEvent>(&event))
+    {
+        const auto memberId = memberEvent->userId();
+        const auto memberName = memberEvent->newDisplayName().value_or(memberId);
+        if (memberEvent->isRename() || memberEvent->isAvatarUpdate())
+        {
+            item.kind = ChatTimelineItemKind::MemberProfileChanged;
+            item.content.plainText = tr("%1 updated their room profile.").arg(memberName);
+        }
+        else if (memberEvent->isJoin())
+        {
+            item.kind = ChatTimelineItemKind::MemberJoined;
+            item.content.plainText = tr("%1 joined the room.").arg(memberName);
+        }
+        else if (memberEvent->isInvite())
+        {
+            item.kind = ChatTimelineItemKind::MemberInvited;
+            item.content.plainText = tr("%1 invited %2 to the room.").arg(senderName, memberName);
+        }
+        else if (memberEvent->isBan())
+        {
+            item.kind = ChatTimelineItemKind::MemberBanned;
+            item.content.plainText = tr("%1 banned %2 from the room.").arg(senderName, memberName);
+        }
+        else if (memberEvent->isLeave() && event.senderId() != memberId)
+        {
+            item.kind = ChatTimelineItemKind::MemberKicked;
+            item.content.plainText = tr("%1 removed %2 from the room.").arg(senderName, memberName);
+        }
+        else if (memberEvent->isLeave() || memberEvent->isRejectedInvite())
+        {
+            item.kind = ChatTimelineItemKind::MemberLeft;
+            item.content.plainText = tr("%1 left the room.").arg(memberName);
+        }
+        else
+        {
+            item.kind = ChatTimelineItemKind::MemberProfileChanged;
+            item.content.plainText = tr("%1 updated their room profile.").arg(memberName);
+        }
+        return item;
+    }
+    if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(&event))
+    {
+        item.kind = ChatTimelineItemKind::ReactionAdded;
+        item.content.plainText = tr("%1 reacted with %2.").arg(senderName, reactionEvent->key());
+        return item;
+    }
+    if (const auto *redactionEvent = Quotient::eventCast<const Quotient::RedactionEvent>(&event))
+    {
+        item.kind = ChatTimelineItemKind::MessageRedacted;
+        item.content.plainText = tr("%1 removed a message.").arg(senderName);
+        item.content.replyToId = redactionEvent->redactedEvent();
+        return item;
+    }
+    if (eventType.startsWith(QStringLiteral("m.call.")))
+    {
+        item.kind = ChatTimelineItemKind::CallEvent;
+        item.content.plainText = tr("%1 sent a call event (%2).").arg(senderName, eventType);
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.encrypted"))
+    {
+        item.kind = ChatTimelineItemKind::UnsupportedEvent;
+        item.content.plainText = tr("Encrypted Matrix event is waiting for a key (%1).").arg(eventType);
+        item.state.errorText = tr("The event could not be decrypted yet.");
+        return item;
+    }
+
+    const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(&event);
+    if (!messageEvent)
+    {
+        item.kind = ChatTimelineItemKind::UnsupportedEvent;
+        item.content.plainText = tr("Unsupported Matrix event: %1").arg(eventType);
+        return item;
+    }
+    if (!messageEvent->replacedEvent().isEmpty())
+    {
+        item.kind = ChatTimelineItemKind::MessageEdited;
+        item.content.plainText = tr("%1 edited a message.").arg(senderName);
+        item.content.replyToId = messageEvent->replacedEvent();
+        return item;
+    }
+
+    item.content.plainText = messageEvent->plainBody();
+    item.content.replyToId = messageEvent->replyEventId(true);
+    item.state.edited = messageEvent->isReplaced();
+    if (const auto textContent = messageEvent->get<Quotient::EventContent::TextContent>();
+        textContent && textContent->mimeType.inherits(QStringLiteral("text/html")))
+    {
+        item.content.formattedText = sanitizeHtml(HtmlString{textContent->body}).string();
+    }
+
+    switch (messageEvent->msgtype())
+    {
+    case Quotient::RoomMessageEvent::MsgType::Text: item.kind = ChatTimelineItemKind::TextMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Image: item.kind = ChatTimelineItemKind::ImageMessage; break;
     case Quotient::RoomMessageEvent::MsgType::File: item.kind = ChatTimelineItemKind::FileMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Audio: item.kind = ChatTimelineItemKind::AudioMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Video: item.kind = ChatTimelineItemKind::VideoMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Notice: item.kind = ChatTimelineItemKind::NoticeMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Emote: item.kind = ChatTimelineItemKind::EmoteMessage; break;
-    default: item.kind = ChatTimelineItemKind::TextMessage; break;
+    default:
+        item.kind = ChatTimelineItemKind::UnsupportedEvent;
+        item.content.plainText = tr("Unsupported Matrix message type: %1").arg(messageEvent->rawMsgtype());
+        return item;
     }
 
-    if (const auto fileContent = event.get<Quotient::EventContent::FileContentBase>())
+    if (room)
+    {
+        for (const auto *relatedEvent : room->relatedEvents(event, Quotient::EventRelation::AnnotationType))
+        {
+            const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(relatedEvent);
+            if (!reactionEvent || relatedEvent->isRedacted())
+                continue;
+
+            const auto reactionKey = reactionEvent->key();
+            auto reaction = std::find_if(item.content.reactions.begin(), item.content.reactions.end(),
+                                         [&reactionKey](const ChatTimelineReaction &candidate) {
+                                             return candidate.key == reactionKey;
+                                         });
+            if (reaction == item.content.reactions.end())
+            {
+                item.content.reactions.append({reactionKey});
+                reaction = std::prev(item.content.reactions.end());
+            }
+            const auto reactionMember = room->member(reactionEvent->senderId());
+            reaction->senderIds.append(reactionEvent->senderId());
+            reaction->senderDisplayNames.append(reactionMember.id().isEmpty() ? reactionEvent->senderId()
+                                                                              : reactionMember.displayName());
+            reaction->own = reaction->own || (m_connection && reactionEvent->senderId() == m_connection->userId());
+        }
+    }
+
+    if (const auto fileContent = messageEvent->get<Quotient::EventContent::FileContentBase>())
     {
         const auto fileInfo = fileContent->commonInfo();
         ChatTimelineAttachment attachment;
-        attachment.fileName = fileInfo.originalName.isEmpty() ? event.fileNameToDownload() : fileInfo.originalName;
+        attachment.fileName = fileInfo.originalName.isEmpty() ? messageEvent->fileNameToDownload() : fileInfo.originalName;
         attachment.mimeType = fileInfo.mimeType.name();
         attachment.size = fileInfo.payloadSize;
         attachment.sourceUri = attachmentUri(eventId);
@@ -558,12 +778,12 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
         m_attachmentSources.insert(eventId, fileInfo.source);
         m_attachmentFileNames.insert(eventId, attachment.fileName);
 
-        switch (event.msgtype())
+        switch (messageEvent->msgtype())
         {
         case Quotient::RoomMessageEvent::MsgType::Image:
         {
             attachment.kind = ChatTimelineAttachmentKind::Image;
-            if (const auto imageContent = event.get<Quotient::EventContent::ImageContent>())
+            if (const auto imageContent = messageEvent->get<Quotient::EventContent::ImageContent>())
                 attachment.dimensions = imageContent->imageSize;
             break;
         }
@@ -571,7 +791,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
         case Quotient::RoomMessageEvent::MsgType::Video:
         {
             attachment.kind = ChatTimelineAttachmentKind::Video;
-            if (const auto videoContent = event.get<Quotient::EventContent::VideoContent>())
+            if (const auto videoContent = messageEvent->get<Quotient::EventContent::VideoContent>())
             {
                 attachment.dimensions = videoContent->imageSize;
                 attachment.duration = videoContent->duration;
@@ -585,10 +805,10 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(const Quotient::RoomMessage
     return item;
 }
 
-void MatrixTimelineService::updateAttachmentEvent(Quotient::Room *room, const QString &eventId)
+void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QString &eventId)
 {
     const auto chat = chatForRoom(room);
-    if (!chat || !room)
+    if (!chat || !room || eventId.isEmpty())
         return;
 
     for (const auto &timelineItem : room->messageEvents())
@@ -596,24 +816,75 @@ void MatrixTimelineService::updateAttachmentEvent(Quotient::Room *room, const QS
         if (timelineItem->id() != eventId)
             continue;
 
-        const auto *event = timelineItem.viewAs<Quotient::RoomMessageEvent>();
         Quotient::RoomEventPtr decryptedEvent;
         auto encrypted = false;
-        if (!event)
-        {
-            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
-            {
-                encrypted = true;
-                decryptedEvent = room->decryptMessage(*encryptedEvent);
-                event = Quotient::eventCast<const Quotient::RoomMessageEvent>(decryptedEvent);
-            }
-        }
+        const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
         if (!event)
             return;
+        if (event->matrixType() == QStringLiteral("m.room.encrypted"))
+            return;
+        if (event->isRedacted())
+        {
+            emit eventRedacted(chat, eventId, event->redactionReason());
+            return;
+        }
 
-        emit eventUpdated(chat, itemForEvent(*event, eventId, timelineItem.index(), encrypted));
+        emit eventUpdated(chat, itemForEvent(room, *event, eventId, timelineItem.index(), encrypted));
         return;
     }
+}
+
+void MatrixTimelineService::updateTimelineEventsForMember(Quotient::Room *room, const QString &memberId)
+{
+    if (!room || memberId.isEmpty())
+        return;
+
+    for (const auto &timelineItem : room->messageEvents())
+    {
+        if (timelineItem->senderId() == memberId)
+            updateTimelineEvent(room, timelineItem->id());
+    }
+}
+
+void MatrixTimelineService::showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const
+{
+    QDialog dialog;
+    dialog.setWindowTitle(tr("Matrix event source"));
+    dialog.resize(720, 520);
+
+    auto *layout = new QVBoxLayout{&dialog};
+    auto *tabs = new QTabWidget{&dialog};
+    const auto originalEncryptedJson = event.encryptedJson();
+    const auto decryptedJson = m_decryptedEventSources.value(eventId);
+    const auto encryptedJson = originalEncryptedJson.isEmpty() && !decryptedJson.isEmpty()
+                                   ? event.fullJson()
+                                   : originalEncryptedJson;
+    if (!encryptedJson.isEmpty())
+    {
+        auto *encryptedSource = new QPlainTextEdit{tabs};
+        encryptedSource->setReadOnly(true);
+        encryptedSource->setPlainText(QString::fromUtf8(QJsonDocument{encryptedJson}.toJson(QJsonDocument::Indented)));
+        tabs->addTab(encryptedSource, tr("Encrypted event"));
+    }
+
+    auto *eventSource = new QPlainTextEdit{tabs};
+    eventSource->setReadOnly(true);
+    const auto visibleEventJson = originalEncryptedJson.isEmpty() && !decryptedJson.isEmpty()
+                                      ? decryptedJson
+                                      : event.fullJson();
+    eventSource->setPlainText(QString::fromUtf8(QJsonDocument{visibleEventJson}.toJson(QJsonDocument::Indented)));
+    tabs->addTab(eventSource, encryptedJson.isEmpty() ? tr("Matrix event") : tr("Decrypted event"));
+    layout->addWidget(tabs);
+
+    auto *buttons = new QDialogButtonBox{QDialogButtonBox::Close, &dialog};
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    dialog.exec();
+}
+
+void MatrixTimelineService::updateAttachmentEvent(Quotient::Room *room, const QString &eventId)
+{
+    updateTimelineEvent(room, eventId);
 }
 
 void MatrixTimelineService::handleAttachmentDownloadProgress(Quotient::Room *room, const QString &eventId,

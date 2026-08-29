@@ -204,11 +204,11 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
         return {};
 
     const auto item = m_timeline->item(stableId);
-    if (item.stableId.isEmpty() || item.state.redacted)
+    if (item.stableId.isEmpty())
         return {};
 
     QVariantList actions;
-    if (!item.content.plainText.isEmpty())
+    if (!item.state.redacted && !item.content.plainText.isEmpty())
         actions.append(QVariantMap{{QStringLiteral("id"), 0}, {QStringLiteral("key"), QStringLiteral("copy")},
                                    {QStringLiteral("text"), tr("Copy message")}});
 
@@ -234,6 +234,10 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
                                    {QStringLiteral("key"), QStringLiteral("delete")},
                                    {QStringLiteral("text"), tr("Delete message")},
                                    {QStringLiteral("destructive"), true}});
+    if (available.testFlag(ChatTimelineAction::ShowSource))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::ShowSource)},
+                                   {QStringLiteral("key"), QStringLiteral("showSource")},
+                                   {QStringLiteral("text"), tr("Show source")}});
     return actions;
 }
 

@@ -49,6 +49,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     {
     case StableIdRole: return timelineItem.stableId;
     case TransactionIdRole: return timelineItem.transactionId;
+    case ProtocolEventTypeRole: return timelineItem.protocolEventType;
     case KindRole: return static_cast<int>(timelineItem.kind);
     case TimestampRole: return timelineItem.timestamp;
     case DateRole: return timelineItem.timestamp.date();
@@ -56,7 +57,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     case SenderIdRole: return sender.id;
     case SenderDisplayNameRole: return sender.displayName;
     case SenderAvatarSourceRole: return sender.avatarSource;
-    case SenderColorRole: return sender.color;
+    case SenderColorRole: return sender.color.isValid() ? sender.color : QColor{Qt::transparent};
     case PlainTextRole: return timelineItem.content.plainText;
     case FormattedTextRole: return timelineItem.content.formattedText;
     case ReplyToIdRole: return timelineItem.content.replyToId;
@@ -68,6 +69,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     case EncryptedRole: return timelineItem.state.encrypted;
     case DecryptionStateRole: return static_cast<int>(timelineItem.state.decryptionState);
     case ErrorTextRole: return timelineItem.state.errorText;
+    case SystemEventRole: return !isMessage(timelineItem);
     case GroupPositionRole: return static_cast<int>(groupPositionAt(index.row()));
     case ShowSenderRole: return groupPositionAt(index.row()) != GroupPosition::Middle && groupPositionAt(index.row()) != GroupPosition::Last;
     case ShowAvatarRole: return groupPositionAt(index.row()) != GroupPosition::Middle;
@@ -80,7 +82,8 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
 
 QHash<int, QByteArray> ChatTimelineModel::roleNames() const
 {
-    return {{StableIdRole, "stableId"}, {TransactionIdRole, "transactionId"}, {KindRole, "kind"},
+    return {{StableIdRole, "stableId"}, {TransactionIdRole, "transactionId"},
+            {ProtocolEventTypeRole, "protocolEventType"}, {KindRole, "kind"},
             {TimestampRole, "timestamp"}, {DateRole, "date"}, {OwnEventRole, "ownEvent"},
             {SenderIdRole, "senderId"}, {SenderDisplayNameRole, "senderDisplayName"},
             {SenderAvatarSourceRole, "senderAvatarSource"}, {SenderColorRole, "senderColor"},
@@ -88,6 +91,7 @@ QHash<int, QByteArray> ChatTimelineModel::roleNames() const
             {AttachmentsRole, "attachments"}, {ReactionsRole, "reactions"}, {DeliveryStateRole, "deliveryState"},
             {EditedRole, "edited"}, {RedactedRole, "redacted"}, {EncryptedRole, "encrypted"},
             {DecryptionStateRole, "decryptionState"}, {ErrorTextRole, "errorText"},
+            {SystemEventRole, "systemEvent"},
             {GroupPositionRole, "groupPosition"}, {ShowSenderRole, "showSender"},
             {ShowAvatarRole, "showAvatar"}, {ShowTimestampRole, "showTimestamp"}, {StartsNewDayRole, "startsNewDay"}};
 }
@@ -409,11 +413,11 @@ QVariantList ChatTimelineModel::reactionData(const QVector<ChatTimelineReaction>
 
 const QList<int> &ChatTimelineModel::itemDataRoles()
 {
-    static const QList<int> roles{StableIdRole, TransactionIdRole, KindRole, TimestampRole, DateRole, OwnEventRole,
+    static const QList<int> roles{StableIdRole, TransactionIdRole, ProtocolEventTypeRole, KindRole, TimestampRole, DateRole, OwnEventRole,
                                   SenderIdRole, SenderDisplayNameRole, SenderAvatarSourceRole, SenderColorRole,
                                   PlainTextRole, FormattedTextRole, ReplyToIdRole, AttachmentsRole, ReactionsRole,
                                   DeliveryStateRole, EditedRole, RedactedRole, EncryptedRole, DecryptionStateRole,
-                                  ErrorTextRole, GroupPositionRole, ShowSenderRole, ShowAvatarRole, ShowTimestampRole,
+                                  ErrorTextRole, SystemEventRole, GroupPositionRole, ShowSenderRole, ShowAvatarRole, ShowTimestampRole,
                                   StartsNewDayRole};
     return roles;
 }

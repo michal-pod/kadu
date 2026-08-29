@@ -24,17 +24,25 @@ Item {
     id: root
 
     required property string stableId
+    required property string protocolEventType
     required property int kind
     required property var timestamp
     required property bool ownEvent
     required property string senderDisplayName
+    required property url senderAvatarSource
+    required property color senderColor
     required property string plainText
     required property string formattedText
+    required property string replyToId
     property var attachments: []
+    property var reactions: []
     required property bool showSender
+    required property bool showAvatar
     required property bool showTimestamp
     required property bool startsNewDay
     required property int deliveryState
+    required property bool edited
+    required property bool systemEvent
     required property bool redacted
     required property bool encrypted
     required property int decryptionState
@@ -82,7 +90,10 @@ Item {
                                                                    : (colorScheme === "System" ? systemPalette.highlight
                                                                                                : (darkSurface ? "#4b3764" : "#eadff5"))
 
-    function systemEvent() { return kind >= 7 }
+    function isSystemEvent() { return systemEvent }
+    function systemEventDescription() {
+        return plainText.length > 0 ? plainText : protocolEventType
+    }
     function messageText() {
         if (attachments.length === 1 && plainText.trim() === attachments[0].fileName.trim())
             return ""
@@ -117,6 +128,8 @@ Item {
             return "⌫"
         if (actionKey === "saveAttachment")
             return "⇩"
+        if (actionKey === "showSource")
+            return "{}"
         return "⋯"
     }
     function triggerAction(action) {
@@ -193,18 +206,47 @@ Item {
             font.pixelSize: 12
         }
 
-        Text {
-            visible: root.systemEvent()
+        Item {
+            id: systemEventItem
+            visible: root.isSystemEvent()
             width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            text: root.plainText
-            color: root.mutedTextColor
-            font.italic: true
+            implicitHeight: Math.max(systemEventLabel.implicitHeight, showSourceButton.implicitHeight)
+
+            Text {
+                id: systemEventLabel
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.rightMargin: showSourceButton.visible ? showSourceButton.width + 4 : 0
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: root.systemEventDescription()
+                color: root.textColor
+                opacity: 0.80
+                font.italic: true
+            }
+
+            ToolButton {
+                id: showSourceButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.actionId("showSource") >= 0
+                text: "{}"
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Show source")
+                onClicked: root.triggerAction(root.actionId("showSource"))
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                anchors.rightMargin: showSourceButton.visible ? showSourceButton.width : 0
+                acceptedButtons: Qt.RightButton
+                onClicked: eventMenu.popup()
+            }
         }
 
         Row {
-            visible: !root.systemEvent()
+            visible: !root.isSystemEvent()
             width: parent.width
             layoutDirection: root.ownEvent ? Qt.RightToLeft : Qt.LeftToRight
             spacing: 7
@@ -246,7 +288,7 @@ Item {
                         anchors.right: parent.right
                         anchors.margins: 4
                         spacing: 2
-                        visible: hoverHandler.hovered && !root.redacted && root.availableActions().length > 0
+                        visible: hoverHandler.hovered && root.availableActions().length > 0
                         z: 2
 
                         Repeater {
