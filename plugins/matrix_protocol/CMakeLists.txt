@@ -18,6 +18,7 @@ set (SOURCES
     matrix-contact-avatar-service.cpp
     matrix-device-verification-notification-service.cpp
     matrix-history-service.cpp
+    matrix-megolm-session-recovery.cpp
     matrix-timeline-service.cpp
     matrix-id-validator.cpp
     matrix-join-room-action.cpp

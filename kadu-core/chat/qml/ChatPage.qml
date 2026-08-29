@@ -116,6 +116,8 @@ Item {
         item.formattedText = Qt.binding(function() { return delegate.formattedText })
         if (item.replyToId !== undefined)
             item.replyToId = Qt.binding(function() { return delegate.replyToId })
+        if (item.reply !== undefined)
+            item.reply = Qt.binding(function() { return delegate.reply })
         if (item.attachments !== undefined)
             item.attachments = Qt.binding(function() { return delegate.attachments })
         if (item.reactions !== undefined)
@@ -130,6 +132,8 @@ Item {
             item.edited = Qt.binding(function() { return delegate.edited })
         if (item.systemEvent !== undefined)
             item.systemEvent = Qt.binding(function() { return delegate.systemEvent })
+        if (item.emote !== undefined)
+            item.emote = Qt.binding(function() { return delegate.emote })
         item.redacted = Qt.binding(function() { return delegate.redacted })
         item.encrypted = Qt.binding(function() { return delegate.encrypted })
         item.decryptionState = Qt.binding(function() { return delegate.decryptionState })
@@ -158,6 +162,7 @@ Item {
         const maximum = Math.max(timeline.originY, timeline.contentHeight - timeline.height + timeline.originY)
         const pageSize = Math.max(1, timeline.height - 24)
         timeline.contentY = Math.max(timeline.originY, Math.min(maximum, timeline.contentY + direction * pageSize))
+        followingTail = root.atBottom()
         revealScrollBar()
     }
 
@@ -354,9 +359,15 @@ Item {
         onContentYChanged: {
             if (moving || dragging)
                 root.revealScrollBar()
-            followingTail = root.atBottom()
+            if (moving || dragging || verticalScrollBar.pressed)
+                followingTail = root.atBottom()
             if (contentY <= originY + 64)
                 root.requestOlder()
+        }
+        onContentHeightChanged: {
+            if (root.followingTail && root.initialPositioned && root.chatViewModel &&
+                    !root.chatViewModel.loadingInitial && !root.chatViewModel.loadingOlder)
+                Qt.callLater(root.scrollToBottom)
         }
         onMovementStarted: root.revealScrollBar()
         onMovementEnded: scrollBarHideTimer.restart()
@@ -393,6 +404,7 @@ Item {
             required property string plainText
             required property string formattedText
             required property string replyToId
+            required property var reply
             required property var attachments
             required property var reactions
             required property bool showSender
@@ -402,6 +414,7 @@ Item {
             required property int deliveryState
             required property bool edited
             required property bool systemEvent
+            required property bool emote
             required property bool redacted
             required property bool encrypted
             required property int decryptionState
@@ -514,7 +527,7 @@ Item {
             if (!root.initialPositioned && !root.chatViewModel.loadingInitial) {
                 root.initialPositioned = true
                 Qt.callLater(root.scrollToBottom)
-            } else if (root.followingTail && first >= timeline.count - (last - first + 1)) {
+            } else if (root.followingTail && !root.chatViewModel.loadingOlder) {
                 Qt.callLater(root.scrollToBottom)
             }
         }

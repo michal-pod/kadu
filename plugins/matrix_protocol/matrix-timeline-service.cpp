@@ -19,6 +19,8 @@
 
 #include "matrix-timeline-service.h"
 
+#include "matrix-megolm-session-recovery.h"
+
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
 #include "chat/chat-storage.h"
@@ -30,6 +32,7 @@
 #include "html/sanitized-html-string.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/eventitem.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
 #include <Quotient/events/filesourceinfo.h>
@@ -46,12 +49,14 @@
 #include <Quotient/user.h>
 
 #include <QtCore/QBuffer>
+#include <QtCore/QDateTime>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFutureWatcher>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
+#include <QtCore/QTimer>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
@@ -67,8 +72,10 @@
 #include <variant>
 
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
-        : ProtocolTimelineService{account, parent}
+        : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
 {
+    connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRestored, this,
+            &MatrixTimelineService::updateTimelineEventsForMegolmSession);
 }
 
 MatrixTimelineService::~MatrixTimelineService()
@@ -98,6 +105,8 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_attachmentSources.clear();
     m_attachmentFileNames.clear();
     m_decryptedEventSources.clear();
+    m_eventTransactionIds.clear();
+    m_sessionRecovery->setConnection(connection);
     if (!m_connection)
         return;
 
@@ -153,6 +162,14 @@ ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, co
             actions |= ChatTimelineAction::SaveAttachment;
         return actions;
     }
+
+    const auto transactionId = transactionIdForLocalEcho(stableId);
+    if (transactionId.isEmpty())
+        return {};
+
+    for (const auto &pendingEvent : room->pendingEvents())
+        if (pendingEvent->transactionId() == transactionId)
+            return ChatTimelineActions{ChatTimelineAction::ShowSource};
     return {};
 }
 
@@ -169,6 +186,18 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
             if (timelineItem->id() == stableId)
             {
                 showEventSource(stableId, *timelineItem.event());
+                return true;
+            }
+        }
+
+        const auto transactionId = transactionIdForLocalEcho(stableId);
+        if (transactionId.isEmpty())
+            return false;
+        for (const auto &pendingEvent : room->pendingEvents())
+        {
+            if (pendingEvent->transactionId() == transactionId)
+            {
+                showEventSource(stableId, *pendingEvent.event());
                 return true;
             }
         }
@@ -209,8 +238,39 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
         return false;
     }
 
-    connect(job, &Quotient::BaseJob::failure, this, [job] {
-        QMessageBox::warning(nullptr, tr("Save attachment"), tr("Could not save the attachment: %1").arg(job->errorString()));
+    m_attachmentStates.insert(stableId, ChatTimelineAttachmentState::Downloading);
+    m_attachmentProgress.insert(stableId, 0.0);
+    m_attachmentErrors.remove(stableId);
+    updateAttachmentEvent(room, stableId);
+
+    const QPointer<Quotient::Room> downloadRoom{room};
+    connect(job, &Quotient::BaseJob::downloadProgress, this,
+            [this, downloadRoom, stableId](qint64 received, qint64 total) {
+                if (!downloadRoom)
+                    return;
+
+                m_attachmentProgress.insert(stableId, total > 0 ? qreal(received) / qreal(total) : 0.0);
+                updateAttachmentEvent(downloadRoom.data(), stableId);
+            });
+    connect(job, &Quotient::BaseJob::success, this, [this, downloadRoom, stableId] {
+        if (!downloadRoom)
+            return;
+
+        m_attachmentStates.insert(stableId, ChatTimelineAttachmentState::Available);
+        m_attachmentProgress.insert(stableId, 1.0);
+        m_attachmentErrors.remove(stableId);
+        updateAttachmentEvent(downloadRoom.data(), stableId);
+    });
+    connect(job, &Quotient::BaseJob::failure, this, [this, downloadRoom, stableId, job] {
+        if (!downloadRoom)
+            return;
+
+        const auto errorText = job->errorString().isEmpty() ? tr("Could not save the attachment.") : job->errorString();
+        m_attachmentStates.insert(stableId, ChatTimelineAttachmentState::Failed);
+        m_attachmentProgress.remove(stableId);
+        m_attachmentErrors.insert(stableId, errorText);
+        updateAttachmentEvent(downloadRoom.data(), stableId);
+        QMessageBox::warning(nullptr, tr("Save attachment"), tr("Could not save the attachment: %1").arg(errorText));
     });
     return true;
 }
@@ -447,6 +507,33 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
     m_watchedRooms.insert(room);
     connect(room, &Quotient::Room::addedMessages, this,
             [this, room](int fromIndex, int toIndex) { handleNewMessages(room, fromIndex, toIndex); });
+    connect(room, &Quotient::Room::pendingEventAdded, this,
+            [this, room](const Quotient::RoomEvent *event) { handlePendingEventAdded(room, event); });
+    connect(room, &Quotient::Room::pendingEventChanged, this,
+            [this, room](int pendingEventIndex) { updatePendingEvent(room, pendingEventIndex); });
+    connect(room, &Quotient::Room::messageSent, this,
+            [this](const QString &transactionId, const QString &eventId) {
+                if (!transactionId.isEmpty() && !eventId.isEmpty())
+                    m_eventTransactionIds.insert(eventId, transactionId);
+            });
+    connect(room, &Quotient::Room::pendingEventAboutToMerge, this,
+            [this, room](Quotient::RoomEvent *serverEvent, int) {
+                if (!serverEvent || serverEvent->id().isEmpty() || serverEvent->transactionId().isEmpty())
+                    return;
+
+                const auto eventId = serverEvent->id();
+                m_eventTransactionIds.insert(eventId, serverEvent->transactionId());
+
+                // Quotient merges an own remote echo without emitting
+                // addedMessages(). Defer until it has placed that event in
+                // the timeline, then let upsert() replace the local echo by
+                // its server event ID through the transaction ID.
+                const QPointer<Quotient::Room> watchedRoom{room};
+                QTimer::singleShot(0, this, [this, watchedRoom, eventId] {
+                    if (watchedRoom)
+                        updateTimelineEvent(watchedRoom.data(), eventId);
+                });
+            });
     connect(room, &Quotient::Room::aboutToAddHistoricalMessages, this,
             [this](Quotient::RoomEventsRange events) {
                 for (const auto &event : events)
@@ -500,22 +587,73 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         if (!event)
             continue;
 
-        // An undecrypted m.room.encrypted envelope is transport state, not a
-        // timeline entry. Once Quotient decrypts it, updatedEvent/replacedEvent
-        // will feed the decrypted event through this service.
         if (event->matrixType() == QStringLiteral("m.room.encrypted"))
-            continue;
+        {
+            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+                m_sessionRecovery->requestFromBackup(room, *encryptedEvent);
+        }
 
         if (event->isRedacted())
         {
             emit eventRedacted(chat, timelineItem->id(), event->redactionReason());
             continue;
         }
-        emit eventReceived(chat, itemForEvent(room, *event, timelineItem->id(), timelineItem.index(), encrypted));
+
+        const auto eventId = timelineItem->id();
+        emit eventReceived(chat, itemForEvent(room, *event, eventId, timelineItem.index(), encrypted));
+        m_eventTransactionIds.remove(eventId);
     }
 }
 
-ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room) const
+void MatrixTimelineService::handlePendingEventAdded(Quotient::Room *room, const Quotient::RoomEvent *event)
+{
+    if (!room || !event || event->transactionId().isEmpty())
+        return;
+
+    const auto chat = chatForRoom(room);
+    if (!chat || chat.isIgnoreAllMessages())
+        return;
+
+    auto item = itemForEvent(room, *event, localEchoId(event->transactionId()),
+                             static_cast<qint64>(room->maxTimelineIndex()) + 1, false);
+    item.transactionId = event->transactionId();
+    item.timestamp = item.timestamp.isValid() ? item.timestamp : QDateTime::currentDateTime();
+    item.state.deliveryState = ChatTimelineDeliveryState::Sending;
+    emit eventReceived(chat, item);
+}
+
+void MatrixTimelineService::updatePendingEvent(Quotient::Room *room, int pendingEventIndex)
+{
+    if (!room)
+        return;
+
+    const auto &pendingEvents = room->pendingEvents();
+    if (pendingEventIndex < 0 || pendingEventIndex >= static_cast<int>(pendingEvents.size()))
+        return;
+
+    const auto chat = chatForRoom(room);
+    const auto &pendingEvent = pendingEvents.at(static_cast<Quotient::Room::PendingEvents::size_type>(pendingEventIndex));
+    const auto *event = pendingEvent.event();
+    if (!chat || !event || event->transactionId().isEmpty())
+        return;
+
+    auto item = itemForEvent(room, *event, localEchoId(event->transactionId()),
+                             static_cast<qint64>(room->maxTimelineIndex()) + pendingEventIndex + 1, false);
+    item.transactionId = event->transactionId();
+    item.timestamp = item.timestamp.isValid() ? item.timestamp : QDateTime::currentDateTime();
+    switch (pendingEvent.deliveryStatus())
+    {
+    case Quotient::EventStatus::ReachedServer: item.state.deliveryState = ChatTimelineDeliveryState::Sent; break;
+    case Quotient::EventStatus::SendingFailed:
+        item.state.deliveryState = ChatTimelineDeliveryState::Failed;
+        item.state.errorText = pendingEvent.annotation();
+        break;
+    default: item.state.deliveryState = ChatTimelineDeliveryState::Sending; break;
+    }
+    emit eventUpdated(chat, item);
+}
+
+ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room)
 {
     ChatTimelinePage page;
     if (!room)
@@ -530,27 +668,38 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
     const auto boundary = validCursor ? cursor : std::numeric_limits<qint64>::max();
 
     qint64 nextCursor = 0;
+    auto inspected = false;
     auto accepted = 0;
     for (auto it = room->messageEvents().crbegin(); it != room->messageEvents().crend(); ++it)
     {
         const auto index = static_cast<qint64>(it->index());
         if (index >= boundary)
             continue;
+        inspected = true;
+        nextCursor = index;
 
         Quotient::RoomEventPtr decryptedEvent;
         auto encrypted = false;
         const auto *event = eventForTimelineItem(room, *it, decryptedEvent, encrypted);
-        if (!event || event->isRedacted() || event->matrixType() == QStringLiteral("m.room.encrypted"))
+        if (!event)
+            continue;
+
+        if (event->matrixType() == QStringLiteral("m.room.encrypted"))
+        {
+            if (const auto *encryptedEvent = it->viewAs<Quotient::EncryptedEvent>())
+                m_sessionRecovery->requestFromBackup(room, *encryptedEvent);
+        }
+
+        if (event->isRedacted())
             continue;
 
         page.items.append(itemForEvent(room, *event, (*it)->id(), index, encrypted));
-        nextCursor = index;
         ++accepted;
         if (accepted == limit)
             break;
     }
 
-    if (accepted > 0)
+    if (inspected)
         page.cursor = QByteArray::number(nextCursor);
     else if (!room->messageEvents().empty() && !room->allHistoryLoaded())
         page.cursor = QByteArray::number(room->minTimelineIndex());
@@ -564,6 +713,8 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     ChatTimelineItem item;
     item.stableId = eventId;
     item.transactionId = event.transactionId();
+    if (item.transactionId.isEmpty())
+        item.transactionId = m_eventTransactionIds.value(eventId);
     item.protocolEventType = event.matrixType();
     item.sourceOrder = sourceOrderForIndex(timelineIndex);
     item.timestamp = event.originTimestamp().toLocalTime();
@@ -692,7 +843,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     }
     if (eventType == QStringLiteral("m.room.encrypted"))
     {
-        item.kind = ChatTimelineItemKind::UnsupportedEvent;
+        item.kind = ChatTimelineItemKind::EncryptedEvent;
         item.content.plainText = tr("Encrypted Matrix event is waiting for a key (%1).").arg(eventType);
         item.state.errorText = tr("The event could not be decrypted yet.");
         return item;
@@ -822,7 +973,10 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         if (!event)
             return;
         if (event->matrixType() == QStringLiteral("m.room.encrypted"))
-            return;
+        {
+            if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+                m_sessionRecovery->requestFromBackup(room, *encryptedEvent);
+        }
         if (event->isRedacted())
         {
             emit eventRedacted(chat, eventId, event->redactionReason());
@@ -830,6 +984,7 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         }
 
         emit eventUpdated(chat, itemForEvent(room, *event, eventId, timelineItem.index(), encrypted));
+        m_eventTransactionIds.remove(eventId);
         return;
     }
 }
@@ -843,6 +998,30 @@ void MatrixTimelineService::updateTimelineEventsForMember(Quotient::Room *room, 
     {
         if (timelineItem->senderId() == memberId)
             updateTimelineEvent(room, timelineItem->id());
+    }
+}
+
+void MatrixTimelineService::updateTimelineEventsForMegolmSession(Quotient::Room *room, const QString &sessionId)
+{
+    if (!room || sessionId.isEmpty())
+        return;
+
+    for (const auto &timelineItem : room->messageEvents())
+        if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>();
+            encryptedEvent && encryptedEvent->sessionId() == sessionId)
+            updateTimelineEvent(room, timelineItem->id());
+}
+
+void MatrixTimelineService::refreshEncryptedEvents()
+{
+    for (auto *room : std::as_const(m_watchedRooms))
+    {
+        if (!room)
+            continue;
+
+        for (const auto &timelineItem : room->messageEvents())
+            if (timelineItem.viewAs<Quotient::EncryptedEvent>())
+                updateTimelineEvent(room, timelineItem->id());
     }
 }
 
@@ -959,6 +1138,17 @@ QString MatrixTimelineService::eventIdForAttachmentUri(const QUrl &sourceUri)
     if (sourceUri.scheme() != QStringLiteral("kaduimg"))
         return {};
     return sourceUri.path(QUrl::FullyDecoded).mid(1);
+}
+
+QString MatrixTimelineService::localEchoId(const QString &transactionId)
+{
+    return QStringLiteral("matrix:pending:") + transactionId;
+}
+
+QString MatrixTimelineService::transactionIdForLocalEcho(const QString &stableId)
+{
+    static const auto prefix = QStringLiteral("matrix:pending:");
+    return stableId.startsWith(prefix) ? stableId.sliced(prefix.size()) : QString{};
 }
 
 QByteArray MatrixTimelineService::sourceOrderForIndex(qint64 timelineIndex) const

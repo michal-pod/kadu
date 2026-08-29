@@ -24,11 +24,11 @@
 #include <Quotient/events/filesourceinfo.h>
 #include <Quotient/events/roomevent.h>
 
+#include <QtCore/QHash>
+#include <QtCore/QJsonObject>
 #include <QtCore/QPointer>
 #include <QtCore/QPromise>
 #include <QtCore/QSet>
-#include <QtCore/QHash>
-#include <QtCore/QJsonObject>
 #include <QtGui/QImage>
 #include <injeqt/injeqt.h>
 
@@ -37,6 +37,7 @@
 class ChatManager;
 class ChatStorage;
 class ContactManager;
+class MatrixMegolmSessionRecovery;
 
 namespace Quotient
 {
@@ -55,6 +56,7 @@ public:
     virtual ~MatrixTimelineService();
 
     void setConnection(Quotient::Connection *connection);
+    void refreshEncryptedEvents();
 
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
     ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const override;
@@ -77,20 +79,25 @@ private:
     mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
     mutable QHash<QString, QString> m_attachmentFileNames;
     mutable QHash<QString, QJsonObject> m_decryptedEventSources;
+    QHash<QString, QString> m_eventTransactionIds;
+    MatrixMegolmSessionRecovery *m_sessionRecovery;
 
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
+    void handlePendingEventAdded(Quotient::Room *room, const Quotient::RoomEvent *event);
+    void updatePendingEvent(Quotient::Room *room, int pendingEventIndex);
     QFuture<ChatTimelinePage> waitForRoomInitialState(const ChatTimelineRequest &request, Quotient::Room *room);
     QFuture<ChatTimelinePage> requestTimelineForRoom(const ChatTimelineRequest &request, Quotient::Room *room);
-    ChatTimelinePage pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room) const;
+    ChatTimelinePage pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room);
     const Quotient::RoomEvent *eventForTimelineItem(Quotient::Room *room, const Quotient::TimelineItem &timelineItem,
                                                     Quotient::RoomEventPtr &decryptedEvent, bool &encrypted) const;
     ChatTimelineItem itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event, const QString &eventId,
                                   qint64 timelineIndex, bool encrypted) const;
     void updateTimelineEvent(Quotient::Room *room, const QString &eventId);
     void updateTimelineEventsForMember(Quotient::Room *room, const QString &memberId);
+    void updateTimelineEventsForMegolmSession(Quotient::Room *room, const QString &sessionId);
     void showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const;
     void updateAttachmentEvent(Quotient::Room *room, const QString &eventId);
     void handleAttachmentDownloadProgress(Quotient::Room *room, const QString &eventId, qint64 received,
@@ -101,6 +108,8 @@ private:
     void clearAttachmentDownloads();
     static QUrl attachmentUri(const QString &eventId);
     static QString eventIdForAttachmentUri(const QUrl &sourceUri);
+    static QString localEchoId(const QString &transactionId);
+    static QString transactionIdForLocalEcho(const QString &stableId);
     QByteArray sourceOrderForIndex(qint64 timelineIndex) const;
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const;
     void finishRequest(const std::shared_ptr<QPromise<ChatTimelinePage>> &promise, ChatTimelinePage page) const;

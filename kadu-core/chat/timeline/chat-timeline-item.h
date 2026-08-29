@@ -57,7 +57,8 @@ enum class ChatTimelineItemKind
     MessageRedacted,
     LocalNotice,
     ErrorNotice,
-    UnsupportedEvent
+    UnsupportedEvent,
+    EncryptedEvent
 };
 
 enum class ChatTimelineDeliveryState

@@ -34,6 +34,7 @@ Item {
     required property string plainText
     required property string formattedText
     required property string replyToId
+    property var reply: ({})
     property var attachments: []
     property var reactions: []
     required property bool showSender
@@ -43,6 +44,7 @@ Item {
     required property int deliveryState
     required property bool edited
     required property bool systemEvent
+    property bool emote: false
     required property bool redacted
     required property bool encrypted
     required property int decryptionState
@@ -82,6 +84,9 @@ Item {
                                                                        : (darkSurface ? "#f2f4f8" : "#202020"))
     readonly property color mutedTextColor: colorScheme === "System" ? systemPalette.mid
                                                                 : (darkSurface ? "#aeb8c7" : "#666666")
+    readonly property color timestampColor: usesCustomColors ? textColor
+                                                              : (colorScheme === "System" ? systemPalette.text
+                                                                                          : (darkSurface ? "#c5cedd" : "#4e5968"))
     readonly property color separatorColor: colorScheme === "System" ? systemPalette.mid
                                                                : (darkSurface ? "#6d7785" : "#858585")
 
@@ -95,6 +100,19 @@ Item {
         if (formattedText.length > 0)
             return formattedText
         return plainText
+    }
+    function reactionsText() {
+        const labels = []
+        for (let index = 0; index < reactions.length; ++index) {
+            const reaction = reactions[index]
+            labels.push(reaction.key + " " + reaction.senderIds.length)
+        }
+        return labels.join("  ")
+    }
+    function replyText() {
+        if (reply && reply.found)
+            return qsTr("Reply to %1: %2").arg(reply.senderDisplayName).arg(reply.plainText)
+        return qsTr("Reply to: %1").arg(replyToId)
     }
     function deliveryText() {
         if (deliveryState === 1)
@@ -206,8 +224,8 @@ Item {
 
                 Text {
                     text: Qt.formatDate(root.timestamp, "dddd, d MMMM")
-                    color: root.mutedTextColor
-                    opacity: 0.60
+                    color: root.timestampColor
+                    opacity: 0.75
                     font.pixelSize: 11
                 }
 
@@ -329,17 +347,48 @@ Item {
                 Item {
                     visible: root.showSender
                     width: parent.width
-                    implicitHeight: Math.max(sender.implicitHeight, timestamp.implicitHeight)
+                    implicitHeight: Math.max(senderAvatar.implicitHeight, sender.implicitHeight, timestamp.implicitHeight)
+
+                    Rectangle {
+                        id: senderAvatar
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.showAvatar
+                        width: 20
+                        height: 20
+                        radius: width / 2
+                        clip: true
+                        color: root.senderColor.a > 0 ? root.senderColor
+                                                           : (root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor)
+
+                        Image {
+                            id: senderAvatarImage
+                            anchors.fill: parent
+                            source: root.senderAvatarSource
+                            fillMode: Image.PreserveAspectCrop
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: senderAvatarImage.status !== Image.Ready
+                            text: root.senderDisplayName.slice(0, 1).toUpperCase()
+                            color: "white"
+                            font.pixelSize: 10
+                        }
+                    }
 
                     Text {
                         id: sender
-                        anchors.left: parent.left
+                        anchors.left: senderAvatar.visible ? senderAvatar.right : parent.left
+                        anchors.leftMargin: senderAvatar.visible ? 6 : 0
                         anchors.right: timestamp.left
                         anchors.rightMargin: 8
-                        text: root.ownEvent ? qsTr("You") : root.senderDisplayName
+                        text: root.emote ? "* " + (root.ownEvent ? qsTr("You") : root.senderDisplayName)
+                                         : (root.ownEvent ? qsTr("You") : root.senderDisplayName)
                         elide: Text.ElideRight
                         color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
                         font.bold: true
+                        font.italic: root.emote
                     }
 
                     Text {
@@ -347,8 +396,8 @@ Item {
                         visible: root.showTimestamp
                         anchors.right: parent.right
                         text: Qt.formatTime(root.timestamp, "HH:mm")
-                        color: root.mutedTextColor
-                        opacity: 0.50
+                        color: root.timestampColor
+                        opacity: 0.70
                         font.pixelSize: 11
                     }
                 }
@@ -368,6 +417,7 @@ Item {
                         readOnly: true
                         selectByMouse: true
                         font.pixelSize: 13
+                        font.italic: root.emote
                         onLinkActivated: {
                             if (root.openUrl)
                                 root.openUrl(link)
@@ -396,10 +446,28 @@ Item {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         text: Qt.formatTime(root.timestamp, "HH:mm")
-                        color: root.mutedTextColor
-                        opacity: 0.50
+                        color: root.timestampColor
+                        opacity: 0.70
                         font.pixelSize: 11
                     }
+                }
+
+                Text {
+                    visible: root.replyToId.length > 0
+                    width: parent.width
+                    text: root.replyText()
+                    color: root.mutedTextColor
+                    elide: Text.ElideMiddle
+                    font.pixelSize: 11
+                }
+
+                Text {
+                    visible: root.edited && !root.redacted
+                    width: parent.width
+                    text: qsTr("edited")
+                    color: root.mutedTextColor
+                    font.pixelSize: 11
+                    font.italic: true
                 }
 
                 Repeater {
@@ -430,6 +498,14 @@ Item {
                         placeholderTextColor: root.textColor
                         openImage: root.openImage
                     }
+                }
+
+                Text {
+                    visible: root.reactions.length > 0
+                    width: parent.width
+                    text: root.reactionsText()
+                    color: root.textColor
+                    font.pixelSize: 12
                 }
 
                 Text {

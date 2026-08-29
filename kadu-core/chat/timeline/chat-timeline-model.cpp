@@ -61,6 +61,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     case PlainTextRole: return timelineItem.content.plainText;
     case FormattedTextRole: return timelineItem.content.formattedText;
     case ReplyToIdRole: return timelineItem.content.replyToId;
+    case ReplyRole: return replyData(timelineItem);
     case AttachmentsRole: return attachmentData(timelineItem.content.attachments);
     case ReactionsRole: return reactionData(timelineItem.content.reactions);
     case DeliveryStateRole: return static_cast<int>(timelineItem.state.deliveryState);
@@ -70,6 +71,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     case DecryptionStateRole: return static_cast<int>(timelineItem.state.decryptionState);
     case ErrorTextRole: return timelineItem.state.errorText;
     case SystemEventRole: return !isMessage(timelineItem);
+    case EmoteRole: return timelineItem.kind == ChatTimelineItemKind::EmoteMessage;
     case GroupPositionRole: return static_cast<int>(groupPositionAt(index.row()));
     case ShowSenderRole: return groupPositionAt(index.row()) != GroupPosition::Middle && groupPositionAt(index.row()) != GroupPosition::Last;
     case ShowAvatarRole: return groupPositionAt(index.row()) != GroupPosition::Middle;
@@ -88,10 +90,11 @@ QHash<int, QByteArray> ChatTimelineModel::roleNames() const
             {SenderIdRole, "senderId"}, {SenderDisplayNameRole, "senderDisplayName"},
             {SenderAvatarSourceRole, "senderAvatarSource"}, {SenderColorRole, "senderColor"},
             {PlainTextRole, "plainText"}, {FormattedTextRole, "formattedText"}, {ReplyToIdRole, "replyToId"},
+            {ReplyRole, "reply"},
             {AttachmentsRole, "attachments"}, {ReactionsRole, "reactions"}, {DeliveryStateRole, "deliveryState"},
             {EditedRole, "edited"}, {RedactedRole, "redacted"}, {EncryptedRole, "encrypted"},
             {DecryptionStateRole, "decryptionState"}, {ErrorTextRole, "errorText"},
-            {SystemEventRole, "systemEvent"},
+            {SystemEventRole, "systemEvent"}, {EmoteRole, "emote"},
             {GroupPositionRole, "groupPosition"}, {ShowSenderRole, "showSender"},
             {ShowAvatarRole, "showAvatar"}, {ShowTimestampRole, "showTimestamp"}, {StartsNewDayRole, "startsNewDay"}};
 }
@@ -241,6 +244,7 @@ void ChatTimelineModel::remove(const QString &stableId)
     m_items.removeAt(row);
     rebuildRows();
     endRemoveRows();
+    emitReplyChangedFor(stableId);
     emitGroupingChangedAround(row);
 }
 
@@ -332,6 +336,7 @@ void ChatTimelineModel::insertItem(const ChatTimelineItem &timelineItem)
     m_items.insert(row, timelineItem);
     rebuildRows();
     endInsertRows();
+    emitReplyChangedFor(timelineItem.stableId);
     emitGroupingChangedAround(row);
 }
 
@@ -343,6 +348,7 @@ void ChatTimelineModel::replaceItem(int row, const ChatTimelineItem &timelineIte
         m_items[row] = timelineItem;
         rebuildRows();
         emit dataChanged(index(row), index(row), itemDataRoles());
+        emitReplyChangedFor(timelineItem.stableId);
         emitGroupingChangedAround(row);
         return;
     }
@@ -351,6 +357,7 @@ void ChatTimelineModel::replaceItem(int row, const ChatTimelineItem &timelineIte
     m_items.removeAt(row);
     rebuildRows();
     endRemoveRows();
+    emitReplyChangedFor(current.stableId);
     insertItem(timelineItem);
 }
 
@@ -411,15 +418,49 @@ QVariantList ChatTimelineModel::reactionData(const QVector<ChatTimelineReaction>
     return result;
 }
 
+QVariantMap ChatTimelineModel::replyData(const ChatTimelineItem &timelineItem) const
+{
+    QVariantMap data;
+    const auto &replyToId = timelineItem.content.replyToId;
+    if (replyToId.isEmpty())
+        return data;
+
+    data.insert(QStringLiteral("id"), replyToId);
+    const auto row = rowForStableId(replyToId);
+    if (row < 0)
+    {
+        data.insert(QStringLiteral("found"), false);
+        return data;
+    }
+
+    const auto &reply = m_items.at(row);
+    data.insert(QStringLiteral("found"), true);
+    data.insert(QStringLiteral("senderDisplayName"), reply.sender.displayName);
+    data.insert(QStringLiteral("plainText"), reply.content.plainText);
+    data.insert(QStringLiteral("formattedText"), reply.content.formattedText);
+    return data;
+}
+
 const QList<int> &ChatTimelineModel::itemDataRoles()
 {
     static const QList<int> roles{StableIdRole, TransactionIdRole, ProtocolEventTypeRole, KindRole, TimestampRole, DateRole, OwnEventRole,
                                   SenderIdRole, SenderDisplayNameRole, SenderAvatarSourceRole, SenderColorRole,
-                                  PlainTextRole, FormattedTextRole, ReplyToIdRole, AttachmentsRole, ReactionsRole,
+                                  PlainTextRole, FormattedTextRole, ReplyToIdRole, ReplyRole, AttachmentsRole, ReactionsRole,
                                   DeliveryStateRole, EditedRole, RedactedRole, EncryptedRole, DecryptionStateRole,
-                                  ErrorTextRole, SystemEventRole, GroupPositionRole, ShowSenderRole, ShowAvatarRole, ShowTimestampRole,
+                                  ErrorTextRole, SystemEventRole, EmoteRole, GroupPositionRole, ShowSenderRole, ShowAvatarRole,
+                                  ShowTimestampRole,
                                   StartsNewDayRole};
     return roles;
+}
+
+void ChatTimelineModel::emitReplyChangedFor(const QString &stableId)
+{
+    if (stableId.isEmpty())
+        return;
+
+    for (auto row = 0; row < m_items.size(); ++row)
+        if (m_items.at(row).content.replyToId == stableId)
+            emit dataChanged(index(row), index(row), {ReplyRole});
 }
 
 const QList<int> &ChatTimelineModel::presentationRoles()

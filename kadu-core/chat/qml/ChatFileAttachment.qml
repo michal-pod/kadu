@@ -30,9 +30,12 @@ Item {
     property var saveAttachment: null
 
     readonly property bool canSave: saveAttachment !== null
+    readonly property bool downloading: attachment && attachment.state === 1
+    readonly property bool failed: attachment && attachment.state === 3
+    readonly property real progress: attachment && attachment.progress !== undefined ? attachment.progress : 0.0
 
     width: parent ? parent.width : implicitWidth
-    implicitHeight: attachmentRow.implicitHeight + 8
+    implicitHeight: attachmentRow.implicitHeight + (transferStatus.visible ? transferStatus.implicitHeight + 4 : 0) + 12
 
     Rectangle {
         anchors.fill: parent
@@ -46,7 +49,7 @@ Item {
         id: attachmentRow
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.top: parent.top
         anchors.margins: 6
         spacing: 7
 
@@ -78,6 +81,37 @@ Item {
             elide: Text.ElideMiddle
             verticalAlignment: Text.AlignVCenter
             font.underline: fileArea.containsMouse && root.canSave
+        }
+    }
+
+    Text {
+        id: transferStatus
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: attachmentRow.bottom
+        anchors.leftMargin: 6
+        anchors.rightMargin: 6
+        visible: root.downloading || root.failed
+        text: root.failed ? (root.attachment.errorText || qsTr("Could not download attachment"))
+                          : qsTr("Downloading… %1%").arg(Math.round(root.progress * 100))
+        color: root.failed ? "#d64343" : root.textColor
+        elide: Text.ElideRight
+        font.pixelSize: 11
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 6
+        height: 2
+        visible: root.downloading
+        color: root.borderColor
+
+        Rectangle {
+            width: parent.width * root.progress
+            height: parent.height
+            color: root.linkColor
         }
     }
 

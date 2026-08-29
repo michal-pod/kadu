@@ -32,6 +32,7 @@ Item {
     readonly property int imageHeight: Math.max(1, dimensions.height)
     readonly property bool downloading: attachment && attachment.state === 1
     readonly property bool failed: attachment && attachment.state === 3
+    readonly property real progress: attachment && attachment.progress !== undefined ? attachment.progress : 0.0
 
     width: parent ? parent.width : 1
     height: Math.min(320, width * imageHeight / imageWidth)
@@ -56,9 +57,30 @@ Item {
     Text {
         anchors.centerIn: parent
         visible: root.downloading || root.failed || image.status === Image.Error
-        text: root.failed || image.status === Image.Error ? qsTr("Could not load image") : qsTr("Loading image…")
+        text: root.failed ? (root.attachment.errorText || qsTr("Could not load image"))
+                          : (image.status === Image.Error ? qsTr("Could not load image")
+                                                          : qsTr("Loading image… %1%").arg(Math.round(root.progress * 100)))
         color: root.placeholderTextColor
         font.pixelSize: 12
+        width: parent.width - 20
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.Wrap
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 3
+        visible: root.downloading
+        color: root.placeholderTextColor
+        opacity: 0.25
+
+        Rectangle {
+            width: parent.width * root.progress
+            height: parent.height
+            color: root.placeholderTextColor
+        }
     }
 
     MouseArea {

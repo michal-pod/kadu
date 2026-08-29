@@ -27,6 +27,7 @@
 #include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QVariantList>
+#include <QtCore/QVariantMap>
 
 class KADUAPI ChatTimelineModel : public QAbstractListModel
 {
@@ -51,6 +52,7 @@ public:
         PlainTextRole,
         FormattedTextRole,
         ReplyToIdRole,
+        ReplyRole,
         AttachmentsRole,
         ReactionsRole,
         DeliveryStateRole,
@@ -60,6 +62,7 @@ public:
         DecryptionStateRole,
         ErrorTextRole,
         SystemEventRole,
+        EmoteRole,
         GroupPositionRole,
         ShowSenderRole,
         ShowAvatarRole,
@@ -115,10 +118,12 @@ private:
     static const QList<int> &presentationRoles();
     static QVariantList attachmentData(const QVector<ChatTimelineAttachment> &attachments);
     static QVariantList reactionData(const QVector<ChatTimelineReaction> &reactions);
+    QVariantMap replyData(const ChatTimelineItem &item) const;
     int insertionRow(const ChatTimelineItem &item) const;
     GroupPosition groupPositionAt(int row) const;
     void rebuildRows();
     void emitGroupingChangedAround(int row);
+    void emitReplyChangedFor(const QString &stableId);
     void insertItem(const ChatTimelineItem &item);
     void replaceItem(int row, const ChatTimelineItem &item);
 };

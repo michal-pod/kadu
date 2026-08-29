@@ -34,6 +34,7 @@ Item {
     required property string plainText
     required property string formattedText
     required property string replyToId
+    property var reply: ({})
     property var attachments: []
     property var reactions: []
     required property bool showSender
@@ -43,6 +44,7 @@ Item {
     required property int deliveryState
     required property bool edited
     required property bool systemEvent
+    property bool emote: false
     required property bool redacted
     required property bool encrypted
     required property int decryptionState
@@ -77,6 +79,7 @@ Item {
                                                                                              : textColor)
     readonly property color mutedTextColor: colorScheme === "System" ? systemPalette.mid
                                                                 : (darkSurface ? "#b6c0cf" : "#5c6470")
+    readonly property color timestampColor: ownEvent ? outgoingTextColor : textColor
     readonly property color incomingAvatarColor: usesCustomColors ? customColors.buddyNick
                                                                    : (colorScheme === "System" ? systemPalette.accent
                                                                                                : (darkSurface ? "#4f8ecb" : "#4f8ecb"))
@@ -100,6 +103,19 @@ Item {
         if (formattedText.length > 0)
             return formattedText
         return plainText
+    }
+    function reactionsText() {
+        const labels = []
+        for (let index = 0; index < reactions.length; ++index) {
+            const reaction = reactions[index]
+            labels.push(reaction.key + " " + reaction.senderIds.length)
+        }
+        return labels.join("  ")
+    }
+    function replyText() {
+        if (reply && reply.found)
+            return qsTr("Reply to %1: %2").arg(reply.senderDisplayName).arg(reply.plainText)
+        return qsTr("Reply to: %1").arg(replyToId)
     }
     function deliveryText() {
         if (deliveryState === 1)
@@ -202,7 +218,8 @@ Item {
             visible: root.startsNewDay
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDate(root.timestamp, "dddd, d MMMM")
-            color: root.mutedTextColor
+            color: root.textColor
+            opacity: 0.75
             font.pixelSize: 12
         }
 
@@ -252,12 +269,27 @@ Item {
             spacing: 7
 
             Rectangle {
-                visible: root.showSender
+                visible: root.showAvatar
                 width: 28
                 height: 28
                 radius: width / 2
-                color: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
-                Text { anchors.centerIn: parent; text: root.senderDisplayName.slice(0, 1).toUpperCase(); color: "white" }
+                clip: true
+                color: root.senderColor.a > 0 ? root.senderColor
+                                                   : (root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor)
+
+                Image {
+                    id: senderAvatarImage
+                    anchors.fill: parent
+                    source: root.senderAvatarSource
+                    fillMode: Image.PreserveAspectCrop
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: senderAvatarImage.status !== Image.Ready
+                    text: root.senderDisplayName.slice(0, 1).toUpperCase()
+                    color: "white"
+                }
             }
 
             Column {
@@ -266,9 +298,11 @@ Item {
 
                 Text {
                     visible: root.showSender
-                    text: root.ownEvent ? qsTr("You") : root.senderDisplayName
+                    text: root.emote ? "* " + (root.ownEvent ? qsTr("You") : root.senderDisplayName)
+                                     : (root.ownEvent ? qsTr("You") : root.senderDisplayName)
                     color: root.mutedTextColor
                     font.bold: true
+                    font.italic: root.emote
                     font.pixelSize: 12
                 }
 
@@ -322,6 +356,16 @@ Item {
                         anchors.margins: 10
                         spacing: 4
 
+                        Text {
+                            visible: root.replyToId.length > 0
+                            width: parent.width
+                            text: root.replyText()
+                            color: root.ownEvent ? root.outgoingTextColor : root.textColor
+                            opacity: 0.70
+                            elide: Text.ElideMiddle
+                            font.pixelSize: 11
+                        }
+
                         Item {
                             width: parent.width
                             implicitHeight: message.implicitHeight
@@ -335,6 +379,7 @@ Item {
                                 wrapMode: TextEdit.Wrap
                                 readOnly: true
                                 selectByMouse: true
+                                font.italic: root.emote
                                 onLinkActivated: {
                                     if (root.openUrl)
                                         root.openUrl(link)
@@ -387,13 +432,32 @@ Item {
                                 openImage: root.openImage
                             }
                         }
+
+                        Text {
+                            visible: root.reactions.length > 0
+                            width: parent.width
+                            text: root.reactionsText()
+                            color: root.ownEvent ? root.outgoingTextColor : root.textColor
+                            font.pixelSize: 12
+                        }
+
+                        Text {
+                            visible: root.edited && !root.redacted
+                            width: parent.width
+                            text: qsTr("edited")
+                            color: root.ownEvent ? root.outgoingTextColor : root.textColor
+                            opacity: 0.70
+                            font.pixelSize: 11
+                            font.italic: true
+                        }
                     }
                 }
 
                 Text {
                     visible: root.showTimestamp
                     text: Qt.formatTime(root.timestamp, "HH:mm")
-                    color: root.mutedTextColor
+                    color: root.timestampColor
+                    opacity: 0.70
                     font.pixelSize: 11
                 }
 

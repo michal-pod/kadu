@@ -214,15 +214,20 @@ void MatrixProtocol::createConnection()
 void MatrixProtocol::promptForRecoveryKeyRestore()
 {
     if (!m_connection || m_recoveryKeyRestorePrompted || !m_connection->encryptionEnabled()
-        || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key")))
+        || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key"))
+        || !m_connection->hasAccountData(QStringLiteral("m.megolm_backup.v1")))
         return;
 
     auto *database = m_connection->database();
-    if (!database || !database->loadEncrypted(QStringLiteral("m.cross_signing.master")).isEmpty())
+    if (!database || !database->loadEncrypted(QStringLiteral("m.megolm_backup.v1")).isEmpty())
         return;
 
     m_recoveryKeyRestorePrompted = true;
     auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection};
+    connect(dialog, &QDialog::accepted, this, [this] {
+        if (m_timelineService)
+            m_timelineService->refreshEncryptedEvents();
+    });
     dialog->show();
 }
 
