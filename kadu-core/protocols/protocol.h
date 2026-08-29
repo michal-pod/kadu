@@ -118,6 +118,16 @@ public:
     {
         return 0;
     }
+    /**
+     * @short Return whether this protocol can send a geographical location.
+     *
+     * Locations are passed to chat services as RFC 5870 geo: URIs. The
+     * protocol decides how that interoperable value is represented on wire.
+     */
+    virtual bool isLocationSendingSupported() const
+    {
+        return false;
+    }
     virtual ContactPersonalInfoService *contactPersonalInfoService()
     {
         return 0;

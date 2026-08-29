@@ -54,6 +54,7 @@ public:
         ReplyToIdRole,
         ReplyRole,
         AttachmentsRole,
+        LocationUriRole,
         ReactionsRole,
         DeliveryStateRole,
         EditedRole,

@@ -56,6 +56,7 @@ public slots:
     virtual bool sendMessage(const Message &message) override;
     virtual bool sendRawMessage(const Chat &chat, const QByteArray &rawMessage) override;
     virtual bool sendAttachment(const Chat &chat, const QString &filePath, const QString &description) override;
+    virtual bool sendLocation(const Chat &chat, const QString &geoUri) override;
     virtual void leaveChat(const Chat &chat) override;
 
 private:
@@ -76,8 +77,10 @@ private:
     QString roomId(const Chat &chat) const;
     bool sendText(const Chat &chat, const QString &text, Message message = {});
     bool sendAttachmentToRoom(const Chat &chat, const QString &filePath, const QString &description);
+    bool sendLocationToRoom(const Chat &chat, const QString &geoUri);
     void postText(Quotient::Room *room, const QString &text, const QString &transactionId);
     void postAttachment(Quotient::Room *room, const QString &filePath, const QString &description);
+    void postLocation(Quotient::Room *room, const QString &geoUri);
     bool isSupportedRoom(const Quotient::Room *room) const;
     Chat roomChat(Quotient::Room *room) const;
     void synchronizeRoom(Quotient::Room *room);

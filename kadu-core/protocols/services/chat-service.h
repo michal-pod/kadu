@@ -112,6 +112,20 @@ public slots:
     }
 
     /**
+     * @short Send a geographical location represented by an RFC 5870 geo: URI.
+     *
+     * Location sending is opt-in, just like attachment sending. A protocol that
+     * does not expose the capability rejects the request without creating a
+     * legacy Message.
+     */
+    virtual bool sendLocation(const Chat &chat, const QString &geoUri)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(geoUri)
+        return false;
+    }
+
+    /**
      * @short Leave @p chat.
      *
      * Use to leave chats in GG and room chats in XMPP. In current implemntations does nothing for single

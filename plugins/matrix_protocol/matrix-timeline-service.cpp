@@ -882,6 +882,11 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     case Quotient::RoomMessageEvent::MsgType::Video: item.kind = ChatTimelineItemKind::VideoMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Notice: item.kind = ChatTimelineItemKind::NoticeMessage; break;
     case Quotient::RoomMessageEvent::MsgType::Emote: item.kind = ChatTimelineItemKind::EmoteMessage; break;
+    case Quotient::RoomMessageEvent::MsgType::Location:
+        item.kind = ChatTimelineItemKind::LocationMessage;
+        if (const auto locationContent = messageEvent->get<Quotient::EventContent::LocationContent>())
+            item.content.locationUri = locationContent->geoUri;
+        break;
     default:
         item.kind = ChatTimelineItemKind::UnsupportedEvent;
         item.content.plainText = tr("Unsupported Matrix message type: %1").arg(messageEvent->rawMsgtype());

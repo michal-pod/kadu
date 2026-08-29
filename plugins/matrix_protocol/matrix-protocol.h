@@ -75,6 +75,10 @@ public:
     {
         return m_maximumAttachmentSize;
     }
+    virtual bool isLocationSendingSupported() const override
+    {
+        return true;
+    }
     virtual RemoteHistorySearchCapabilities isRemoteSearchSupported() const override
     {
         return RemoteHistorySearchCapability::Messages;

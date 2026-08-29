@@ -58,7 +58,8 @@ enum class ChatTimelineItemKind
     LocalNotice,
     ErrorNotice,
     UnsupportedEvent,
-    EncryptedEvent
+    EncryptedEvent,
+    LocationMessage
 };
 
 enum class ChatTimelineDeliveryState
@@ -135,6 +136,7 @@ struct KADUAPI ChatTimelineContent
     QString replyToId;
     QVector<ChatTimelineReaction> reactions;
     QVector<ChatTimelineAttachment> attachments;
+    QString locationUri;
 };
 
 struct KADUAPI ChatTimelineState

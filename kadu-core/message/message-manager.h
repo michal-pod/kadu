@@ -87,6 +87,20 @@ public:
         return false;
     }
 
+    /**
+     * @short Send a geographical location through the active chat protocol.
+     *
+     * @p geoUri is an RFC 5870 geo: URI. The location is represented by a
+     * protocol timeline event and is therefore not inserted into legacy local
+     * message storage.
+     */
+    virtual bool sendLocation(const Chat &chat, const QString &geoUri)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(geoUri)
+        return false;
+    }
+
 signals:
     /**
      * @short Signal emited every time a message is received from one of registered acocunts.

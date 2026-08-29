@@ -64,6 +64,7 @@
 #include "widgets/chat-edit-box-size-manager.h"
 #include "widgets/chat-widget/chat-widget.h"
 #include "widgets/custom-input.h"
+#include "widgets/location-selector-dialog.h"
 #include "widgets/talkable-tree-view.h"
 #include "widgets/toolbar.h"
 #include "windows/message-dialog.h"
@@ -506,6 +507,17 @@ void ChatEditBox::openAttachFileDialog()
 
     configuration()->deprecatedApi()->writeEntry("Chat", "LastAttachmentPath", fileInfo.absolutePath());
     setAttachment(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+}
+
+void ChatEditBox::openLocationDialog()
+{
+    const auto *protocol = CurrentChat.chatAccount().protocolHandler();
+    if (!protocol || !protocol->isLocationSendingSupported())
+        return;
+
+    auto *dialog = new LocationSelectorDialog{this};
+    connect(dialog, &LocationSelectorDialog::locationSelected, this, &ChatEditBox::locationSelected);
+    dialog->open();
 }
 
 void ChatEditBox::changeColor(const QColor &newColor)

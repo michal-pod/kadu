@@ -186,7 +186,7 @@ qt_add_qml_module (libkadu
 	URI Kadu.Chat
 	VERSION 1.0
 	NO_PLUGIN
-	IMPORTS QtQuick.Controls
+	IMPORTS QtLocation QtPositioning QtQuick.Controls
 	QML_FILES
 		chat/qml/ChatPage.qml
 		chat/qml/ChatFileAttachment.qml
@@ -197,6 +197,8 @@ qt_add_qml_module (libkadu
 		chat/qml/KaduImage.qml
 		chat/qml/KaduClassicTimelineStyle.qml
 		chat/qml/KaduClassicTimelineItem.qml
+		chat/qml/ChatLocation.qml
+		widgets/qml/LocationSelector.qml
 		widgets/qml/InfoPanel.qml
 		widgets/qml/info-panel-styles/Classic.qml
 		widgets/qml/info-panel-styles/Compact.qml
@@ -260,7 +262,7 @@ if (WIN32)
 
 	install (TARGETS kadu_c DESTINATION ${KADU_INSTALL_BIN_DIR})
 
-	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt-plugins\nQml2Imports = qml\nTranslations = translations\n")
+	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt/plugins\nQml2Imports = qt/qml\nTranslations = translations\n")
 	install (FILES "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "kadu.ico" DESTINATION "${KADU_INSTALL_BIN_DIR}")
 endif ()
 

@@ -266,6 +266,7 @@ void ChatWidgetImpl::createGui()
 
     connect(VerticalSplitter, SIGNAL(splitterMoved(int, int)), this, SLOT(verticalSplitterMoved(int, int)));
     connect(InputBox->inputBox(), SIGNAL(sendMessage()), this, SLOT(sendMessage()));
+    connect(InputBox, &ChatEditBox::locationSelected, this, &ChatWidgetImpl::sendLocation);
     connect(
         InputBox->inputBox(), SIGNAL(keyPressed(QKeyEvent *, CustomInput *, bool &)), this,
         SLOT(keyPressedSlot(QKeyEvent *, CustomInput *, bool &)));
@@ -511,6 +512,15 @@ void ChatWidgetImpl::sendMessage()
         composingStopped();
 
     emit messageSent(this);
+}
+
+void ChatWidgetImpl::sendLocation(const QString &geoUri)
+{
+    const auto *protocol = CurrentChat.chatAccount().protocolHandler();
+    if (!m_messageManager || !protocol || !protocol->isLocationSendingSupported())
+        return;
+
+    m_messageManager->sendLocation(CurrentChat, geoUri);
 }
 
 void ChatWidgetImpl::colorSelectorAboutToClose()

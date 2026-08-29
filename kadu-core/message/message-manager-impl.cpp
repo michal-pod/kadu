@@ -152,4 +152,10 @@ bool MessageManagerImpl::sendAttachment(const Chat &chat, const QString &filePat
     return chatService && chatService->sendAttachment(chat, filePath, description);
 }
 
+bool MessageManagerImpl::sendLocation(const Chat &chat, const QString &geoUri)
+{
+    auto chatService = m_chatServiceRepository->chatService(chat.chatAccount());
+    return chatService && chatService->sendLocation(chat, geoUri);
+}
+
 #include "message-manager-impl.moc"

@@ -30,6 +30,7 @@
 #include "actions/chat-widget/open-chat-action.h"
 #include "actions/chat-widget/open-chat-with-action.h"
 #include "actions/chat-widget/send-action.h"
+#include "actions/chat-widget/send-location-action.h"
 #include "actions/chat-widget/underline-action.h"
 #include "actions/chat/add-conference-action.h"
 #include "actions/chat/add-room-chat-action.h"
@@ -96,6 +97,7 @@ ActionsModule::ActionsModule()
     add_type<OpenChatAction>();
     add_type<OpenChatWithAction>();
     add_type<SendAction>();
+    add_type<SendLocationAction>();
     add_type<UnderlineAction>();
 
     // main

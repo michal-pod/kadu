@@ -63,6 +63,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     case ReplyToIdRole: return timelineItem.content.replyToId;
     case ReplyRole: return replyData(timelineItem);
     case AttachmentsRole: return attachmentData(timelineItem.content.attachments);
+    case LocationUriRole: return timelineItem.content.locationUri;
     case ReactionsRole: return reactionData(timelineItem.content.reactions);
     case DeliveryStateRole: return static_cast<int>(timelineItem.state.deliveryState);
     case EditedRole: return timelineItem.state.edited;
@@ -91,7 +92,7 @@ QHash<int, QByteArray> ChatTimelineModel::roleNames() const
             {SenderAvatarSourceRole, "senderAvatarSource"}, {SenderColorRole, "senderColor"},
             {PlainTextRole, "plainText"}, {FormattedTextRole, "formattedText"}, {ReplyToIdRole, "replyToId"},
             {ReplyRole, "reply"},
-            {AttachmentsRole, "attachments"}, {ReactionsRole, "reactions"}, {DeliveryStateRole, "deliveryState"},
+            {AttachmentsRole, "attachments"}, {LocationUriRole, "locationUri"}, {ReactionsRole, "reactions"}, {DeliveryStateRole, "deliveryState"},
             {EditedRole, "edited"}, {RedactedRole, "redacted"}, {EncryptedRole, "encrypted"},
             {DecryptionStateRole, "decryptionState"}, {ErrorTextRole, "errorText"},
             {SystemEventRole, "systemEvent"}, {EmoteRole, "emote"},
@@ -273,7 +274,8 @@ bool ChatTimelineModel::isMessage(const ChatTimelineItem &timelineItem)
            timelineItem.kind == ChatTimelineItemKind::ImageMessage ||
            timelineItem.kind == ChatTimelineItemKind::FileMessage ||
            timelineItem.kind == ChatTimelineItemKind::AudioMessage ||
-           timelineItem.kind == ChatTimelineItemKind::VideoMessage);
+           timelineItem.kind == ChatTimelineItemKind::VideoMessage ||
+           timelineItem.kind == ChatTimelineItemKind::LocationMessage);
 }
 
 int ChatTimelineModel::insertionRow(const ChatTimelineItem &timelineItem) const
@@ -445,7 +447,8 @@ const QList<int> &ChatTimelineModel::itemDataRoles()
 {
     static const QList<int> roles{StableIdRole, TransactionIdRole, ProtocolEventTypeRole, KindRole, TimestampRole, DateRole, OwnEventRole,
                                   SenderIdRole, SenderDisplayNameRole, SenderAvatarSourceRole, SenderColorRole,
-                                  PlainTextRole, FormattedTextRole, ReplyToIdRole, ReplyRole, AttachmentsRole, ReactionsRole,
+                                  PlainTextRole, FormattedTextRole, ReplyToIdRole, ReplyRole, AttachmentsRole, LocationUriRole,
+                                  ReactionsRole,
                                   DeliveryStateRole, EditedRole, RedactedRole, EncryptedRole, DecryptionStateRole,
                                   ErrorTextRole, SystemEventRole, EmoteRole, GroupPositionRole, ShowSenderRole, ShowAvatarRole,
                                   ShowTimestampRole,

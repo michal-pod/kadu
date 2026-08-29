@@ -116,6 +116,7 @@ public:
 
     void openInsertImageDialog();
     void openAttachFileDialog();
+    void openLocationDialog();
 
     void setAutoSend(bool autoSend);
 
@@ -125,4 +126,5 @@ public slots:
 
 signals:
     void keyPressed(QKeyEvent *e, CustomInput *sender, bool &handled);
+    void locationSelected(const QString &geoUri);
 };

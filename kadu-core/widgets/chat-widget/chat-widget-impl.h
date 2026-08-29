@@ -205,6 +205,7 @@ public:
 
 public slots:
     virtual void sendMessage() override;
+    void sendLocation(const QString &geoUri);
     virtual void colorSelectorAboutToClose() override;
     virtual void clearChatWindow() override;
 

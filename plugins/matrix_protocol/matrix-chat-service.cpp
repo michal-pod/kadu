@@ -262,6 +262,40 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
     room->uploadFile(uploadId, QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
 }
 
+bool MatrixChatService::sendLocationToRoom(const Chat &chat, const QString &geoUri)
+{
+    if (!m_connection || !m_connection->isLoggedIn() || !QUrl{geoUri}.isValid() || !geoUri.startsWith(QStringLiteral("geo:")))
+        return false;
+
+    if (const auto id = roomId(chat); !id.isEmpty())
+    {
+        auto *room = m_connection->room(id, Quotient::JoinState::Join);
+        if (!isSupportedRoom(room))
+            return false;
+
+        postLocation(room, geoUri);
+        return true;
+    }
+
+    const auto recipientId = directChatId(chat);
+    if (recipientId.isEmpty())
+        return false;
+
+    m_connection->getDirectChat(recipientId).then(
+        this, [this, geoUri](Quotient::Room *room) { postLocation(room, geoUri); });
+    return true;
+}
+
+void MatrixChatService::postLocation(Quotient::Room *room, const QString &geoUri)
+{
+    if (!room)
+        return;
+
+    auto content = std::make_unique<Quotient::EventContent::LocationContent>(geoUri);
+    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(geoUri, QStringLiteral("m.location"), std::move(content));
+    room->post(std::move(event));
+}
+
 bool MatrixChatService::sendMessage(const Message &message)
 {
     if (!m_formattedStringFactory)
@@ -287,6 +321,11 @@ bool MatrixChatService::sendRawMessage(const Chat &chat, const QByteArray &rawMe
 bool MatrixChatService::sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
 {
     return sendAttachmentToRoom(chat, filePath, description);
+}
+
+bool MatrixChatService::sendLocation(const Chat &chat, const QString &geoUri)
+{
+    return sendLocationToRoom(chat, geoUri);
 }
 
 void MatrixChatService::leaveChat(const Chat &chat)

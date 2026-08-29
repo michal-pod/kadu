@@ -32,6 +32,7 @@ private slots:
     void shouldIgnoreAnOlderRevision();
     void shouldEmitDataChangedOnlyForUpdatedItem();
     void shouldRedactExistingItem();
+    void shouldExposeLocationUri();
 
 private:
     ChatTimelineItem makeItem(const QString &stableId, const QByteArray &sourceOrder, quint64 revision = 0) const;
@@ -132,6 +133,18 @@ void ChatTimelineModelTest::shouldRedactExistingItem()
     QVERIFY(model.data(model.index(0, 0), ChatTimelineModel::RedactedRole).toBool());
     QVERIFY(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString().isEmpty());
     QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::ErrorTextRole).toString(), QStringLiteral("removed by moderator"));
+}
+
+void ChatTimelineModelTest::shouldExposeLocationUri()
+{
+    ChatTimelineModel model;
+    auto location = makeItem(QStringLiteral("$location"), QByteArrayLiteral("001"));
+    location.kind = ChatTimelineItemKind::LocationMessage;
+    location.content.locationUri = QStringLiteral("geo:52.229700,21.012200");
+    model.upsert(location);
+
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::LocationUriRole).toString(),
+             QStringLiteral("geo:52.229700,21.012200"));
 }
 
 QTEST_APPLESS_MAIN(ChatTimelineModelTest)

@@ -36,6 +36,7 @@ Item {
     required property string replyToId
     property var reply: ({})
     property var attachments: []
+    property string locationUri: ""
     property var reactions: []
     required property bool showSender
     required property bool showAvatar
@@ -99,6 +100,8 @@ Item {
     }
     function messageText() {
         if (attachments.length === 1 && plainText.trim() === attachments[0].fileName.trim())
+            return ""
+        if (locationUri.length > 0 && plainText.trim() === locationUri.trim())
             return ""
         if (formattedText.length > 0)
             return formattedText
@@ -417,6 +420,14 @@ Item {
                                 saveAttachment: root.actionId("saveAttachment") >= 0
                                                 ? function() { root.triggerAction(root.actionId("saveAttachment")) } : null
                             }
+                        }
+
+                        ChatLocation {
+                            visible: root.locationUri.length > 0
+                            width: parent.width
+                            geoUri: root.locationUri
+                            textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                            markerColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
                         }
 
                         Repeater {

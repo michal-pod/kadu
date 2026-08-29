@@ -82,6 +82,7 @@ set (widgets_SRCS
 	kadu-tree-view-delegate.cpp
 	line-edit-clear-button.cpp
 	line-edit-with-clear-button.cpp
+	location-selector-dialog.cpp
 	modal-configuration-widget.cpp
 	paste-acceptor.cpp
 	path-list-edit.cpp

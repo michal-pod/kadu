@@ -120,6 +120,8 @@ Item {
             item.reply = Qt.binding(function() { return delegate.reply })
         if (item.attachments !== undefined)
             item.attachments = Qt.binding(function() { return delegate.attachments })
+        if (item.locationUri !== undefined)
+            item.locationUri = Qt.binding(function() { return delegate.locationUri })
         if (item.reactions !== undefined)
             item.reactions = Qt.binding(function() { return delegate.reactions })
         item.showSender = Qt.binding(function() { return delegate.showSender })
@@ -406,6 +408,7 @@ Item {
             required property string replyToId
             required property var reply
             required property var attachments
+            required property string locationUri
             required property var reactions
             required property bool showSender
             required property bool showAvatar
@@ -449,6 +452,7 @@ Item {
                     "formattedText": delegateRoot.formattedText,
                     "replyToId": delegateRoot.replyToId,
                     "attachments": delegateRoot.attachments,
+                    "locationUri": delegateRoot.locationUri,
                     "reactions": delegateRoot.reactions,
                     "showSender": delegateRoot.showSender,
                     "showAvatar": delegateRoot.showAvatar,
