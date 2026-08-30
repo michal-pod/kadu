@@ -52,11 +52,14 @@
 #include <QtCore/QMimeDatabase>
 #include <QtCore/QObject>
 #include <QtCore/QSize>
+#include <QtCore/QTemporaryFile>
 #include <QtCore/QUrl>
+#include <QtGui/QImage>
 #include <QtGui/QImageReader>
 #include <QtGui/QPixmap>
 
 #include <memory>
+#include <optional>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
@@ -222,50 +225,98 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
     const auto imageSize = mimeType.name().startsWith(QStringLiteral("image/"))
                                ? QImageReader{fileInfo.absoluteFilePath()}.size()
                                : QSize{};
+    auto thumbnailFile = std::shared_ptr<QTemporaryFile>{};
+    QSize thumbnailSize;
+    qint64 thumbnailPayloadSize = 0;
+    if (room->usesEncryption() && imageSize.isValid())
+    {
+        const auto image = QImageReader{fileInfo.absoluteFilePath()}.read();
+        const auto thumbnail = image.scaled(QSize{320, 240}, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        auto candidate = std::make_shared<QTemporaryFile>();
+        if (!thumbnail.isNull() && candidate->open() && thumbnail.save(candidate.get(), "PNG"))
+        {
+            candidate->flush();
+            thumbnailPayloadSize = candidate->size();
+            thumbnailSize = thumbnail.size();
+            candidate->close();
+            thumbnailFile = std::move(candidate);
+        }
+    }
+
     const auto uploadId = m_connection->generateTxnId();
+    const auto thumbnailUploadId = thumbnailFile ? m_connection->generateTxnId() : QString{};
     const QPointer<Quotient::Room> uploadRoom{room};
     auto *uploadContext = new QObject{room};
+    const auto uploadedFileMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
+    const auto uploadedThumbnailMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
+    const auto postEvent = [uploadRoom, plainText, fileInfo, mimeType, imageSize, thumbnailFile, thumbnailSize,
+                            thumbnailPayloadSize, uploadedFileMetadata, uploadedThumbnailMetadata, uploadContext] {
+        if (!uploadRoom || !uploadedFileMetadata->has_value() ||
+            (thumbnailFile && !uploadedThumbnailMetadata->has_value()))
+            return;
+
+        std::unique_ptr<Quotient::EventContent::FileContentBase> content;
+        if (mimeType.name().startsWith(QStringLiteral("image/")))
+        {
+            auto imageContent = std::make_unique<Quotient::EventContent::ImageContent>(
+                **uploadedFileMetadata, fileInfo.size(), mimeType, imageSize, fileInfo.fileName());
+            if (uploadedThumbnailMetadata->has_value())
+            {
+                const auto thumbnailMimeType = QMimeDatabase{}.mimeTypeForName(QStringLiteral("image/png"));
+                imageContent->thumbnail = Quotient::EventContent::Thumbnail{
+                    **uploadedThumbnailMetadata, thumbnailPayloadSize, thumbnailMimeType, thumbnailSize};
+            }
+            content = std::move(imageContent);
+        }
+        else
+        {
+            content = std::make_unique<Quotient::EventContent::FileContent>(
+                **uploadedFileMetadata, fileInfo.size(), mimeType, fileInfo.fileName());
+        }
+
+        auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(
+            plainText, Quotient::RoomMessageEvent::rawMsgTypeForFile(fileInfo), std::move(content));
+        uploadRoom->post(std::move(event));
+        uploadContext->deleteLater();
+    };
 
     // Room::postFile() creates a pending event with the local file URL and replaces it after uploading. In the
     // libQuotient version used by Kadu, the replacement leaves that local URL next to encrypted `file` metadata.
     // Upload first and construct the event from FileSourceInfo so only the server media URL is serialised.
     connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
-            [uploadRoom, uploadId, plainText, fileInfo, mimeType, imageSize, uploadContext](
+            [uploadId, uploadedFileMetadata, postEvent](
                 const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
                 if (completedId != uploadId)
                     return;
 
-                if (uploadRoom)
-                {
-                    std::unique_ptr<Quotient::EventContent::FileContentBase> content;
-                    if (mimeType.name().startsWith(QStringLiteral("image/")))
-                    {
-                        content = std::make_unique<Quotient::EventContent::ImageContent>(
-                            fileMetadata, fileInfo.size(), mimeType, imageSize, fileInfo.fileName());
-                    }
-                    else
-                    {
-                        content = std::make_unique<Quotient::EventContent::FileContent>(
-                            fileMetadata, fileInfo.size(), mimeType, fileInfo.fileName());
-                    }
-
-                    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(
-                        plainText, Quotient::RoomMessageEvent::rawMsgTypeForFile(fileInfo), std::move(content));
-                    uploadRoom->post(std::move(event));
-                }
-
-                uploadContext->deleteLater();
+                *uploadedFileMetadata = fileMetadata;
+                postEvent();
             });
     connect(room, &Quotient::Room::fileTransferFailed, uploadContext,
-            [uploadId, uploadContext](const QString &failedId, const QString &) {
-                if (failedId == uploadId)
+            [uploadId, thumbnailUploadId, uploadContext](const QString &failedId, const QString &) {
+                if (failedId == uploadId || failedId == thumbnailUploadId)
                     uploadContext->deleteLater();
             });
+
+    if (thumbnailFile)
+    {
+        connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
+                [thumbnailUploadId, uploadedThumbnailMetadata, postEvent](
+                    const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
+                    if (completedId != thumbnailUploadId)
+                        return;
+
+                    *uploadedThumbnailMetadata = fileMetadata;
+                    postEvent();
+                });
+    }
 
     // In the libQuotient version used by Kadu, Connection::uploadContent() opens the QFile only when the
     // override content type is empty. Keep the MIME type above for Matrix event metadata, but let the upload
     // path determine it and open its source file itself.
     room->uploadFile(uploadId, QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    if (thumbnailFile)
+        room->uploadFile(thumbnailUploadId, QUrl::fromLocalFile(thumbnailFile->fileName()));
 }
 
 bool MatrixChatService::sendLocationToRoom(const Chat &chat, const QString &geoUri)

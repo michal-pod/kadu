@@ -20,6 +20,8 @@
 #include "qml-theme-description.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QDir>
+#include <QtCore/QFileInfo>
 #include <QtCore/QSet>
 #include <QtCore/QSettings>
 
@@ -60,6 +62,26 @@ QmlThemeDescription QmlThemeDescriptionLoader::builtIn(const QString &id, const 
         {QStringLiteral("System"), QCoreApplication::translate("@default", "System")});
     result.colorSchemes.append(colorSchemes);
     return result;
+}
+
+QString QmlThemeDescriptionLoader::mainComponentFileName(const QString &descriptorPath,
+                                                         const QString &fallbackFileName)
+{
+    QSettings settings{descriptorPath, QSettings::IniFormat};
+    settings.beginGroup(QStringLiteral("Theme"));
+    const auto configuredName = settings.value(QStringLiteral("MainComponent")).toString();
+    settings.endGroup();
+
+    if (configuredName.isEmpty())
+        return fallbackFileName;
+
+    auto cleanName = QDir::cleanPath(configuredName);
+    cleanName.replace(u'\\', u'/');
+    if (QFileInfo{cleanName}.isAbsolute() || cleanName == QStringLiteral("..") ||
+        cleanName.startsWith(QStringLiteral("../")))
+        return {};
+
+    return cleanName;
 }
 
 QmlThemeDescription QmlThemeDescriptionLoader::load(const QString &descriptorPath, const QString &id,

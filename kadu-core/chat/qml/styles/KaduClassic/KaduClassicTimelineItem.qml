@@ -19,6 +19,9 @@
 
 import QtQuick
 import QtQuick.Controls
+// Bundled styles use the host's shared attachment and location components.
+// This is also the resource root embedded by kadu-theme-tester.
+import "qrc:/Kadu/Chat/chat/qml" as KaduChat
 
 Item {
     id: root
@@ -476,7 +479,7 @@ Item {
                 Repeater {
                     model: root.attachments
 
-                    delegate: ChatFileAttachment {
+                    delegate: KaduChat.ChatFileAttachment {
                         required property var modelData
                         width: parent ? parent.width : 1
                         attachment: modelData
@@ -489,7 +492,7 @@ Item {
                     }
                 }
 
-                ChatLocation {
+                KaduChat.ChatLocation {
                     visible: root.locationUri.length > 0
                     width: parent.width
                     geoUri: root.locationUri
@@ -500,7 +503,7 @@ Item {
                 Repeater {
                     model: root.attachments
 
-                    delegate: ChatImageAttachment {
+                    delegate: KaduChat.ChatImageAttachment {
                         required property var modelData
                         width: parent ? parent.width : 1
                         visible: modelData.kind === 0

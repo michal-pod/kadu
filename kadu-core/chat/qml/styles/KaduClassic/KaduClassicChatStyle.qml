@@ -59,6 +59,7 @@ Item {
     property int groupingIntervalSeconds: 300
     property Component timelineItem: timelineItemComponent
     property Component composerContext: composerContextComponent
+    property Component pinnedMessagesPanel: pinnedMessagesPanelComponent
 
     Component {
         id: timelineItemComponent
@@ -78,6 +79,17 @@ Item {
         KaduClassicComposerContext {
             colorScheme: root.colorScheme
             customColors: root.customColors
+        }
+    }
+
+    Component {
+        id: pinnedMessagesPanelComponent
+
+        KaduClassicPinnedMessages {
+            colorScheme: root.colorScheme
+            customColors: root.customColors
+            timelineActions: root.timelineActions
+            executeTimelineAction: root.executeTimelineAction
         }
     }
 }

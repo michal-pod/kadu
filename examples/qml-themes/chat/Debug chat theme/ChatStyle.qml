@@ -18,6 +18,7 @@
  */
 
 import QtQuick
+import QtQuick.Controls
 
 Item {
     id: root
@@ -51,6 +52,7 @@ Item {
     property int groupingIntervalSeconds: 300
     property Component timelineItem: timelineItemComponent
     property Component composerContext: composerContextComponent
+    property Component pinnedMessagesPanel: pinnedMessagesPanelComponent
 
     Component {
         id: timelineItemComponent
@@ -258,6 +260,110 @@ Item {
                         onClicked: {
                             if (contextItem.cancelComposerContext)
                                 contextItem.cancelComposerContext()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: pinnedMessagesPanelComponent
+
+        Item {
+            id: panel
+
+            property var pinnedMessages: []
+            property var timelineActions: null
+            property var executeTimelineAction: null
+            readonly property var entries: pinnedMessages || []
+
+            visible: entries.length > 0
+            implicitHeight: visible ? summary.implicitHeight + 12 : 0
+
+            Rectangle {
+                anchors.fill: parent
+                color: root.darkSurface ? "#363040" : "#f6edff"
+                border.width: 1
+                border.color: "#a359d1"
+            }
+
+            Text {
+                id: summary
+                x: 8
+                y: 6
+                width: parent.width - 16
+                color: root.textColor
+                wrapMode: Text.Wrap
+                text: "pinnedMessages.count=" + panel.entries.length + "\n" +
+                      panel.entries.map(function(entry) {
+                          return "stableId=" + (entry.stableId || "") +
+                                 " | available=" + (entry.available || false) +
+                                 " | senderDisplayName=" + (entry.senderDisplayName || "") +
+                                 " | plainText=" + (entry.plainText || "") +
+                                 " | protocolEventType=" + (entry.protocolEventType || "")
+                      }).join("\n")
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: pinnedMessagesPopup.open()
+                }
+            }
+
+            Popup {
+                id: pinnedMessagesPopup
+                parent: panel
+                x: 8
+                y: panel.height + 4
+                width: Math.max(280, Math.min(panel.width - 16, 560))
+                height: Math.min(440, pinnedMessagesList.contentHeight + 20)
+                padding: 10
+                z: 10
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                contentItem: ListView {
+                    id: pinnedMessagesList
+                    width: pinnedMessagesPopup.availableWidth
+                    height: Math.min(contentHeight, 400)
+                    spacing: 6
+                    model: panel.entries
+
+                    delegate: Column {
+                        required property var modelData
+                        readonly property var entry: modelData
+
+                        width: pinnedMessagesList.width
+                        spacing: 3
+
+                        Text {
+                            width: parent.width
+                            color: root.textColor
+                            wrapMode: Text.Wrap
+                            text: "stableId=" + (entry.stableId || "") +
+                                  " | available=" + (entry.available || false) +
+                                  " | senderDisplayName=" + (entry.senderDisplayName || "") +
+                                  " | plainText=" + (entry.plainText || "") +
+                                  " | formattedText=" + (entry.formattedText || "") +
+                                  " | protocolEventType=" + (entry.protocolEventType || "")
+                        }
+
+                        Row {
+                            spacing: 5
+
+                            Repeater {
+                                model: panel.timelineActions ? panel.timelineActions(entry.stableId) : []
+
+                                delegate: Button {
+                                    required property var modelData
+                                    text: modelData.text || ""
+                                    onClicked: {
+                                        if (panel.executeTimelineAction)
+                                            panel.executeTimelineAction(entry.stableId, modelData.id)
+                                        pinnedMessagesPopup.close()
+                                    }
+                                }
+                            }
                         }
                     }
                 }

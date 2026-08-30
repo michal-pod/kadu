@@ -1,0 +1,13 @@
+[Theme]
+DisplayName=Bubbles
+DisplayName[pl]=Bąbelki
+Author=Kadu Team
+Type=chat
+Version=core
+MainComponent=BubblesChatStyle.qml
+
+[Colors]
+Light=Light
+Light[pl]=Jasny
+Dark=Dark
+Dark[pl]=Ciemny

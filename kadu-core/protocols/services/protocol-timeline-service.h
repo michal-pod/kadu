@@ -19,27 +19,17 @@
 
 #pragma once
 
+#include "chat/timeline/chat-timeline-action.h"
 #include "chat/timeline/chat-timeline-page.h"
 #include "chat/timeline/chat-timeline-request.h"
 #include "protocols/services/account-service.h"
 
 #include <QtCore/QFuture>
-#include <QtCore/QFlags>
 #include <QtCore/QSize>
 #include <QtCore/QUrl>
+#include <QtCore/QVariantList>
 
 class QImage;
-
-enum class ChatTimelineAction
-{
-    Reply = 0x1,
-    Edit = 0x2,
-    Delete = 0x4,
-    SaveAttachment = 0x8,
-    ShowSource = 0x10
-};
-Q_DECLARE_FLAGS(ChatTimelineActions, ChatTimelineAction)
-Q_DECLARE_OPERATORS_FOR_FLAGS(ChatTimelineActions)
 
 /**
  * @short Source of protocol-native timeline pages and live events.
@@ -79,6 +69,16 @@ public:
     virtual bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action);
 
     /**
+     * @short Return protocol-native pinned entries for a chat.
+     *
+     * The list keeps the protocol order and contains lightweight QVariantMap
+     * records only. A record can deliberately represent an event that is not
+     * in the locally loaded timeline yet; the pinned-messages view must not
+     * force history pagination just to build its preview.
+     */
+    virtual QVariantList pinnedMessages(const Chat &chat) const;
+
+    /**
      * @short Mark a timeline event as read in the native protocol.
      *
      * The controller calls this only while the event is visibly read.  A
@@ -111,4 +111,9 @@ signals:
      * @short A protocol event was redacted without requiring another history page.
      */
     void eventRedacted(const Chat &chat, const QString &stableId, const QString &reason);
+
+    /**
+     * @short The protocol changed the pinned entries of a chat.
+     */
+    void pinnedMessagesChanged(const Chat &chat);
 };

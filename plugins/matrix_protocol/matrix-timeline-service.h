@@ -62,6 +62,7 @@ public:
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
     ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const override;
     bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action) override;
+    QVariantList pinnedMessages(const Chat &chat) const override;
     void markTimelineItemRead(const Chat &chat, const QString &stableId) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
 
@@ -111,6 +112,7 @@ private:
     void handleAttachmentDownloadFailed(Quotient::Room *room, const QString &resourceId, const QString &eventId,
                                         const QString &errorMessage);
     void clearAttachmentDownloads();
+    bool canManagePinnedMessages(const Quotient::Room *room) const;
     static QUrl attachmentUri(const QString &eventId, bool thumbnail = false);
     static QString eventIdForAttachmentUri(const QUrl &sourceUri);
     static bool isAttachmentThumbnailUri(const QUrl &sourceUri);

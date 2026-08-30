@@ -191,19 +191,21 @@ qt_add_qml_module (libkadu
 		chat/qml/ChatPage.qml
 		chat/qml/ChatFileAttachment.qml
 		chat/qml/ChatImageAttachment.qml
-		chat/qml/BubblesComposerContext.qml
-		chat/qml/BubblesTimelineStyle.qml
-		chat/qml/BubblesTimelineItem.qml
 		chat/qml/ImageViewerDialog.qml
 		chat/qml/KaduImage.qml
-		chat/qml/KaduClassicComposerContext.qml
-		chat/qml/KaduClassicTimelineStyle.qml
-		chat/qml/KaduClassicTimelineItem.qml
 		chat/qml/ChatLocation.qml
+		chat/qml/styles/Bubbles/BubblesComposerContext.qml
+		chat/qml/styles/Bubbles/BubblesChatStyle.qml
+		chat/qml/styles/Bubbles/BubblesPinnedMessages.qml
+		chat/qml/styles/Bubbles/BubblesTimelineItem.qml
+		chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml
+		chat/qml/styles/KaduClassic/KaduClassicComposerContext.qml
+		chat/qml/styles/KaduClassic/KaduClassicPinnedMessages.qml
+		chat/qml/styles/KaduClassic/KaduClassicTimelineItem.qml
 		widgets/qml/LocationSelector.qml
 		widgets/qml/InfoPanel.qml
-		widgets/qml/info-panel-styles/Classic.qml
-		widgets/qml/info-panel-styles/Compact.qml
+		widgets/qml/info-panel-styles/Classic/ClassicBuddyInfoStyle.qml
+		widgets/qml/info-panel-styles/Compact/CompactBuddyInfoStyle.qml
 )
 
 if (FAST_LINKING)

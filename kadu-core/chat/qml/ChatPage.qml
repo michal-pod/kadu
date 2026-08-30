@@ -42,6 +42,8 @@ Item {
     property bool scrollBarVisible: false
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
+    property var defaultComposerContextComponent: null
+    property var defaultPinnedMessagesPanelComponent: null
     readonly property int newEventsBelow: chatViewModel ? chatViewModel.newEventsBelow : 0
 
     // These values also make the fallback renderer readable when a selected
@@ -84,12 +86,46 @@ Item {
 
     function bindComposerContext(item) {
         item.width = Qt.binding(function() { return composerContextContainer.width })
+        if (item.colorScheme !== undefined)
+            item.colorScheme = Qt.binding(function() { return root.activeThemeColorScheme })
+        if (item.customColors !== undefined)
+            item.customColors = Qt.binding(function() { return root.activeCustomColors })
         if (item.context !== undefined)
             item.context = Qt.binding(function() {
                 return root.chatViewModel ? root.chatViewModel.composerContext : ({})
             })
         if (item.cancelComposerContext !== undefined)
             item.cancelComposerContext = root.cancelComposerContext
+    }
+
+    function bindPinnedMessagesPanel(item) {
+        item.width = Qt.binding(function() { return pinnedMessagesContainer.width })
+        if (item.colorScheme !== undefined)
+            item.colorScheme = Qt.binding(function() { return root.activeThemeColorScheme })
+        if (item.customColors !== undefined)
+            item.customColors = Qt.binding(function() { return root.activeCustomColors })
+        if (item.pinnedMessages !== undefined)
+            item.pinnedMessages = Qt.binding(function() {
+                return root.chatViewModel ? root.chatViewModel.pinnedMessages : []
+            })
+        if (item.timelineActions !== undefined)
+            item.timelineActions = root.timelineActions
+        if (item.executeTimelineAction !== undefined)
+            item.executeTimelineAction = root.executeTimelineAction
+    }
+
+    function defaultComposerContext() {
+        if (!defaultComposerContextComponent)
+            defaultComposerContextComponent = Qt.createComponent(
+                        "qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicComposerContext.qml")
+        return defaultComposerContextComponent
+    }
+
+    function defaultPinnedMessagesPanel() {
+        if (!defaultPinnedMessagesPanelComponent)
+            defaultPinnedMessagesPanelComponent = Qt.createComponent(
+                        "qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicPinnedMessages.qml")
+        return defaultPinnedMessagesPanelComponent
     }
 
     function applyTimelineStyleProperties() {
@@ -268,15 +304,6 @@ Item {
             themeLoader.item.customColors = activeCustomColors
     }
 
-    Component {
-        id: defaultComposerContextComponent
-
-        KaduClassicComposerContext {
-            colorScheme: root.activeThemeColorScheme
-            customColors: root.activeCustomColors
-        }
-    }
-
     Rectangle {
         anchors.fill: parent
         color: root.themeValue("backgroundColor", root.fallbackBackgroundColor)
@@ -361,11 +388,53 @@ Item {
         }
     }
 
+    Item {
+        id: pinnedMessagesContainer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: roomHeader.bottom
+        height: rendererItem ? rendererItem.implicitHeight : 0
+        z: 4
+
+        property var rendererItem: null
+
+        function createRenderer() {
+            if (rendererItem) {
+                rendererItem.destroy()
+                rendererItem = null
+            }
+
+            const component = root.activeTheme && root.activeTheme.pinnedMessagesPanel
+                              ? root.activeTheme.pinnedMessagesPanel : root.defaultPinnedMessagesPanel()
+            if (!component || component.status !== Component.Ready)
+                return
+            rendererItem = component.createObject(pinnedMessagesContainer, {
+                "width": pinnedMessagesContainer.width
+            })
+            if (rendererItem)
+                root.bindPinnedMessagesPanel(rendererItem)
+        }
+
+        Component.onCompleted: createRenderer()
+        Component.onDestruction: {
+            if (rendererItem)
+                rendererItem.destroy()
+        }
+
+        Connections {
+            target: root
+
+            function onActiveThemeChanged() {
+                pinnedMessagesContainer.createRenderer()
+            }
+        }
+    }
+
     ListView {
         id: timeline
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: roomHeader.bottom
+        anchors.top: pinnedMessagesContainer.bottom
         anchors.bottom: composerContextContainer.top
         anchors.margins: root.themeValue("timelineMargin", 16)
         clip: true
@@ -622,7 +691,9 @@ Item {
                 return
 
             const component = root.activeTheme && root.activeTheme.composerContext
-                              ? root.activeTheme.composerContext : defaultComposerContextComponent
+                              ? root.activeTheme.composerContext : root.defaultComposerContext()
+            if (!component || component.status !== Component.Ready)
+                return
             rendererItem = component.createObject(composerContextContainer, {
                 "width": composerContextContainer.width
             })
@@ -667,6 +738,10 @@ Item {
         }
         function onComposerContextChanged() {
             composerContextContainer.createRenderer()
+        }
+        function onPinnedMessagesChanged() {
+            if (pinnedMessagesContainer.rendererItem)
+                root.bindPinnedMessagesPanel(pinnedMessagesContainer.rendererItem)
         }
     }
 

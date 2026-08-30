@@ -48,7 +48,8 @@ struct QmlThemeDescription
 /**
  * @short Reads the common theme.desc format used by QML styles.
  *
- * A descriptor contains [Theme] metadata and optional [Colors] entries.
+ * A descriptor contains [Theme] metadata, an optional MainComponent file name
+ * and optional [Colors] entries.
  * The System colour scheme is injected for every valid descriptor and is
  * therefore always available even when a style declares no fixed variants.
  */
@@ -58,6 +59,9 @@ public:
     static QmlThemeDescription builtIn(const QString &id, const QString &displayName, const QString &author,
                                        const QString &type, const QUrl &source,
                                        const QList<QmlThemeColorScheme> &colorSchemes = {});
+    // Returns the optional relative MainComponent value, or the caller's
+    // conventional entry-point name when the descriptor omits it.
+    static QString mainComponentFileName(const QString &descriptorPath, const QString &fallbackFileName);
     static QmlThemeDescription load(const QString &descriptorPath, const QString &id, const QUrl &source,
                                     const QString &expectedType, const QString &language);
 };

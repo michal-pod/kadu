@@ -40,6 +40,11 @@ bool ProtocolTimelineService::executeAction(const Chat &, const QString &, ChatT
     return false;
 }
 
+QVariantList ProtocolTimelineService::pinnedMessages(const Chat &) const
+{
+    return {};
+}
+
 void ProtocolTimelineService::markTimelineItemRead(const Chat &, const QString &)
 {
 }

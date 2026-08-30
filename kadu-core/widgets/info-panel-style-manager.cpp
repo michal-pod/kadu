@@ -88,12 +88,12 @@ void InfoPanelStyleManager::loadStyles()
         {QStringLiteral("Classic"),
          QmlThemeDescriptionLoader::builtIn(QStringLiteral("Classic"), tr("Classic"), QStringLiteral("Kadu Team"),
                                              QStringLiteral("info-panel"),
-                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Classic.qml")},
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Classic/ClassicBuddyInfoStyle.qml")},
                                              bundledSchemes)},
         {QStringLiteral("Compact"),
          QmlThemeDescriptionLoader::builtIn(QStringLiteral("Compact"), tr("Compact"), QStringLiteral("Kadu Team"),
                                              QStringLiteral("info-panel"),
-                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Compact.qml")},
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/info-panel-styles/Compact/CompactBuddyInfoStyle.qml")},
                                              bundledSchemes)},
     };
 
@@ -112,9 +112,14 @@ void InfoPanelStyleManager::loadExternalStyles(const QString &directory)
                               : QLocale::system().name().left(2);
     for (const auto &entry : stylesDirectory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
     {
-        const auto source = QFileInfo{entry.filePath() + QStringLiteral("/BuddyInfoStyle.qml")};
         const auto descriptor = QFileInfo{entry.filePath() + QStringLiteral("/theme.desc")};
-        if (!source.isFile() || !descriptor.isFile())
+        if (!descriptor.isFile())
+            continue;
+
+        const auto componentFileName = QmlThemeDescriptionLoader::mainComponentFileName(
+            descriptor.absoluteFilePath(), QStringLiteral("BuddyInfoStyle.qml"));
+        const auto source = QFileInfo{entry.filePath() + QLatin1Char{'/'} + componentFileName};
+        if (componentFileName.isEmpty() || !source.isFile())
             continue;
 
         const auto id = entry.fileName();

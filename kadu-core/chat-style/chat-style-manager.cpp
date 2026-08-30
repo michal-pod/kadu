@@ -51,12 +51,12 @@ void ChatStyleManager::loadStyles()
         {QStringLiteral("KaduClassic"),
          QmlThemeDescriptionLoader::builtIn(QStringLiteral("KaduClassic"), tr("Classic Kadu"),
                                              QStringLiteral("Kadu Team"), QStringLiteral("chat"),
-                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/KaduClassicTimelineStyle.qml")},
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml")},
                                              bundledSchemes)},
         {QStringLiteral("Bubbles"),
          QmlThemeDescriptionLoader::builtIn(QStringLiteral("Bubbles"), tr("Bubbles"), QStringLiteral("Kadu Team"),
                                              QStringLiteral("chat"),
-                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/BubblesTimelineStyle.qml")},
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/Bubbles/BubblesChatStyle.qml")},
                                              bundledSchemes)},
     };
 
@@ -134,9 +134,14 @@ void ChatStyleManager::loadExternalStyles(const QString &directory)
                               : QLocale::system().name().left(2);
     for (const auto &entry : stylesDirectory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
     {
-        const auto source = QFileInfo{entry.filePath() + QStringLiteral("/ChatStyle.qml")};
         const auto descriptor = QFileInfo{entry.filePath() + QStringLiteral("/theme.desc")};
-        if (!source.isFile() || !descriptor.isFile())
+        if (!descriptor.isFile())
+            continue;
+
+        const auto componentFileName =
+            QmlThemeDescriptionLoader::mainComponentFileName(descriptor.absoluteFilePath(), QStringLiteral("ChatStyle.qml"));
+        const auto source = QFileInfo{entry.filePath() + QLatin1Char{'/'} + componentFileName};
+        if (componentFileName.isEmpty() || !source.isFile())
             continue;
 
         const auto id = entry.fileName();

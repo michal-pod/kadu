@@ -65,6 +65,7 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
     Q_PROPERTY(bool composerActive READ composerActive NOTIFY composerContextChanged)
     Q_PROPERTY(QVariantMap composerContext READ composerContext NOTIFY composerContextChanged)
+    Q_PROPERTY(QVariantList pinnedMessages READ pinnedMessages NOTIFY pinnedMessagesChanged)
 
 public:
     enum class ComposerMode
@@ -98,6 +99,7 @@ public:
     int newEventsBelow() const;
     bool composerActive() const;
     QVariantMap composerContext() const;
+    QVariantList pinnedMessages() const;
     ComposerMode composerMode() const;
     QString composerTargetId() const;
     QString composerTargetPlainText() const;
@@ -127,6 +129,7 @@ signals:
     void roomDetailsChanged();
     void timelineStateChanged();
     void composerContextChanged();
+    void pinnedMessagesChanged();
     void composerContextCancelled();
     void composerContextActivated(ChatViewModel::ComposerMode mode);
 

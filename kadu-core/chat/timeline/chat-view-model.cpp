@@ -61,6 +61,11 @@ ChatViewModel::ChatViewModel(
         connect(
             m_timelineController, &ChatTimelineController::newEventsBelowChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
+        connect(protocolTimelineService, &ProtocolTimelineService::pinnedMessagesChanged, this,
+                [this](const Chat &chat) {
+                    if (chat == m_chat)
+                        emit pinnedMessagesChanged();
+                });
     }
     else
         m_timeline = new ChatTimelineModel{this};
@@ -110,7 +115,7 @@ bool ChatViewModel::usesProtocolTimeline() const
 QUrl ChatViewModel::themeSource() const
 {
     return m_chatStyleManager ? m_chatStyleManager->styleSource(m_chatStyleManager->currentChatStyle().name())
-                              : QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/KaduClassicTimelineStyle.qml")};
+                              : QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml")};
 }
 
 QString ChatViewModel::themeColorScheme() const
@@ -208,6 +213,13 @@ QVariantMap ChatViewModel::composerContext() const
                      {QStringLiteral("redacted"), m_composerTarget.state.redacted}}}};
 }
 
+QVariantList ChatViewModel::pinnedMessages() const
+{
+    if (auto *service = timelineService(nullptr))
+        return service->pinnedMessages(m_chat);
+    return {};
+}
+
 ChatViewModel::ComposerMode ChatViewModel::composerMode() const
 {
     return m_composerMode;
@@ -272,12 +284,9 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
     if (stableId.isEmpty())
         return {};
 
-    const auto item = m_timeline->item(stableId);
-    if (item.stableId.isEmpty())
-        return {};
-
     QVariantList actions;
-    if (!item.state.redacted && !item.content.plainText.isEmpty())
+    const auto item = m_timeline->item(stableId);
+    if (!item.stableId.isEmpty() && !item.state.redacted && !item.content.plainText.isEmpty())
         actions.append(QVariantMap{{QStringLiteral("id"), 0}, {QStringLiteral("key"), QStringLiteral("copy")},
                                    {QStringLiteral("text"), tr("Copy message")}});
 
@@ -307,6 +316,11 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::ShowSource)},
                                    {QStringLiteral("key"), QStringLiteral("showSource")},
                                    {QStringLiteral("text"), tr("Show source")}});
+    if (available.testFlag(ChatTimelineAction::Unpin))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Unpin)},
+                                   {QStringLiteral("key"), QStringLiteral("unpin")},
+                                   {QStringLiteral("text"), tr("Unpin message")},
+                                   {QStringLiteral("destructive"), true}});
     return actions;
 }
 
@@ -338,6 +352,10 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
     }
     if (timelineAction == ChatTimelineAction::Delete &&
         QMessageBox::question(nullptr, tr("Delete message"), tr("Do you want to delete this message?"),
+                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+        return;
+    if (timelineAction == ChatTimelineAction::Unpin &&
+        QMessageBox::question(nullptr, tr("Unpin message"), tr("Do you want to unpin this message?"),
                               QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
         return;
 

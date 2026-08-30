@@ -13,6 +13,11 @@ Every external theme has a `theme.desc` and one entry QML file. The directory
 name is its persistent identifier; `DisplayName` from `theme.desc` is the name
 shown to the user. `Type` must be `chat` or `info-panel` respectively.
 
+The optional `MainComponent` key selects another relative QML entry file. If it
+is absent, Kadu uses `ChatStyle.qml` for chat themes and `BuddyInfoStyle.qml`
+for information-panel themes. This makes it possible to keep several bundled
+styles in one QML module without giving their roots identical type names.
+
 `System` is always supplied by Kadu and follows the desktop palette. Entries
 in `[Colors]` add fixed schemes. The selected scheme is assigned to the QML
 root's writable `colorScheme` property. The examples visibly print every

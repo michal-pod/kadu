@@ -32,6 +32,7 @@
 #include "html/sanitized-html-string.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/csapi/rooms.h>
 #include <Quotient/eventitem.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
@@ -59,6 +60,8 @@
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QTimer>
 #include <QtCore/QUrlQuery>
+#include <QtCore/QVariantMap>
+#include <QtGui/QColor>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
@@ -134,11 +137,29 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimeline(const ChatTimel
     return requestTimelineForRoom(request, roomForChat(request.chat));
 }
 
+bool MatrixTimelineService::canManagePinnedMessages(const Quotient::Room *room) const
+{
+    if (!room || !m_connection || m_connection->userId().isEmpty())
+        return false;
+
+    return room->memberEffectivePowerLevel() >= room->powerLevelFor(
+               QStringLiteral("m.room.pinned_events"), true);
+}
+
 ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, const QString &stableId) const
 {
     auto *room = roomForChat(chat);
     if (!room || stableId.isEmpty())
         return {};
+
+    ChatTimelineActions actions;
+    const auto isPinned = room->pinnedEventIds().contains(stableId);
+    if (isPinned)
+    {
+        actions |= ChatTimelineAction::ShowSource;
+        if (canManagePinnedMessages(room))
+            actions |= ChatTimelineAction::Unpin;
+    }
 
     for (const auto &timelineItem : room->messageEvents())
     {
@@ -149,9 +170,9 @@ ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, co
         auto encrypted = false;
         const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
         if (!event)
-            return {};
+            return actions;
 
-        ChatTimelineActions actions{ChatTimelineAction::ShowSource};
+        actions |= ChatTimelineAction::ShowSource;
         const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
         if (!messageEvent || event->isRedacted())
             return actions;
@@ -169,12 +190,12 @@ ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, co
 
     const auto transactionId = transactionIdForLocalEcho(stableId);
     if (transactionId.isEmpty())
-        return {};
+        return actions;
 
     for (const auto &pendingEvent : room->pendingEvents())
         if (pendingEvent->transactionId() == transactionId)
-            return ChatTimelineActions{ChatTimelineAction::ShowSource};
-    return {};
+            return actions | ChatTimelineAction::ShowSource;
+    return actions;
 }
 
 bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action)
@@ -195,17 +216,39 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
         }
 
         const auto transactionId = transactionIdForLocalEcho(stableId);
-        if (transactionId.isEmpty())
-            return false;
-        for (const auto &pendingEvent : room->pendingEvents())
+        if (!transactionId.isEmpty())
         {
-            if (pendingEvent->transactionId() == transactionId)
+            for (const auto &pendingEvent : room->pendingEvents())
             {
-                showEventSource(stableId, *pendingEvent.event());
-                return true;
+                if (pendingEvent->transactionId() == transactionId)
+                {
+                    showEventSource(stableId, *pendingEvent.event());
+                    return true;
+                }
             }
         }
+
+        if (room->pinnedEventIds().contains(stableId) && m_connection)
+        {
+            m_connection->callApi<Quotient::GetOneRoomEventJob>(room->id(), stableId).then(
+                this,
+                [this, stableId](Quotient::GetOneRoomEventJob *job) {
+                    const auto event = job->event();
+                    if (event)
+                        showEventSource(stableId, *event);
+                },
+                [] { QMessageBox::warning(nullptr, tr("Matrix event source"), tr("Could not retrieve the event source.")); });
+            return true;
+        }
         return false;
+    }
+
+    if (action == ChatTimelineAction::Unpin)
+    {
+        auto pinnedEventIds = room->pinnedEventIds();
+        pinnedEventIds.removeAll(stableId);
+        room->setPinnedEvents(pinnedEventIds);
+        return true;
     }
 
     if (action == ChatTimelineAction::Delete)
@@ -277,6 +320,59 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
         QMessageBox::warning(nullptr, tr("Save attachment"), tr("Could not save the attachment: %1").arg(errorText));
     });
     return true;
+}
+
+QVariantList MatrixTimelineService::pinnedMessages(const Chat &chat) const
+{
+    auto *room = roomForChat(chat);
+    if (!room)
+        return {};
+
+    QVariantList result;
+    for (const auto &eventId : room->pinnedEventIds())
+    {
+        QVariantMap record{{QStringLiteral("stableId"), eventId},
+                           {QStringLiteral("available"), false},
+                           {QStringLiteral("plainText"), tr("This pinned message is not loaded yet.")},
+                           {QStringLiteral("formattedText"), QString{}},
+                           {QStringLiteral("senderDisplayName"), QString{}},
+                           {QStringLiteral("senderAvatarSource"), QUrl{}},
+                           {QStringLiteral("senderColor"), QColor{}},
+                           {QStringLiteral("protocolEventType"), QString{}},
+                           {QStringLiteral("timestamp"), QDateTime{}},
+                           {QStringLiteral("encrypted"), false},
+                           {QStringLiteral("decryptionState"),
+                            static_cast<int>(ChatTimelineDecryptionState::NotEncrypted)},
+                           {QStringLiteral("redacted"), false}};
+
+        for (const auto &timelineItem : room->messageEvents())
+        {
+            if (timelineItem->id() != eventId)
+                continue;
+
+            Quotient::RoomEventPtr decryptedEvent;
+            auto encrypted = false;
+            const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
+            if (!event)
+                break;
+
+            const auto item = itemForEvent(room, *event, eventId, timelineItem.index(), encrypted);
+            record.insert(QStringLiteral("available"), true);
+            record.insert(QStringLiteral("plainText"), item.content.plainText);
+            record.insert(QStringLiteral("formattedText"), item.content.formattedText);
+            record.insert(QStringLiteral("senderDisplayName"), item.sender.displayName);
+            record.insert(QStringLiteral("senderAvatarSource"), item.sender.avatarSource);
+            record.insert(QStringLiteral("senderColor"), item.sender.color);
+            record.insert(QStringLiteral("protocolEventType"), item.protocolEventType);
+            record.insert(QStringLiteral("timestamp"), item.timestamp);
+            record.insert(QStringLiteral("encrypted"), item.state.encrypted);
+            record.insert(QStringLiteral("decryptionState"), static_cast<int>(item.state.decryptionState));
+            record.insert(QStringLiteral("redacted"), item.state.redacted);
+            break;
+        }
+        result.append(record);
+    }
+    return result;
 }
 
 void MatrixTimelineService::markTimelineItemRead(const Chat &chat, const QString &stableId)
@@ -459,7 +555,11 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const Ch
                 return;
             }
 
-            finishRequest(promise, pageForRoom(request, watchedRoom.data()));
+            auto page = pageForRoom(request, watchedRoom.data());
+            const auto chat = chatForRoom(watchedRoom.data());
+            if (chat)
+                emit pinnedMessagesChanged(chat);
+            finishRequest(promise, std::move(page));
         },
         [this, promise] {
             ChatTimelinePage page;
@@ -627,6 +727,11 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
             });
     connect(room, &Quotient::Room::baseStateLoaded, this,
             [this, room] { m_loadedRooms.insert(room); });
+    connect(room, &Quotient::Room::pinnedEventsChanged, this, [this, room] {
+        const auto chat = chatForRoom(room);
+        if (chat)
+            emit pinnedMessagesChanged(chat);
+    });
     connect(room, &Quotient::Room::updatedEvent, this,
             [this, room](const QString &eventId) { updateTimelineEvent(room, eventId); });
     connect(room, &Quotient::Room::replacedEvent, this,
@@ -686,6 +791,8 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
 
         const auto eventId = timelineItem->id();
         emit eventReceived(chat, itemForEvent(room, *event, eventId, timelineItem.index(), encrypted));
+        if (room->pinnedEventIds().contains(eventId))
+            emit pinnedMessagesChanged(chat);
         m_eventTransactionIds.remove(eventId);
     }
 }
@@ -778,7 +885,8 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
         if (event->isRedacted())
             continue;
 
-        page.items.append(itemForEvent(room, *event, (*it)->id(), index, encrypted));
+        const auto eventId = (*it)->id();
+        page.items.append(itemForEvent(room, *event, eventId, index, encrypted));
         ++accepted;
         if (accepted == limit)
             break;
@@ -1083,6 +1191,8 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         }
 
         emit eventUpdated(chat, itemForEvent(room, *event, eventId, timelineItem.index(), encrypted));
+        if (room->pinnedEventIds().contains(eventId))
+            emit pinnedMessagesChanged(chat);
         m_eventTransactionIds.remove(eventId);
         return;
     }
