@@ -267,6 +267,21 @@ void ChatWidgetImpl::createGui()
     connect(VerticalSplitter, SIGNAL(splitterMoved(int, int)), this, SLOT(verticalSplitterMoved(int, int)));
     connect(InputBox->inputBox(), SIGNAL(sendMessage()), this, SLOT(sendMessage()));
     connect(InputBox, &ChatEditBox::locationSelected, this, &ChatWidgetImpl::sendLocation);
+    connect(m_chatViewModel, &ChatViewModel::composerContextCancelled, this, [this] {
+        resetEditBox();
+        InputBox->setAttachmentsEnabled(true);
+        InputBox->inputBox()->setFocus();
+    });
+    connect(m_chatViewModel, &ChatViewModel::composerContextActivated, this,
+            [this](ChatViewModel::ComposerMode mode) {
+                InputBox->clearAttachment();
+                InputBox->setAttachmentsEnabled(false);
+                if (mode == ChatViewModel::ComposerMode::Edit)
+                {
+                    InputBox->inputBox()->setPlainText(m_chatViewModel->composerTargetPlainText());
+                }
+                InputBox->inputBox()->setFocus();
+            });
     connect(
         InputBox->inputBox(), SIGNAL(keyPressed(QKeyEvent *, CustomInput *, bool &)), this,
         SLOT(keyPressedSlot(QKeyEvent *, CustomInput *, bool &)));
@@ -497,13 +512,30 @@ void ChatWidgetImpl::sendMessage()
         return;
     }
 
-    const auto sent = attachmentPath.isEmpty()
-                          ? m_messageManager->sendMessage(CurrentChat, InputBox->inputBox()->htmlMessage())
-                          : m_messageManager->sendAttachment(CurrentChat, attachmentPath, description);
+    const auto hasComposerContext = m_chatViewModel && m_chatViewModel->composerActive();
+    auto sent = false;
+    if (hasComposerContext)
+    {
+        sent = m_chatViewModel->composerMode() == ChatViewModel::ComposerMode::Reply
+                   ? m_messageManager->sendReply(CurrentChat, InputBox->inputBox()->htmlMessage(),
+                                                  m_chatViewModel->composerTargetId())
+                   : m_messageManager->editMessage(CurrentChat, InputBox->inputBox()->htmlMessage(),
+                                                   m_chatViewModel->composerTargetId());
+    }
+    else
+    {
+        sent = attachmentPath.isEmpty() ? m_messageManager->sendMessage(CurrentChat, InputBox->inputBox()->htmlMessage())
+                                         : m_messageManager->sendAttachment(CurrentChat, attachmentPath, description);
+    }
     if (!sent)
         return;
 
     resetEditBox();
+    if (hasComposerContext)
+    {
+        m_chatViewModel->clearComposerContext();
+        InputBox->setAttachmentsEnabled(true);
+    }
 
     // We sent the message and reseted the edit box, so composing of that message is done.
     // Note that if ComposingTimer is not active, it means that we already reported
@@ -565,6 +597,12 @@ bool ChatWidgetImpl::decodeLocalFiles(QDropEvent *event, QStringList &files)
 
 void ChatWidgetImpl::dragEnterEvent(QDragEnterEvent *e)
 {
+    if (m_chatViewModel && m_chatViewModel->composerActive())
+    {
+        e->ignore();
+        return;
+    }
+
     QStringList files;
 
     if (decodeLocalFiles(e, files))
@@ -573,6 +611,12 @@ void ChatWidgetImpl::dragEnterEvent(QDragEnterEvent *e)
 
 void ChatWidgetImpl::dragMoveEvent(QDragMoveEvent *e)
 {
+    if (m_chatViewModel && m_chatViewModel->composerActive())
+    {
+        e->ignore();
+        return;
+    }
+
     QStringList files;
 
     if (decodeLocalFiles(e, files))
@@ -581,6 +625,12 @@ void ChatWidgetImpl::dragMoveEvent(QDragMoveEvent *e)
 
 void ChatWidgetImpl::dropEvent(QDropEvent *e)
 {
+    if (m_chatViewModel && m_chatViewModel->composerActive())
+    {
+        e->ignore();
+        return;
+    }
+
     QStringList files;
 
     if (decodeLocalFiles(e, files))

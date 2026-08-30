@@ -56,6 +56,7 @@ Item {
     property int timelineSpacing: 4
     property int groupingIntervalSeconds: 300
     property Component timelineItem: timelineItemComponent
+    property Component composerContext: composerContextComponent
 
     Component {
         id: timelineItemComponent
@@ -66,6 +67,15 @@ Item {
             timelineActions: root.timelineActions
             executeTimelineAction: root.executeTimelineAction
             copyText: root.copyText
+        }
+    }
+
+    Component {
+        id: composerContextComponent
+
+        BubblesComposerContext {
+            colorScheme: root.colorScheme
+            customColors: root.customColors
         }
     }
 }

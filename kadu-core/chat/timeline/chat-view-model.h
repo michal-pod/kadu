@@ -63,8 +63,18 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY timelineStateChanged)
     Q_PROPERTY(QString readMarkerId READ readMarkerId NOTIFY timelineStateChanged)
     Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
+    Q_PROPERTY(bool composerActive READ composerActive NOTIFY composerContextChanged)
+    Q_PROPERTY(QVariantMap composerContext READ composerContext NOTIFY composerContextChanged)
 
 public:
+    enum class ComposerMode
+    {
+        None,
+        Reply,
+        Edit
+    };
+    Q_ENUM(ComposerMode)
+
     explicit ChatViewModel(Chat chat, ProtocolTimelineService *timelineService = nullptr,
                            ChatStyleManager *chatStyleManager = nullptr,
                            ChatConfigurationHolder *chatConfigurationHolder = nullptr, QObject *parent = nullptr);
@@ -86,10 +96,16 @@ public:
     bool hasOlder() const;
     QString readMarkerId() const;
     int newEventsBelow() const;
+    bool composerActive() const;
+    QVariantMap composerContext() const;
+    ComposerMode composerMode() const;
+    QString composerTargetId() const;
+    QString composerTargetPlainText() const;
 
     void addLegacyMessage(const Message &message);
     void addLegacyMessages(const SortedMessages &messages);
     void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
+    void clearComposerContext();
 
     Q_INVOKABLE void openUrl(const QString &url);
     Q_INVOKABLE void copyText(const QString &text);
@@ -97,6 +113,7 @@ public:
     Q_INVOKABLE void executeTimelineAction(const QString &stableId, int action);
     Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
     Q_INVOKABLE void markTimelineItemVisible(const QString &stableId);
+    Q_INVOKABLE void cancelComposerContext();
 
 public slots:
     void open();
@@ -109,6 +126,9 @@ signals:
     void customColorsChanged();
     void roomDetailsChanged();
     void timelineStateChanged();
+    void composerContextChanged();
+    void composerContextCancelled();
+    void composerContextActivated(ChatViewModel::ComposerMode mode);
 
 private:
     Chat m_chat;
@@ -122,10 +142,13 @@ private:
     QString m_roomAvatarSource;
     QString m_roomName;
     QString m_roomDescription;
+    ComposerMode m_composerMode = ComposerMode::None;
+    ChatTimelineItem m_composerTarget;
     bool m_open = false;
 
     ProtocolTimelineService *timelineService(ProtocolTimelineService *service) const;
     void refreshRoomDetails();
+    void setComposerContext(ComposerMode mode, const ChatTimelineItem &item);
 
 private slots:
     void chatUpdated();

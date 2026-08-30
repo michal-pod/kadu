@@ -58,6 +58,7 @@ Item {
     property int timelineSpacing: 1
     property int groupingIntervalSeconds: 300
     property Component timelineItem: timelineItemComponent
+    property Component composerContext: composerContextComponent
 
     Component {
         id: timelineItemComponent
@@ -68,6 +69,15 @@ Item {
             timelineActions: root.timelineActions
             executeTimelineAction: root.executeTimelineAction
             copyText: root.copyText
+        }
+    }
+
+    Component {
+        id: composerContextComponent
+
+        KaduClassicComposerContext {
+            colorScheme: root.colorScheme
+            customColors: root.customColors
         }
     }
 }

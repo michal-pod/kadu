@@ -41,7 +41,8 @@ void AttachFileAction::actionTriggered(QAction *sender, bool)
 
 void AttachFileAction::updateActionState(Action *action)
 {
+    const auto *chatEditBox = qobject_cast<ChatEditBox *>(action->parent());
     const auto account = action->context()->chat().chatAccount();
     const auto *protocol = account ? account.protocolHandler() : nullptr;
-    action->setEnabled(protocol && protocol->isAttachmentsSupported());
+    action->setEnabled(chatEditBox && chatEditBox->attachmentsEnabled() && protocol && protocol->isAttachmentsSupported());
 }

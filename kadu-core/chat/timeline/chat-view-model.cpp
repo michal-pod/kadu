@@ -180,6 +180,49 @@ int ChatViewModel::newEventsBelow() const
     return m_timelineController ? m_timelineController->newEventsBelow() : 0;
 }
 
+bool ChatViewModel::composerActive() const
+{
+    return m_composerMode != ComposerMode::None && !m_composerTarget.stableId.isEmpty();
+}
+
+QVariantMap ChatViewModel::composerContext() const
+{
+    if (!composerActive())
+        return {};
+
+    const auto &sender = m_composerTarget.sender;
+    const auto &content = m_composerTarget.content;
+    return {
+        {QStringLiteral("mode"), m_composerMode == ComposerMode::Reply ? QStringLiteral("reply")
+                                                                          : QStringLiteral("edit")},
+        {QStringLiteral("target"),
+         QVariantMap{{QStringLiteral("id"), m_composerTarget.stableId},
+                     {QStringLiteral("protocolEventType"), m_composerTarget.protocolEventType},
+                     {QStringLiteral("kind"), static_cast<int>(m_composerTarget.kind)},
+                     {QStringLiteral("senderDisplayName"), sender.displayName},
+                     {QStringLiteral("senderAvatarSource"), QVariant::fromValue(sender.avatarSource)},
+                     {QStringLiteral("senderColor"), QVariant::fromValue(sender.color)},
+                     {QStringLiteral("plainText"), content.plainText},
+                     {QStringLiteral("formattedText"), content.formattedText},
+                     {QStringLiteral("edited"), m_composerTarget.state.edited},
+                     {QStringLiteral("redacted"), m_composerTarget.state.redacted}}}};
+}
+
+ChatViewModel::ComposerMode ChatViewModel::composerMode() const
+{
+    return m_composerMode;
+}
+
+QString ChatViewModel::composerTargetId() const
+{
+    return composerActive() ? m_composerTarget.stableId : QString{};
+}
+
+QString ChatViewModel::composerTargetPlainText() const
+{
+    return composerActive() ? m_composerTarget.content.plainText : QString{};
+}
+
 void ChatViewModel::addLegacyMessage(const Message &message)
 {
     if (m_timelineController || message.messageChat() != m_chat)
@@ -200,6 +243,16 @@ void ChatViewModel::addLegacyMessages(const SortedMessages &messages)
 void ChatViewModel::setUrlHandlerManager(UrlHandlerManager *urlHandlerManager)
 {
     m_urlHandlerManager = urlHandlerManager;
+}
+
+void ChatViewModel::clearComposerContext()
+{
+    if (!composerActive())
+        return;
+
+    m_composerMode = ComposerMode::None;
+    m_composerTarget = {};
+    emit composerContextChanged();
 }
 
 void ChatViewModel::openUrl(const QString &url)
@@ -275,12 +328,12 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
 
     if (timelineAction == ChatTimelineAction::Reply)
     {
-        QMessageBox::information(nullptr, tr("Reply"), tr("Replying to a timeline message is not implemented yet."));
+        setComposerContext(ComposerMode::Reply, m_timeline->item(stableId));
         return;
     }
     if (timelineAction == ChatTimelineAction::Edit)
     {
-        QMessageBox::information(nullptr, tr("Edit message"), tr("Editing a timeline message is not implemented yet."));
+        setComposerContext(ComposerMode::Edit, m_timeline->item(stableId));
         return;
     }
     if (timelineAction == ChatTimelineAction::Delete &&
@@ -301,6 +354,26 @@ void ChatViewModel::markTimelineItemVisible(const QString &stableId)
 {
     if (m_timelineController && !stableId.isEmpty())
         m_timelineController->markVisible(stableId);
+}
+
+void ChatViewModel::cancelComposerContext()
+{
+    if (!composerActive())
+        return;
+
+    clearComposerContext();
+    emit composerContextCancelled();
+}
+
+void ChatViewModel::setComposerContext(ComposerMode mode, const ChatTimelineItem &item)
+{
+    if (mode == ComposerMode::None || item.stableId.isEmpty() || item.state.redacted)
+        return;
+
+    m_composerMode = mode;
+    m_composerTarget = item;
+    emit composerContextChanged();
+    emit composerContextActivated(mode);
 }
 
 void ChatViewModel::open()

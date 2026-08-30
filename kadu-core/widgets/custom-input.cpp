@@ -257,6 +257,11 @@ void CustomInput::setAutoSend(bool on)
     autosend_enabled = on;
 }
 
+void CustomInput::setAttachmentsEnabled(bool enabled)
+{
+    m_attachmentsEnabled = enabled;
+}
+
 void CustomInput::cursorPositionChangedSlot()
 {
     emit fontChanged(currentFont());
@@ -275,6 +280,15 @@ void CustomInput::pasteAndSend()
 
 bool CustomInput::canInsertFromMimeData(const QMimeData *source) const
 {
+    if (!m_attachmentsEnabled && source->hasUrls())
+    {
+        for (const auto &url : source->urls())
+        {
+            if (url.isLocalFile())
+                return false;
+        }
+    }
+
     if (supportsAttachments() && source->hasUrls())
         return true;
 
@@ -291,7 +305,7 @@ bool CustomInput::canInsertFromMimeData(const QMimeData *source) const
 bool CustomInput::supportsAttachments() const
 {
     const auto *protocol = CurrentChat.chatAccount().protocolHandler();
-    return protocol && protocol->isAttachmentsSupported();
+    return m_attachmentsEnabled && protocol && protocol->isAttachmentsSupported();
 }
 
 void CustomInput::acceptPlainText(QString plainText)
@@ -301,6 +315,9 @@ void CustomInput::acceptPlainText(QString plainText)
 
 void CustomInput::acceptFileUrl(QUrl fileUrl)
 {
+    if (!m_attachmentsEnabled)
+        return;
+
     if (supportsAttachments())
     {
         if (fileUrl.isLocalFile())
@@ -348,6 +365,15 @@ void CustomInput::acceptImageData(QByteArray imageData)
 
 void CustomInput::insertFromMimeData(const QMimeData *source)
 {
+    if (!m_attachmentsEnabled && source->hasUrls())
+    {
+        for (const auto &url : source->urls())
+        {
+            if (url.isLocalFile())
+                return;
+        }
+    }
+
     if (supportsAttachments() && source->hasUrls())
     {
         const auto fileUrl = source->urls().value(0);

@@ -64,6 +64,30 @@ public:
     virtual bool sendMessage(const Chat &chat, NormalizedHtmlString content, bool silent = false) = 0;
 
     /**
+     * @short Send a reply associated with a protocol event.
+     *
+     * A protocol that has no native timeline can keep the default rejection.
+     */
+    virtual bool sendReply(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(content)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
+     * @short Send a replacement for a protocol event.
+     */
+    virtual bool editMessage(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(content)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
      * @short Send new raw message to given chat.
      * @param chat chat to send message to
      * @param content raw content to be sent

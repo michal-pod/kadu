@@ -71,6 +71,7 @@ class KADUAPI ChatEditBox : public MainWindow, public ConfigurationAwareObject
     QLabel *m_attachmentName = nullptr;
     QString m_attachmentPath;
     QString m_attachmentDescription;
+    bool m_attachmentsEnabled = true;
 
     static constexpr qint64 AttachmentWarningSize = 2 * 1024 * 1024;
 
@@ -107,6 +108,7 @@ public:
     // TODO: remove?
     CustomInput *inputBox();
     QString attachmentPath() const;
+    bool attachmentsEnabled() const;
     void clearAttachment();
 
     virtual bool supportsActionType(ActionDescription::ActionType type);
@@ -119,6 +121,7 @@ public:
     void openLocationDialog();
 
     void setAutoSend(bool autoSend);
+    void setAttachmentsEnabled(bool enabled);
 
 public slots:
     void changeColor(const QColor &newColor);

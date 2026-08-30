@@ -140,7 +140,8 @@ QString MatrixChatService::roomId(const Chat &chat) const
     return details ? details->room() : QString{};
 }
 
-bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message message)
+bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message message,
+                                 const std::optional<Quotient::EventRelation> &relation)
 {
     if (!m_connection || !m_connection->isLoggedIn())
         return false;
@@ -155,7 +156,7 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
         if (!isSupportedRoom(room))
             return false;
 
-        postText(room, text, transactionId);
+        postText(room, text, transactionId, relation);
         return true;
     }
 
@@ -164,23 +165,24 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
         return false;
 
     m_connection->getDirectChat(recipientId).then(
-        this, [this, text, transactionId](Quotient::Room *room) {
+        this, [this, text, transactionId, relation](Quotient::Room *room) {
             if (!room)
                 return;
 
-            postText(room, text, transactionId);
+            postText(room, text, transactionId, relation);
         });
     return true;
 }
 
 void MatrixChatService::postText(Quotient::Room *room, const QString &text,
-                                 const QString &transactionId)
+                                 const QString &transactionId, const std::optional<Quotient::EventRelation> &relation)
 {
     if (!room)
         return;
 
     m_localTransactionIds.insert(transactionId);
-    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(text);
+    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(text, Quotient::RoomMessageEvent::MsgType::Text,
+                                                                  nullptr, relation);
     event->setTransactionId(transactionId);
     room->post(std::move(event));
 }
@@ -302,6 +304,24 @@ void MatrixChatService::postLocation(Quotient::Room *room, const QString &geoUri
 
 bool MatrixChatService::sendMessage(const Message &message)
 {
+    return sendMessageWithRelation(message, std::nullopt);
+}
+
+bool MatrixChatService::sendReply(const Message &message, const QString &targetEventId)
+{
+    return targetEventId.isEmpty() ? false
+                                   : sendMessageWithRelation(message, Quotient::EventRelation::replyTo(targetEventId));
+}
+
+bool MatrixChatService::editMessage(const Message &message, const QString &targetEventId)
+{
+    return targetEventId.isEmpty() ? false
+                                   : sendMessageWithRelation(message, Quotient::EventRelation::replace(targetEventId));
+}
+
+bool MatrixChatService::sendMessageWithRelation(const Message &message,
+                                                 const std::optional<Quotient::EventRelation> &relation)
+{
     if (!m_formattedStringFactory)
         return false;
 
@@ -314,7 +334,7 @@ bool MatrixChatService::sendMessage(const Message &message)
         plainText = QString::fromUtf8(
             rawMessageTransformerService()->transform(plainText.toUtf8(), message).rawContent());
 
-    return sendText(message.messageChat(), plainText, message);
+    return sendText(message.messageChat(), plainText, message, relation);
 }
 
 bool MatrixChatService::sendRawMessage(const Chat &chat, const QByteArray &rawMessage)

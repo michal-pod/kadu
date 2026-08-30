@@ -98,6 +98,8 @@ Item {
                       "avatarSource: " + root.value("avatarSource", "") + "\n" +
                       "style: " + root.value("style", "") + "\n" +
                       "styleSource: " + root.value("styleSource", "") + "\n" +
+                      "colorScheme: " + root.value("colorScheme", "") + "\n" +
+                      "useCustomColors: " + root.value("useCustomColors", false) + "\n" +
                       "foregroundColor: " + root.value("foregroundColor", "") + "\n" +
                       "backgroundColor: " + root.value("backgroundColor", "") + "\n" +
                       "font: " + root.value("fontFamily", "") + " " +
@@ -110,7 +112,7 @@ Item {
             TextEdit {
                 id: detailsText
                 width: parent.width
-                implicitHeight: contentHeight
+                height: contentHeight
                 readOnly: true
                 selectByMouse: true
                 textFormat: TextEdit.RichText
@@ -122,7 +124,7 @@ Item {
             TextEdit {
                 id: statusText
                 width: parent.width
-                implicitHeight: contentHeight
+                height: contentHeight
                 readOnly: true
                 selectByMouse: true
                 textFormat: TextEdit.RichText
@@ -134,7 +136,7 @@ Item {
             TextEdit {
                 id: descriptionText
                 width: parent.width
-                implicitHeight: contentHeight
+                height: contentHeight
                 readOnly: true
                 selectByMouse: true
                 textFormat: TextEdit.RichText

@@ -36,6 +36,7 @@ Item {
                                                     : (chatViewModel ? chatViewModel.themeColorScheme : "System")
     readonly property var activeCustomColors: chatViewModel ? chatViewModel.customColors : ({ "enabled": false })
     readonly property var activeTheme: themeLoader.item
+    readonly property bool composerActive: chatViewModel && chatViewModel.composerActive
     property bool initialPositioned: false
     property bool followingTail: true
     property bool scrollBarVisible: false
@@ -74,6 +75,21 @@ Item {
     function copyText(text) {
         if (chatViewModel)
             chatViewModel.copyText(text)
+    }
+
+    function cancelComposerContext() {
+        if (chatViewModel)
+            chatViewModel.cancelComposerContext()
+    }
+
+    function bindComposerContext(item) {
+        item.width = Qt.binding(function() { return composerContextContainer.width })
+        if (item.context !== undefined)
+            item.context = Qt.binding(function() {
+                return root.chatViewModel ? root.chatViewModel.composerContext : ({})
+            })
+        if (item.cancelComposerContext !== undefined)
+            item.cancelComposerContext = root.cancelComposerContext
     }
 
     function applyTimelineStyleProperties() {
@@ -252,6 +268,15 @@ Item {
             themeLoader.item.customColors = activeCustomColors
     }
 
+    Component {
+        id: defaultComposerContextComponent
+
+        KaduClassicComposerContext {
+            colorScheme: root.activeThemeColorScheme
+            customColors: root.activeCustomColors
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: root.themeValue("backgroundColor", root.fallbackBackgroundColor)
@@ -341,7 +366,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: roomHeader.bottom
-        anchors.bottom: parent.bottom
+        anchors.bottom: composerContextContainer.top
         anchors.margins: root.themeValue("timelineMargin", 16)
         clip: true
         spacing: root.themeValue("timelineSpacing", 4)
@@ -568,13 +593,59 @@ Item {
     Button {
         id: newMessagesButton
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: composerContextContainer.top
         anchors.margins: 14
         visible: root.newEventsBelow > 0
         text: root.newEventsBelow === 1 ? qsTr("1 new message") : qsTr("%1 new messages").arg(root.newEventsBelow)
         z: 3
         Accessible.name: text
         onClicked: root.scrollToBottom()
+    }
+
+    Item {
+        id: composerContextContainer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: visible && rendererItem ? rendererItem.implicitHeight : 0
+        visible: root.composerActive
+        z: 2
+
+        property var rendererItem: null
+
+        function createRenderer() {
+            if (rendererItem) {
+                rendererItem.destroy()
+                rendererItem = null
+            }
+            if (!root.composerActive)
+                return
+
+            const component = root.activeTheme && root.activeTheme.composerContext
+                              ? root.activeTheme.composerContext : defaultComposerContextComponent
+            rendererItem = component.createObject(composerContextContainer, {
+                "width": composerContextContainer.width
+            })
+            if (rendererItem)
+                root.bindComposerContext(rendererItem)
+        }
+
+        Component.onCompleted: createRenderer()
+        Component.onDestruction: {
+            if (rendererItem)
+                rendererItem.destroy()
+        }
+
+        Connections {
+            target: root
+
+            function onActiveThemeChanged() {
+                composerContextContainer.createRenderer()
+            }
+            function onComposerActiveChanged() {
+                composerContextContainer.createRenderer()
+            }
+        }
     }
 
     ImageViewerDialog {
@@ -593,6 +664,9 @@ Item {
             }
             if (!root.chatViewModel.loadingOlder)
                 Qt.callLater(root.restoreOlderAnchor)
+        }
+        function onComposerContextChanged() {
+            composerContextContainer.createRenderer()
         }
     }
 

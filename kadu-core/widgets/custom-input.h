@@ -52,6 +52,7 @@ class KADUAPI CustomInput : public QTextEdit, PasteAcceptor
     Chat CurrentChat;
 
     bool CopyPossible;
+    bool m_attachmentsEnabled = true;
 
     virtual void acceptPlainText(QString plainText) override;
     virtual void acceptFileUrl(QUrl fileUrl) override;
@@ -86,6 +87,7 @@ public:
 
 public slots:
     void setAutoSend(bool on);
+    void setAttachmentsEnabled(bool enabled);
     void pasteAndSend();
 
 signals:

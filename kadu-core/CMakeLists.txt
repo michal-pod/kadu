@@ -191,10 +191,12 @@ qt_add_qml_module (libkadu
 		chat/qml/ChatPage.qml
 		chat/qml/ChatFileAttachment.qml
 		chat/qml/ChatImageAttachment.qml
+		chat/qml/BubblesComposerContext.qml
 		chat/qml/BubblesTimelineStyle.qml
 		chat/qml/BubblesTimelineItem.qml
 		chat/qml/ImageViewerDialog.qml
 		chat/qml/KaduImage.qml
+		chat/qml/KaduClassicComposerContext.qml
 		chat/qml/KaduClassicTimelineStyle.qml
 		chat/qml/KaduClassicTimelineItem.qml
 		chat/qml/ChatLocation.qml

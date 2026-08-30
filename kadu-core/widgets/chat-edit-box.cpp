@@ -254,6 +254,16 @@ void ChatEditBox::setAutoSend(bool autoSend)
     InputBox->setAutoSend(autoSend);
 }
 
+void ChatEditBox::setAttachmentsEnabled(bool enabled)
+{
+    if (m_attachmentsEnabled == enabled)
+        return;
+
+    m_attachmentsEnabled = enabled;
+    InputBox->setAttachmentsEnabled(enabled);
+    Context->changeNotifier().notify();
+}
+
 CustomInput *ChatEditBox::inputBox()
 {
     return InputBox;
@@ -262,6 +272,11 @@ CustomInput *ChatEditBox::inputBox()
 QString ChatEditBox::attachmentPath() const
 {
     return m_attachmentPath;
+}
+
+bool ChatEditBox::attachmentsEnabled() const
+{
+    return m_attachmentsEnabled;
 }
 
 void ChatEditBox::clearAttachment()
@@ -299,6 +314,9 @@ void ChatEditBox::setAttachment(const QUrl &fileUrl)
 
 bool ChatEditBox::canAttachFile(const QFileInfo &fileInfo)
 {
+    if (!m_attachmentsEnabled)
+        return false;
+
     const auto *protocol = CurrentChat.chatAccount().protocolHandler();
     if (!protocol || !protocol->isAttachmentsSupported())
         return false;
@@ -486,6 +504,9 @@ void ChatEditBox::openInsertImageDialog()
 
 void ChatEditBox::openAttachFileDialog()
 {
+    if (!m_attachmentsEnabled)
+        return;
+
     const auto *protocol = CurrentChat.chatAccount().protocolHandler();
     if (!protocol || !protocol->isAttachmentsSupported())
         return;

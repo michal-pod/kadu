@@ -86,6 +86,28 @@ public slots:
     virtual bool sendMessage(const Message &message) = 0;
 
     /**
+     * @short Send a reply to a native protocol event.
+     *
+     * The default keeps timeline relations opt-in for individual protocols.
+     */
+    virtual bool sendReply(const Message &message, const QString &targetEventId)
+    {
+        Q_UNUSED(message)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
+     * @short Send a replacement for a native protocol event.
+     */
+    virtual bool editMessage(const Message &message, const QString &targetEventId)
+    {
+        Q_UNUSED(message)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
      * @short Send raw message to given chat.
      * @param chat chat for the message
      * @param message message to be sent
