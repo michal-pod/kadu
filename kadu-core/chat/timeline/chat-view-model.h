@@ -63,6 +63,7 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY timelineStateChanged)
     Q_PROPERTY(QString readMarkerId READ readMarkerId NOTIFY timelineStateChanged)
     Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
+    Q_PROPERTY(int timelineActionsRevision READ timelineActionsRevision NOTIFY timelineActionsChanged)
     Q_PROPERTY(bool composerActive READ composerActive NOTIFY composerContextChanged)
     Q_PROPERTY(QVariantMap composerContext READ composerContext NOTIFY composerContextChanged)
     Q_PROPERTY(QVariantList pinnedMessages READ pinnedMessages NOTIFY pinnedMessagesChanged)
@@ -97,6 +98,7 @@ public:
     bool hasOlder() const;
     QString readMarkerId() const;
     int newEventsBelow() const;
+    int timelineActionsRevision() const;
     bool composerActive() const;
     QVariantMap composerContext() const;
     QVariantList pinnedMessages() const;
@@ -128,6 +130,7 @@ signals:
     void customColorsChanged();
     void roomDetailsChanged();
     void timelineStateChanged();
+    void timelineActionsChanged();
     void composerContextChanged();
     void pinnedMessagesChanged();
     void composerContextCancelled();
@@ -148,6 +151,7 @@ private:
     ComposerMode m_composerMode = ComposerMode::None;
     ChatTimelineItem m_composerTarget;
     bool m_open = false;
+    int m_timelineActionsRevision = 0;
 
     ProtocolTimelineService *timelineService(ProtocolTimelineService *service) const;
     void refreshRoomDetails();

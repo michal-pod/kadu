@@ -24,6 +24,7 @@
 #include <Quotient/events/filesourceinfo.h>
 #include <Quotient/events/roomevent.h>
 
+#include <QtCore/QCache>
 #include <QtCore/QHash>
 #include <QtCore/QJsonObject>
 #include <QtCore/QPointer>
@@ -74,15 +75,20 @@ private:
     QSet<Quotient::Room *> m_watchedRooms;
     QSet<Quotient::Room *> m_loadedRooms;
     QSet<QString> m_historicalEventIds;
-    QHash<QString, QImage> m_attachmentImages;
+    QCache<QString, QImage> m_attachmentImages;
     QHash<QString, QSize> m_attachmentImageDimensions;
+    QHash<QString, QSize> m_attachmentRequestedSizes;
     QHash<QString, ChatTimelineAttachmentState> m_attachmentStates;
     QHash<QString, qreal> m_attachmentProgress;
     QHash<QString, QString> m_attachmentErrors;
     QHash<QString, QString> m_attachmentDownloadPaths;
     QSet<QString> m_attachmentThumbnailRequests;
+    QSet<QString> m_unavailableAttachmentThumbnails;
+    mutable QSet<QString> m_attachmentPreviewsUsingOriginal;
+    QSet<QString> m_invalidImageAttachments;
     mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
     mutable QHash<QString, QString> m_attachmentFileNames;
+    mutable QHash<QString, ChatTimelineAttachmentKind> m_attachmentKinds;
     mutable QHash<QString, QJsonObject> m_decryptedEventSources;
     QHash<QString, QString> m_eventTransactionIds;
     MatrixMegolmSessionRecovery *m_sessionRecovery;
@@ -113,6 +119,8 @@ private:
                                         const QString &errorMessage);
     void clearAttachmentDownloads();
     bool canManagePinnedMessages(const Quotient::Room *room) const;
+    bool canRedactEvent(const Quotient::Room *room, const Quotient::RoomEvent &event) const;
+    static bool shouldHideEventFromTimeline(const Quotient::RoomEvent &event);
     static QUrl attachmentUri(const QString &eventId, bool thumbnail = false);
     static QString eventIdForAttachmentUri(const QUrl &sourceUri);
     static bool isAttachmentThumbnailUri(const QUrl &sourceUri);

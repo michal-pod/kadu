@@ -113,6 +113,11 @@ signals:
     void eventRedacted(const Chat &chat, const QString &stableId, const QString &reason);
 
     /**
+     * @short Permissions or protocol state changed the operations offered for timeline events.
+     */
+    void availableActionsChanged(const Chat &chat);
+
+    /**
      * @short The protocol changed the pinned entries of a chat.
      */
     void pinnedMessagesChanged(const Chat &chat);

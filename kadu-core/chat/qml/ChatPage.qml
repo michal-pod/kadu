@@ -40,6 +40,7 @@ Item {
     property bool initialPositioned: false
     property bool followingTail: true
     property bool scrollBarVisible: false
+    property int attachmentImageRevision: 0
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
     property var defaultComposerContextComponent: null
@@ -66,6 +67,8 @@ Item {
     }
 
     function timelineActions(stableId) {
+        // Make action models reactive to protocol permission/state changes.
+        const revision = chatViewModel ? chatViewModel.timelineActionsRevision : 0
         return chatViewModel ? chatViewModel.timelineActions(stableId) : []
     }
 
@@ -722,11 +725,13 @@ Item {
     ImageViewerDialog {
         id: imageViewer
         parentItem: root
+        reloadToken: root.attachmentImageRevision
     }
 
     Connections {
         target: root.chatViewModel
         function onTimelineStateChanged() {
+            ++root.attachmentImageRevision
             if (!root.chatViewModel)
                 return
             if (!root.chatViewModel.loadingInitial && !root.initialPositioned) {
@@ -747,6 +752,10 @@ Item {
 
     Connections {
         target: root.chatViewModel ? root.chatViewModel.timeline : null
+        function onDataChanged() {
+            if (imageViewer.visible)
+                ++root.attachmentImageRevision
+        }
         function onRowsInserted(parent, first, last) {
             if (!root.chatViewModel)
                 return

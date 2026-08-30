@@ -24,6 +24,7 @@ Item {
 
     required property url sourceUri
     property int resourceState: 0
+    property int reloadToken: 0
     property alias fillMode: image.fillMode
     property alias status: image.status
     property alias sourceSize: image.sourceSize
@@ -33,6 +34,7 @@ Item {
         if (!uri.startsWith("kaduimg:"))
             return ""
         return "image://kaduimg/" + encodeURIComponent(uri) + "?state=" + root.resourceState
+                + "&reload=" + root.reloadToken
     }
 
     Image {

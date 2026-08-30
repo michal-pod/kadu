@@ -98,7 +98,7 @@ Item {
         onClicked: {
             if (root.openImage)
                 root.openImage(root.attachment.sourceUri, root.attachment.fileName,
-                               image.sourceSize.width, image.sourceSize.height,
+                               root.imageWidth, root.imageHeight,
                                root.attachment.state)
         }
     }

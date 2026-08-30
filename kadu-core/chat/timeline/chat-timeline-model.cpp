@@ -226,7 +226,7 @@ void ChatTimelineModel::redact(const QString &stableId, const QString &reason)
 
     auto replacement = m_items.at(row);
     replacement.state.redacted = true;
-    replacement.content.plainText.clear();
+    replacement.content.plainText = tr("Message removed.");
     replacement.content.formattedText.clear();
     replacement.content.attachments.clear();
     replacement.content.reactions.clear();
@@ -268,14 +268,14 @@ bool ChatTimelineModel::comesBefore(const ChatTimelineItem &left, const ChatTime
 
 bool ChatTimelineModel::isMessage(const ChatTimelineItem &timelineItem)
 {
-    return !timelineItem.state.redacted && (timelineItem.kind == ChatTimelineItemKind::TextMessage ||
+    return timelineItem.kind == ChatTimelineItemKind::TextMessage ||
            timelineItem.kind == ChatTimelineItemKind::NoticeMessage ||
            timelineItem.kind == ChatTimelineItemKind::EmoteMessage ||
            timelineItem.kind == ChatTimelineItemKind::ImageMessage ||
            timelineItem.kind == ChatTimelineItemKind::FileMessage ||
            timelineItem.kind == ChatTimelineItemKind::AudioMessage ||
            timelineItem.kind == ChatTimelineItemKind::VideoMessage ||
-           timelineItem.kind == ChatTimelineItemKind::LocationMessage);
+           timelineItem.kind == ChatTimelineItemKind::LocationMessage;
 }
 
 int ChatTimelineModel::insertionRow(const ChatTimelineItem &timelineItem) const

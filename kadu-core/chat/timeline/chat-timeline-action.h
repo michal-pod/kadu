@@ -35,7 +35,8 @@ enum class ChatTimelineAction
     Delete = 0x4,
     SaveAttachment = 0x8,
     ShowSource = 0x10,
-    Unpin = 0x20
+    Unpin = 0x20,
+    Pin = 0x40
 };
 Q_DECLARE_FLAGS(ChatTimelineActions, ChatTimelineAction)
 Q_DECLARE_OPERATORS_FOR_FLAGS(ChatTimelineActions)

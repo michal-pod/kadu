@@ -222,15 +222,23 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
 
     const auto plainText = description.isEmpty() ? fileInfo.fileName() : description;
     const auto mimeType = QMimeDatabase{}.mimeTypeForFile(fileInfo);
-    const auto imageSize = mimeType.name().startsWith(QStringLiteral("image/"))
-                               ? QImageReader{fileInfo.absoluteFilePath()}.size()
-                               : QSize{};
+    QImageReader imageReader{fileInfo.absoluteFilePath()};
+    imageReader.setAutoTransform(true);
+    const auto imageAttachment = mimeType.name().startsWith(QStringLiteral("image/")) && imageReader.canRead();
+    const auto imageSize = imageAttachment ? imageReader.size() : QSize{};
+    const auto messageType = imageAttachment
+                                 ? QStringLiteral("m.image")
+                                 : (mimeType.name().startsWith(QStringLiteral("image/"))
+                                        ? QStringLiteral("m.file")
+                                        : Quotient::RoomMessageEvent::rawMsgTypeForFile(fileInfo));
     auto thumbnailFile = std::shared_ptr<QTemporaryFile>{};
     QSize thumbnailSize;
     qint64 thumbnailPayloadSize = 0;
     if (room->usesEncryption() && imageSize.isValid())
     {
-        const auto image = QImageReader{fileInfo.absoluteFilePath()}.read();
+        QImageReader thumbnailReader{fileInfo.absoluteFilePath()};
+        thumbnailReader.setAutoTransform(true);
+        const auto image = thumbnailReader.read();
         const auto thumbnail = image.scaled(QSize{320, 240}, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         auto candidate = std::make_shared<QTemporaryFile>();
         if (!thumbnail.isNull() && candidate->open() && thumbnail.save(candidate.get(), "PNG"))
@@ -249,14 +257,15 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
     auto *uploadContext = new QObject{room};
     const auto uploadedFileMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
     const auto uploadedThumbnailMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
-    const auto postEvent = [uploadRoom, plainText, fileInfo, mimeType, imageSize, thumbnailFile, thumbnailSize,
+    const auto postEvent = [uploadRoom, plainText, fileInfo, mimeType, imageAttachment, imageSize, messageType,
+                            thumbnailFile, thumbnailSize,
                             thumbnailPayloadSize, uploadedFileMetadata, uploadedThumbnailMetadata, uploadContext] {
         if (!uploadRoom || !uploadedFileMetadata->has_value() ||
             (thumbnailFile && !uploadedThumbnailMetadata->has_value()))
             return;
 
         std::unique_ptr<Quotient::EventContent::FileContentBase> content;
-        if (mimeType.name().startsWith(QStringLiteral("image/")))
+        if (imageAttachment)
         {
             auto imageContent = std::make_unique<Quotient::EventContent::ImageContent>(
                 **uploadedFileMetadata, fileInfo.size(), mimeType, imageSize, fileInfo.fileName());
@@ -275,7 +284,7 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
         }
 
         auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(
-            plainText, Quotient::RoomMessageEvent::rawMsgTypeForFile(fileInfo), std::move(content));
+            plainText, messageType, std::move(content));
         uploadRoom->post(std::move(event));
         uploadContext->deleteLater();
     };

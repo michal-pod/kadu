@@ -66,6 +66,14 @@ ChatViewModel::ChatViewModel(
                     if (chat == m_chat)
                         emit pinnedMessagesChanged();
                 });
+        connect(protocolTimelineService, &ProtocolTimelineService::availableActionsChanged, this,
+                [this](const Chat &chat) {
+                    if (chat != m_chat)
+                        return;
+
+                    ++m_timelineActionsRevision;
+                    emit timelineActionsChanged();
+                });
     }
     else
         m_timeline = new ChatTimelineModel{this};
@@ -316,12 +324,21 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::ShowSource)},
                                    {QStringLiteral("key"), QStringLiteral("showSource")},
                                    {QStringLiteral("text"), tr("Show source")}});
+    if (available.testFlag(ChatTimelineAction::Pin))
+        actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Pin)},
+                                   {QStringLiteral("key"), QStringLiteral("pin")},
+                                   {QStringLiteral("text"), tr("Pin message")}});
     if (available.testFlag(ChatTimelineAction::Unpin))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Unpin)},
                                    {QStringLiteral("key"), QStringLiteral("unpin")},
                                    {QStringLiteral("text"), tr("Unpin message")},
                                    {QStringLiteral("destructive"), true}});
     return actions;
+}
+
+int ChatViewModel::timelineActionsRevision() const
+{
+    return m_timelineActionsRevision;
 }
 
 void ChatViewModel::executeTimelineAction(const QString &stableId, int action)

@@ -41,6 +41,7 @@ Popup {
     property int originalWidth: 1
     property int originalHeight: 1
     property int resourceState: 0
+    property int reloadToken: 0
     property real zoom: 1.0
     property bool fitted: true
 
@@ -153,6 +154,9 @@ Popup {
                 id: displayedImage
                 sourceUri: root.sourceUri
                 resourceState: root.resourceState
+                reloadToken: root.reloadToken
+                sourceSize.width: Math.max(1, Math.round(imageViewport.width * Screen.devicePixelRatio * 2))
+                sourceSize.height: Math.max(1, Math.round(imageViewport.height * Screen.devicePixelRatio * 2))
                 width: root.originalWidth * root.zoom
                 height: root.originalHeight * root.zoom
                 x: width < imageViewport.width ? (imageViewport.width - width) / 2 : 0

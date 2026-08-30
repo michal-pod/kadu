@@ -42,6 +42,7 @@
 #include <Quotient/events/roomavatarevent.h>
 #include <Quotient/events/roommemberevent.h>
 #include <Quotient/events/roommessageevent.h>
+#include <Quotient/events/roompowerlevelsevent.h>
 #include <Quotient/events/roomevent.h>
 #include <Quotient/events/simplestateevents.h>
 #include <Quotient/jobs/downloadfilejob.h>
@@ -62,6 +63,7 @@
 #include <QtCore/QUrlQuery>
 #include <QtCore/QVariantMap>
 #include <QtGui/QColor>
+#include <QtGui/QImageReader>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
@@ -79,6 +81,7 @@
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
         : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
 {
+    m_attachmentImages.setMaxCost(64);
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRestored, this,
             &MatrixTimelineService::updateTimelineEventsForMegolmSession);
 }
@@ -105,12 +108,17 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     clearAttachmentDownloads();
     m_attachmentImages.clear();
     m_attachmentImageDimensions.clear();
+    m_attachmentRequestedSizes.clear();
     m_attachmentStates.clear();
     m_attachmentProgress.clear();
     m_attachmentErrors.clear();
     m_attachmentThumbnailRequests.clear();
+    m_unavailableAttachmentThumbnails.clear();
+    m_attachmentPreviewsUsingOriginal.clear();
+    m_invalidImageAttachments.clear();
     m_attachmentSources.clear();
     m_attachmentFileNames.clear();
+    m_attachmentKinds.clear();
     m_decryptedEventSources.clear();
     m_eventTransactionIds.clear();
     m_sessionRecovery->setConnection(connection);
@@ -146,6 +154,18 @@ bool MatrixTimelineService::canManagePinnedMessages(const Quotient::Room *room) 
                QStringLiteral("m.room.pinned_events"), true);
 }
 
+bool MatrixTimelineService::canRedactEvent(const Quotient::Room *room, const Quotient::RoomEvent &event) const
+{
+    if (!room || !m_connection)
+        return false;
+    if (event.senderId() == m_connection->userId())
+        return true;
+
+    const auto *powerLevels = room->currentState().get<Quotient::RoomPowerLevelsEvent>();
+    const auto requiredPowerLevel = powerLevels ? powerLevels->redact() : 50;
+    return room->memberEffectivePowerLevel() >= requiredPowerLevel;
+}
+
 ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, const QString &stableId) const
 {
     auto *room = roomForChat(chat);
@@ -178,11 +198,12 @@ ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, co
             return actions;
 
         actions |= ChatTimelineAction::Reply;
+        if (!isPinned && canManagePinnedMessages(room))
+            actions |= ChatTimelineAction::Pin;
         if (m_connection && messageEvent->senderId() == m_connection->userId())
-        {
             actions |= ChatTimelineAction::Edit;
+        if (canRedactEvent(room, *messageEvent))
             actions |= ChatTimelineAction::Delete;
-        }
         if (messageEvent->get<Quotient::EventContent::FileContentBase>())
             actions |= ChatTimelineAction::SaveAttachment;
         return actions;
@@ -247,6 +268,14 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
     {
         auto pinnedEventIds = room->pinnedEventIds();
         pinnedEventIds.removeAll(stableId);
+        room->setPinnedEvents(pinnedEventIds);
+        return true;
+    }
+    if (action == ChatTimelineAction::Pin)
+    {
+        auto pinnedEventIds = room->pinnedEventIds();
+        if (!pinnedEventIds.contains(stableId))
+            pinnedEventIds.append(stableId);
         room->setPinnedEvents(pinnedEventIds);
         return true;
     }
@@ -393,8 +422,13 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
     if (eventId.isEmpty() || !room)
         return {};
 
-    if (const auto image = m_attachmentImages.constFind(resourceId); image != m_attachmentImages.cend())
-        return image.value();
+    if (m_attachmentKinds.value(eventId, ChatTimelineAttachmentKind::File) != ChatTimelineAttachmentKind::Image)
+        return {};
+
+    if (const auto *image = m_attachmentImages.object(resourceId))
+        return *image;
+    if (m_attachmentStates.value(resourceId) == ChatTimelineAttachmentState::Failed)
+        return {};
     if (m_attachmentDownloadPaths.contains(resourceId) || m_attachmentThumbnailRequests.contains(resourceId))
         return {};
 
@@ -404,8 +438,8 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
         const auto originalSource = m_attachmentSources.constFind(eventId);
         if (originalSource == m_attachmentSources.cend())
         {
-            m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-            m_attachmentErrors.insert(eventId, tr("The image source is not available."));
+            m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Failed);
+            m_attachmentErrors.insert(resourceId, tr("The image source is not available."));
             updateAttachmentEvent(room, eventId);
             return {};
         }
@@ -416,16 +450,17 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
             auto *job = m_connection->getThumbnail(*fileUrl, size);
             if (!job)
             {
-                m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-                m_attachmentErrors.insert(eventId, tr("Could not start downloading the image thumbnail."));
+                m_unavailableAttachmentThumbnails.insert(eventId);
+                m_attachmentStates.remove(resourceId);
+                m_attachmentErrors.remove(resourceId);
                 updateAttachmentEvent(room, eventId);
                 return {};
             }
 
             m_attachmentThumbnailRequests.insert(resourceId);
-            m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Downloading);
-            m_attachmentProgress.insert(eventId, 0.0);
-            m_attachmentErrors.remove(eventId);
+            m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Downloading);
+            m_attachmentProgress.insert(resourceId, 0.0);
+            m_attachmentErrors.remove(resourceId);
             updateAttachmentEvent(room, eventId);
 
             const QPointer<Quotient::Room> downloadRoom{room};
@@ -437,30 +472,30 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
                 const auto image = job->thumbnail();
                 if (image.isNull())
                 {
-                    m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-                    m_attachmentProgress.remove(eventId);
-                    m_attachmentErrors.insert(eventId, tr("The downloaded thumbnail is not a valid image."));
+                    m_unavailableAttachmentThumbnails.insert(eventId);
+                    m_attachmentStates.remove(resourceId);
+                    m_attachmentProgress.remove(resourceId);
+                    m_attachmentErrors.remove(resourceId);
                 }
                 else
                 {
-                    m_attachmentImages.insert(resourceId, image);
+                    m_attachmentImages.insert(resourceId, new QImage{image});
                     m_attachmentImageDimensions.insert(eventId, image.size());
-                    m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Available);
-                    m_attachmentProgress.insert(eventId, 1.0);
-                    m_attachmentErrors.remove(eventId);
+                    m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Available);
+                    m_attachmentProgress.insert(resourceId, 1.0);
+                    m_attachmentErrors.remove(resourceId);
                 }
                 updateAttachmentEvent(downloadRoom.data(), eventId);
             });
-            connect(job, &Quotient::BaseJob::failure, this, [this, downloadRoom, resourceId, eventId, job] {
+            connect(job, &Quotient::BaseJob::failure, this, [this, downloadRoom, resourceId, eventId] {
                 m_attachmentThumbnailRequests.remove(resourceId);
                 if (!downloadRoom)
                     return;
 
-                m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-                m_attachmentProgress.remove(eventId);
-                m_attachmentErrors.insert(
-                    eventId, job->errorString().isEmpty() ? tr("Could not download the image thumbnail.")
-                                                        : job->errorString());
+                m_unavailableAttachmentThumbnails.insert(eventId);
+                m_attachmentStates.remove(resourceId);
+                m_attachmentProgress.remove(resourceId);
+                m_attachmentErrors.remove(resourceId);
                 updateAttachmentEvent(downloadRoom.data(), eventId);
             });
             return {};
@@ -471,8 +506,8 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
     temporaryFile.setAutoRemove(false);
     if (!temporaryFile.open())
     {
-        m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-        m_attachmentErrors.insert(eventId, tr("Could not create a temporary file for the image."));
+        m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Failed);
+        m_attachmentErrors.insert(resourceId, tr("Could not create a temporary file for the image."));
         updateAttachmentEvent(room, eventId);
         return {};
     }
@@ -480,9 +515,11 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
     const auto temporaryPath = temporaryFile.fileName();
     temporaryFile.close();
     m_attachmentDownloadPaths.insert(resourceId, temporaryPath);
-    m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Downloading);
-    m_attachmentProgress.insert(eventId, 0.0);
-    m_attachmentErrors.remove(eventId);
+    if (requestedSize.isValid())
+        m_attachmentRequestedSizes.insert(resourceId, requestedSize);
+    m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Downloading);
+    m_attachmentProgress.insert(resourceId, 0.0);
+    m_attachmentErrors.remove(resourceId);
     updateAttachmentEvent(room, eventId);
 
     if (source == m_attachmentSources.cend())
@@ -730,7 +767,15 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
     connect(room, &Quotient::Room::pinnedEventsChanged, this, [this, room] {
         const auto chat = chatForRoom(room);
         if (chat)
+        {
             emit pinnedMessagesChanged(chat);
+            emit availableActionsChanged(chat);
+        }
+    });
+    connect(room, &Quotient::Room::changed, this, [this, room](Quotient::Room::Changes) {
+        const auto chat = chatForRoom(room);
+        if (chat)
+            emit availableActionsChanged(chat);
     });
     connect(room, &Quotient::Room::updatedEvent, this,
             [this, room](const QString &eventId) { updateTimelineEvent(room, eventId); });
@@ -743,7 +788,10 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                 if (!chat)
                     return;
                 if (newEvent->isRedacted())
+                {
                     emit eventRedacted(chat, newEvent->id(), newEvent->redactionReason());
+                    emit availableActionsChanged(chat);
+                }
                 else
                     updateTimelineEvent(room, newEvent->id());
             });
@@ -777,6 +825,9 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         if (!event)
             continue;
 
+        if (shouldHideEventFromTimeline(*event))
+            continue;
+
         if (event->matrixType() == QStringLiteral("m.room.encrypted"))
         {
             if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
@@ -785,7 +836,9 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
 
         if (event->isRedacted())
         {
-            emit eventRedacted(chat, timelineItem->id(), event->redactionReason());
+            emit eventUpdated(
+                chat, itemForEvent(room, *event, timelineItem->id(), timelineItem.index(), encrypted));
+            emit availableActionsChanged(chat);
             continue;
         }
 
@@ -800,6 +853,8 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
 void MatrixTimelineService::handlePendingEventAdded(Quotient::Room *room, const Quotient::RoomEvent *event)
 {
     if (!room || !event || event->transactionId().isEmpty())
+        return;
+    if (shouldHideEventFromTimeline(*event))
         return;
 
     const auto chat = chatForRoom(room);
@@ -827,6 +882,8 @@ void MatrixTimelineService::updatePendingEvent(Quotient::Room *room, int pending
     const auto &pendingEvent = pendingEvents.at(static_cast<Quotient::Room::PendingEvents::size_type>(pendingEventIndex));
     const auto *event = pendingEvent.event();
     if (!chat || !event || event->transactionId().isEmpty())
+        return;
+    if (shouldHideEventFromTimeline(*event))
         return;
 
     auto item = itemForEvent(room, *event, localEchoId(event->transactionId()),
@@ -876,14 +933,14 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
         if (!event)
             continue;
 
+        if (shouldHideEventFromTimeline(*event))
+            continue;
+
         if (event->matrixType() == QStringLiteral("m.room.encrypted"))
         {
             if (const auto *encryptedEvent = it->viewAs<Quotient::EncryptedEvent>())
                 m_sessionRecovery->requestFromBackup(room, *encryptedEvent);
         }
-
-        if (event->isRedacted())
-            continue;
 
         const auto eventId = (*it)->id();
         page.items.append(itemForEvent(room, *event, eventId, index, encrypted));
@@ -944,6 +1001,14 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     const auto senderName = item.sender.displayName.isEmpty() ? item.sender.id : item.sender.displayName;
     const auto eventType = event.matrixType();
     const auto content = event.contentJson();
+    if (event.isRedacted())
+    {
+        item.kind = ChatTimelineItemKind::TextMessage;
+        item.state.redacted = true;
+        item.state.errorText = event.redactionReason();
+        item.content.plainText = tr("Message removed.");
+        return item;
+    }
     if (eventType == QStringLiteral("m.room.name"))
     {
         item.kind = ChatTimelineItemKind::RoomNameChanged;
@@ -1121,9 +1186,6 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         attachment.size = fileInfo.payloadSize;
         attachment.sourceUri = attachmentUri(eventId);
         attachment.localResourceId = eventId;
-        attachment.state = m_attachmentStates.value(eventId, ChatTimelineAttachmentState::NotRequested);
-        attachment.progress = m_attachmentProgress.value(eventId, 0.0);
-        attachment.errorText = m_attachmentErrors.value(eventId);
         m_attachmentSources.insert(eventId, fileInfo.source);
         m_attachmentFileNames.insert(eventId, attachment.fileName);
 
@@ -1131,17 +1193,41 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         {
         case Quotient::RoomMessageEvent::MsgType::Image:
         {
-            attachment.kind = ChatTimelineAttachmentKind::Image;
-            if (fileContent->thumbnail.isValid())
+            const auto explicitNonImageMime = !attachment.mimeType.isEmpty() &&
+                                              attachment.mimeType != QStringLiteral("application/octet-stream") &&
+                                              !attachment.mimeType.startsWith(QStringLiteral("image/"));
+            if (explicitNonImageMime || m_invalidImageAttachments.contains(eventId))
             {
-                attachment.thumbnailUri = attachmentUri(eventId, true);
-                m_attachmentSources.insert(attachmentResourceId(eventId, true), fileContent->thumbnail.source);
+                attachment.kind = ChatTimelineAttachmentKind::File;
+                item.kind = ChatTimelineItemKind::FileMessage;
+                break;
             }
-            else if (std::holds_alternative<QUrl>(fileInfo.source))
-                attachment.thumbnailUri = attachmentUri(eventId, true);
+
+            attachment.kind = ChatTimelineAttachmentKind::Image;
+            attachment.thumbnailUri = attachmentUri(eventId, true);
+            if (!m_unavailableAttachmentThumbnails.contains(eventId) && fileContent->thumbnail.isValid())
+            {
+                m_attachmentSources.insert(attachmentResourceId(eventId, true), fileContent->thumbnail.source);
+                m_attachmentPreviewsUsingOriginal.remove(eventId);
+            }
+            else if (!m_unavailableAttachmentThumbnails.contains(eventId) &&
+                     std::holds_alternative<QUrl>(fileInfo.source))
+            {
+                // With no explicit thumbnail, leave the preview source empty so
+                // requestAttachmentImage() asks the homeserver thumbnail API.
+                m_attachmentSources.remove(attachmentResourceId(eventId, true));
+                m_attachmentPreviewsUsingOriginal.remove(eventId);
+            }
+            else
+            {
+                // Encrypted media without thumbnail, or a thumbnail rejected by
+                // the server/decoder, still uses a distinct preview cache entry.
+                m_attachmentSources.insert(attachmentResourceId(eventId, true), fileInfo.source);
+                m_attachmentPreviewsUsingOriginal.insert(eventId);
+            }
             if (const auto imageContent = messageEvent->get<Quotient::EventContent::ImageContent>())
                 attachment.dimensions = imageContent->imageSize;
-            if (!m_attachmentImageDimensions.value(eventId).isEmpty())
+            if (attachment.dimensions.isEmpty() && !m_attachmentImageDimensions.value(eventId).isEmpty())
                 attachment.dimensions = m_attachmentImageDimensions.value(eventId);
             break;
         }
@@ -1158,6 +1244,11 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         }
         default: attachment.kind = ChatTimelineAttachmentKind::File; break;
         }
+        m_attachmentKinds.insert(eventId, attachment.kind);
+        const auto previewResourceId = attachmentResourceId(eventId, !attachment.thumbnailUri.isEmpty());
+        attachment.state = m_attachmentStates.value(previewResourceId, ChatTimelineAttachmentState::NotRequested);
+        attachment.progress = m_attachmentProgress.value(previewResourceId, 0.0);
+        attachment.errorText = m_attachmentErrors.value(previewResourceId);
         item.content.attachments.append(std::move(attachment));
     }
     return item;
@@ -1179,6 +1270,8 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
         if (!event)
             return;
+        if (shouldHideEventFromTimeline(*event))
+            return;
         if (event->matrixType() == QStringLiteral("m.room.encrypted"))
         {
             if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
@@ -1187,6 +1280,7 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         if (event->isRedacted())
         {
             emit eventRedacted(chat, eventId, event->redactionReason());
+            emit availableActionsChanged(chat);
             return;
         }
 
@@ -1281,7 +1375,7 @@ void MatrixTimelineService::handleAttachmentDownloadProgress(Quotient::Room *roo
     if (!m_attachmentDownloadPaths.contains(resourceId))
         return;
 
-    m_attachmentProgress.insert(eventId, total > 0 ? qreal(received) / qreal(total) : 0.0);
+    m_attachmentProgress.insert(resourceId, total > 0 ? qreal(received) / qreal(total) : 0.0);
     updateAttachmentEvent(room, eventId);
 }
 
@@ -1293,23 +1387,42 @@ void MatrixTimelineService::handleAttachmentDownloadCompleted(Quotient::Room *ro
 
     const auto temporaryPath = m_attachmentDownloadPaths.take(resourceId);
     const auto localPath = localFile.toLocalFile().isEmpty() ? temporaryPath : localFile.toLocalFile();
-    const QImage image{localPath};
+    QImageReader imageReader{localPath};
+    imageReader.setAutoTransform(true);
+    const auto requestedSize = m_attachmentRequestedSizes.take(resourceId);
+    const auto originalSize = imageReader.size();
+    if (requestedSize.isValid() && originalSize.isValid())
+        imageReader.setScaledSize(originalSize.scaled(requestedSize, Qt::KeepAspectRatio));
+    const auto image = imageReader.read();
     QFile::remove(temporaryPath);
     if (localPath != temporaryPath)
         QFile::remove(localPath);
 
     if (image.isNull())
     {
-        m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-        m_attachmentErrors.insert(eventId, tr("The downloaded attachment is not a valid image."));
+        if (resourceId == attachmentResourceId(eventId, true))
+        {
+            if (m_attachmentPreviewsUsingOriginal.contains(eventId))
+                m_invalidImageAttachments.insert(eventId);
+            else
+                m_unavailableAttachmentThumbnails.insert(eventId);
+            m_attachmentStates.remove(resourceId);
+            m_attachmentProgress.remove(resourceId);
+            m_attachmentErrors.remove(resourceId);
+        }
+        else
+        {
+            m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Failed);
+            m_attachmentErrors.insert(resourceId, tr("The downloaded attachment is not a valid image."));
+        }
     }
     else
     {
-        m_attachmentImages.insert(resourceId, image);
-        m_attachmentImageDimensions.insert(eventId, image.size());
-        m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Available);
-        m_attachmentProgress.insert(eventId, 1.0);
-        m_attachmentErrors.remove(eventId);
+        m_attachmentImages.insert(resourceId, new QImage{image});
+        m_attachmentImageDimensions.insert(eventId, originalSize.isValid() ? originalSize : image.size());
+        m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Available);
+        m_attachmentProgress.insert(resourceId, 1.0);
+        m_attachmentErrors.remove(resourceId);
     }
     updateAttachmentEvent(room, eventId);
 }
@@ -1318,13 +1431,25 @@ void MatrixTimelineService::handleAttachmentDownloadFailed(Quotient::Room *room,
                                                            const QString &eventId, const QString &errorMessage)
 {
     const auto temporaryPath = m_attachmentDownloadPaths.take(resourceId);
+    m_attachmentRequestedSizes.remove(resourceId);
     if (temporaryPath.isEmpty())
         return;
 
     QFile::remove(temporaryPath);
-    m_attachmentStates.insert(eventId, ChatTimelineAttachmentState::Failed);
-    m_attachmentProgress.remove(eventId);
-    m_attachmentErrors.insert(eventId, errorMessage.isEmpty() ? tr("Could not download the image.") : errorMessage);
+    if (resourceId == attachmentResourceId(eventId, true) &&
+        !m_attachmentPreviewsUsingOriginal.contains(eventId))
+    {
+        m_unavailableAttachmentThumbnails.insert(eventId);
+        m_attachmentStates.remove(resourceId);
+        m_attachmentProgress.remove(resourceId);
+        m_attachmentErrors.remove(resourceId);
+        updateAttachmentEvent(room, eventId);
+        return;
+    }
+
+    m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Failed);
+    m_attachmentProgress.remove(resourceId);
+    m_attachmentErrors.insert(resourceId, errorMessage.isEmpty() ? tr("Could not download the image.") : errorMessage);
     updateAttachmentEvent(room, eventId);
 }
 
@@ -1334,6 +1459,17 @@ void MatrixTimelineService::clearAttachmentDownloads()
         QFile::remove(temporaryPath);
     m_attachmentDownloadPaths.clear();
     m_attachmentThumbnailRequests.clear();
+    m_attachmentRequestedSizes.clear();
+}
+
+bool MatrixTimelineService::shouldHideEventFromTimeline(const Quotient::RoomEvent &event)
+{
+    if (Quotient::eventCast<const Quotient::RedactionEvent>(&event))
+        return true;
+
+    const auto eventType = event.matrixType();
+    return eventType == QStringLiteral("m.room.power_levels") ||
+           eventType == QStringLiteral("m.room.pinned_events");
 }
 
 QUrl MatrixTimelineService::attachmentUri(const QString &eventId, bool thumbnail)

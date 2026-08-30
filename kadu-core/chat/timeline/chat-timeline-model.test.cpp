@@ -131,7 +131,9 @@ void ChatTimelineModelTest::shouldRedactExistingItem()
     model.redact(QStringLiteral("$event"), QStringLiteral("removed by moderator"));
 
     QVERIFY(model.data(model.index(0, 0), ChatTimelineModel::RedactedRole).toBool());
-    QVERIFY(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString().isEmpty());
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString(),
+             QStringLiteral("Message removed."));
+    QVERIFY(!model.data(model.index(0, 0), ChatTimelineModel::SystemEventRole).toBool());
     QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::ErrorTextRole).toString(), QStringLiteral("removed by moderator"));
 }
 

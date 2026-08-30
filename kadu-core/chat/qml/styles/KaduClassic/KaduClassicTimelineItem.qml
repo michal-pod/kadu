@@ -143,6 +143,10 @@ Item {
             return "⇩"
         if (actionKey === "showSource")
             return "{}"
+        if (actionKey === "pin")
+            return "⌖"
+        if (actionKey === "unpin")
+            return "⊘"
         return "⋯"
     }
     function triggerAction(action) {
@@ -477,7 +481,9 @@ Item {
                 }
 
                 Repeater {
-                    model: root.attachments
+                    model: root.attachments.filter(function(attachment) {
+                        return Number(attachment.kind) !== 0
+                    })
 
                     delegate: KaduChat.ChatFileAttachment {
                         required property var modelData
@@ -501,12 +507,13 @@ Item {
                 }
 
                 Repeater {
-                    model: root.attachments
+                    model: root.attachments.filter(function(attachment) {
+                        return Number(attachment.kind) === 0
+                    })
 
                     delegate: KaduChat.ChatImageAttachment {
                         required property var modelData
                         width: parent ? parent.width : 1
-                        visible: modelData.kind === 0
                         attachment: modelData
                         placeholderColor: root.darkSurface ? "#5a6472" : "#b7c0cc"
                         placeholderTextColor: root.textColor
