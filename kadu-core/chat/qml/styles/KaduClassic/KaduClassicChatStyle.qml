@@ -65,6 +65,7 @@ Item {
     property int groupingIntervalSeconds: 300
     property Component timelineItem: timelineItemComponent
     property Component composerContext: composerContextComponent
+    property Component composerOverlay: composerOverlayComponent
     property Component pinnedMessagesPanel: pinnedMessagesPanelComponent
 
     Component {
@@ -91,6 +92,16 @@ Item {
         KaduClassicComposerContext {
             colorScheme: root.colorScheme
             customColors: root.customColors
+        }
+    }
+
+    Component {
+        id: composerOverlayComponent
+
+        KaduClassicComposerOverlay {
+            colorScheme: root.colorScheme
+            customColors: root.customColors
+            chatFont: root.chatFont
         }
     }
 

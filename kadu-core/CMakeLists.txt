@@ -186,7 +186,7 @@ qt_add_qml_module (libkadu
 	URI Kadu.Chat
 	VERSION 1.0
 	NO_PLUGIN
-	IMPORTS QtLocation QtPositioning QtQuick.Controls
+	IMPORTS QtLocation QtPositioning QtQuick.Controls QtQuick.Effects
 	QML_FILES
 		chat/qml/ChatPage.qml
 		chat/qml/TimelineActionsBar.qml
@@ -199,11 +199,13 @@ qt_add_qml_module (libkadu
 		chat/qml/ChatLocation.qml
 		chat/qml/LocationViewerDialog.qml
 		chat/qml/styles/Bubbles/BubblesComposerContext.qml
+		chat/qml/styles/Bubbles/BubblesComposerOverlay.qml
 		chat/qml/styles/Bubbles/BubblesChatStyle.qml
 		chat/qml/styles/Bubbles/BubblesPinnedMessages.qml
 		chat/qml/styles/Bubbles/BubblesTimelineItem.qml
 		chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml
 		chat/qml/styles/KaduClassic/KaduClassicComposerContext.qml
+		chat/qml/styles/KaduClassic/KaduClassicComposerOverlay.qml
 		chat/qml/styles/KaduClassic/KaduClassicPinnedMessages.qml
 		chat/qml/styles/KaduClassic/KaduClassicTimelineItem.qml
 		widgets/qml/LocationSelector.qml

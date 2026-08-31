@@ -19,6 +19,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 
 Item {
     id: root
@@ -48,6 +49,7 @@ Item {
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
     property var defaultComposerContextComponent: null
+    property var defaultComposerOverlayComponent: null
     property var defaultPinnedMessagesPanelComponent: null
     readonly property int newEventsBelow: chatViewModel ? chatViewModel.newEventsBelow : 0
 
@@ -111,7 +113,9 @@ Item {
     }
 
     function bindComposerContext(item) {
-        item.width = Qt.binding(function() { return composerContextContainer.width })
+        item.width = Qt.binding(function() {
+            return Math.max(1, Math.min(460, composerContextContainer.width - 40))
+        })
         if (item.colorScheme !== undefined)
             item.colorScheme = Qt.binding(function() { return root.activeThemeColorScheme })
         if (item.customColors !== undefined)
@@ -147,6 +151,13 @@ Item {
             defaultComposerContextComponent = Qt.createComponent(
                         "qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicComposerContext.qml")
         return defaultComposerContextComponent
+    }
+
+    function defaultComposerOverlay() {
+        if (!defaultComposerOverlayComponent)
+            defaultComposerOverlayComponent = Qt.createComponent(
+                        "qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicComposerOverlay.qml")
+        return defaultComposerOverlayComponent
     }
 
     function defaultPinnedMessagesPanel() {
@@ -486,9 +497,10 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: pinnedMessagesContainer.bottom
-        anchors.bottom: composerContextContainer.top
+        anchors.bottom: parent.bottom
         anchors.margins: root.themeValue("timelineMargin", 16)
         clip: true
+        interactive: !root.composerActive
         spacing: root.themeValue("timelineSpacing", 4)
         model: root.chatViewModel ? root.chatViewModel.timeline : null
         reuseItems: true
@@ -703,6 +715,16 @@ Item {
         }
     }
 
+    MultiEffect {
+        anchors.fill: timeline
+        source: timeline
+        visible: root.composerActive
+        blurEnabled: visible
+        blur: 0.70
+        saturation: 0.55
+        z: 5
+    }
+
     Text {
         anchors.centerIn: parent
         visible: root.chatViewModel && root.chatViewModel.loadingInitial
@@ -714,9 +736,9 @@ Item {
     Button {
         id: newMessagesButton
         anchors.right: parent.right
-        anchors.bottom: composerContextContainer.top
+        anchors.bottom: parent.bottom
         anchors.margins: 14
-        visible: root.newEventsBelow > 0
+        visible: root.newEventsBelow > 0 && !root.composerActive
         text: root.newEventsBelow === 1 ? qsTr("1 new message") : qsTr("%1 new messages").arg(root.newEventsBelow)
         z: 3
         Accessible.name: text
@@ -725,12 +747,12 @@ Item {
 
     Item {
         id: composerContextContainer
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: visible && rendererItem ? rendererItem.implicitHeight : 0
+        anchors.left: timeline.left
+        anchors.right: timeline.right
+        anchors.top: timeline.top
+        anchors.bottom: timeline.bottom
         visible: root.composerActive
-        z: 2
+        z: 10
 
         property var rendererItem: null
 
@@ -742,15 +764,17 @@ Item {
             if (!root.composerActive)
                 return
 
-            const component = root.activeTheme && root.activeTheme.composerContext
-                              ? root.activeTheme.composerContext : root.defaultComposerContext()
+            const component = root.activeTheme && root.activeTheme.composerOverlay
+                              ? root.activeTheme.composerOverlay
+                              : (root.activeTheme && root.activeTheme.composerContext
+                                 ? root.activeTheme.composerContext : root.defaultComposerOverlay())
             if (!component || component.status !== Component.Ready)
                 return
-            rendererItem = component.createObject(composerContextContainer, {
-                "width": composerContextContainer.width
-            })
-            if (rendererItem)
+            rendererItem = component.createObject(composerContextContainer)
+            if (rendererItem) {
+                rendererItem.z = 1
                 root.bindComposerContext(rendererItem)
+            }
         }
 
         Component.onCompleted: createRenderer()
@@ -768,6 +792,51 @@ Item {
             function onComposerActiveChanged() {
                 composerContextContainer.createRenderer()
             }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "black"
+            opacity: root.darkSurface ? 0.16 : 0.10
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            hoverEnabled: true
+            preventStealing: true
+            propagateComposedEvents: false
+
+            onWheel: function(wheel) {
+                wheel.accepted = true
+            }
+        }
+
+        Binding {
+            target: composerContextContainer.rendererItem
+            property: "width"
+            value: Math.max(1, Math.min(460, composerContextContainer.width - 40))
+            when: composerContextContainer.rendererItem !== null
+        }
+
+        Binding {
+            target: composerContextContainer.rendererItem
+            property: "x"
+            value: {
+                const item = composerContextContainer.rendererItem
+                return item ? Math.max(0, (composerContextContainer.width - item.width) / 2) : 0
+            }
+            when: composerContextContainer.rendererItem !== null
+        }
+
+        Binding {
+            target: composerContextContainer.rendererItem
+            property: "y"
+            value: {
+                const item = composerContextContainer.rendererItem
+                return item ? Math.max(0, composerContextContainer.height - item.implicitHeight - 16) : 0
+            }
+            when: composerContextContainer.rendererItem !== null
         }
     }
 
