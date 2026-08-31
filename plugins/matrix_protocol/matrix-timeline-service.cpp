@@ -199,6 +199,7 @@ ChatTimelineActions MatrixTimelineService::availableActions(const Chat &chat, co
         if (!messageEvent || event->isRedacted())
             return actions;
 
+        actions |= ChatTimelineAction::React;
         actions |= ChatTimelineAction::Reply;
         if (!isPinned && canManagePinnedMessages(room))
             actions |= ChatTimelineAction::Pin;
@@ -356,7 +357,8 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
 bool MatrixTimelineService::removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key)
 {
     auto *room = roomForChat(chat);
-    if (!room || !m_connection || stableId.isEmpty() || key.isEmpty())
+    if (!room || !m_connection || stableId.isEmpty() || key.isEmpty() ||
+        !availableActions(chat, stableId).testFlag(ChatTimelineAction::React))
         return false;
 
     for (const auto *relatedEvent : room->relatedEvents(stableId, Quotient::EventRelation::AnnotationType))
@@ -370,6 +372,26 @@ bool MatrixTimelineService::removeOwnReaction(const Chat &chat, const QString &s
         return true;
     }
     return false;
+}
+
+bool MatrixTimelineService::addReaction(const Chat &chat, const QString &stableId, const QString &key)
+{
+    auto *room = roomForChat(chat);
+    if (!room || !m_connection || stableId.isEmpty() || key.isEmpty() ||
+        !availableActions(chat, stableId).testFlag(ChatTimelineAction::React))
+        return false;
+
+    // Do not create duplicate annotations when the user chooses an already
+    // active reaction from the quick selector.
+    for (const auto *relatedEvent : room->relatedEvents(stableId, Quotient::EventRelation::AnnotationType))
+    {
+        const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(relatedEvent);
+        if (reactionEvent && !relatedEvent->isRedacted() && reactionEvent->key() == key &&
+            reactionEvent->senderId() == m_connection->userId())
+            return false;
+    }
+
+    return !room->postReaction(stableId, key).isEmpty();
 }
 
 QVariantList MatrixTimelineService::pinnedMessages(const Chat &chat) const
@@ -1029,7 +1051,6 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
                                               : ChatTimelineDecryptionState::Decrypted)
                                        : ChatTimelineDecryptionState::NotEncrypted;
 
-    const auto senderName = item.sender.displayName.isEmpty() ? item.sender.id : item.sender.displayName;
     const auto eventType = event.matrixType();
     const auto content = event.contentJson();
     if (event.isRedacted())
@@ -1043,31 +1064,31 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     if (eventType == QStringLiteral("m.room.name"))
     {
         item.kind = ChatTimelineItemKind::RoomNameChanged;
-        item.content.plainText = tr("%1 changed the room name to %2.").arg(senderName, content.value("name").toString());
+        item.content.plainText = tr("changed the room name to %1.").arg(content.value("name").toString());
         return item;
     }
     if (eventType == QStringLiteral("m.room.topic"))
     {
         item.kind = ChatTimelineItemKind::TopicChanged;
-        item.content.plainText = tr("%1 changed the room topic to %2.").arg(senderName, content.value("topic").toString());
+        item.content.plainText = tr("changed the room topic to %1.").arg(content.value("topic").toString());
         return item;
     }
     if (eventType == QStringLiteral("m.room.avatar"))
     {
         item.kind = ChatTimelineItemKind::RoomAvatarChanged;
-        item.content.plainText = tr("%1 changed the room avatar.").arg(senderName);
+        item.content.plainText = tr("changed the room avatar.");
         return item;
     }
     if (eventType == QStringLiteral("m.room.create"))
     {
         item.kind = ChatTimelineItemKind::RoomCreated;
-        item.content.plainText = tr("%1 created the room.").arg(senderName);
+        item.content.plainText = tr("created the room.");
         return item;
     }
     if (eventType == QStringLiteral("m.room.encryption"))
     {
         item.kind = ChatTimelineItemKind::EncryptionEnabled;
-        item.content.plainText = tr("%1 enabled end-to-end encryption.").arg(senderName);
+        item.content.plainText = tr("enabled end-to-end encryption.");
         return item;
     }
     if (const auto *memberEvent = Quotient::eventCast<const Quotient::RoomMemberEvent>(&event))
@@ -1077,51 +1098,51 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         if (memberEvent->isRename() || memberEvent->isAvatarUpdate())
         {
             item.kind = ChatTimelineItemKind::MemberProfileChanged;
-            item.content.plainText = tr("%1 updated their room profile.").arg(memberName);
+            item.content.plainText = tr("updated their room profile.");
         }
         else if (memberEvent->isJoin())
         {
             item.kind = ChatTimelineItemKind::MemberJoined;
-            item.content.plainText = tr("%1 joined the room.").arg(memberName);
+            item.content.plainText = tr("joined the room.");
         }
         else if (memberEvent->isInvite())
         {
             item.kind = ChatTimelineItemKind::MemberInvited;
-            item.content.plainText = tr("%1 invited %2 to the room.").arg(senderName, memberName);
+            item.content.plainText = tr("invited %1 to the room.").arg(memberName);
         }
         else if (memberEvent->isBan())
         {
             item.kind = ChatTimelineItemKind::MemberBanned;
-            item.content.plainText = tr("%1 banned %2 from the room.").arg(senderName, memberName);
+            item.content.plainText = tr("banned %1 from the room.").arg(memberName);
         }
         else if (memberEvent->isLeave() && event.senderId() != memberId)
         {
             item.kind = ChatTimelineItemKind::MemberKicked;
-            item.content.plainText = tr("%1 removed %2 from the room.").arg(senderName, memberName);
+            item.content.plainText = tr("removed %1 from the room.").arg(memberName);
         }
         else if (memberEvent->isLeave() || memberEvent->isRejectedInvite())
         {
             item.kind = ChatTimelineItemKind::MemberLeft;
-            item.content.plainText = tr("%1 left the room.").arg(memberName);
+            item.content.plainText = tr("left the room.");
         }
         else
         {
             item.kind = ChatTimelineItemKind::MemberProfileChanged;
-            item.content.plainText = tr("%1 updated their room profile.").arg(memberName);
+            item.content.plainText = tr("updated their room profile.");
         }
         return item;
     }
     if (const auto *redactionEvent = Quotient::eventCast<const Quotient::RedactionEvent>(&event))
     {
         item.kind = ChatTimelineItemKind::MessageRedacted;
-        item.content.plainText = tr("%1 removed a message.").arg(senderName);
+        item.content.plainText = tr("removed a message.");
         item.content.replyToId = redactionEvent->redactedEvent();
         return item;
     }
     if (eventType.startsWith(QStringLiteral("m.call.")))
     {
         item.kind = ChatTimelineItemKind::CallEvent;
-        item.content.plainText = tr("%1 sent a call event (%2).").arg(senderName, eventType);
+        item.content.plainText = tr("sent a call event (%1).").arg(eventType);
         return item;
     }
     if (eventType == QStringLiteral("m.room.encrypted"))
@@ -1143,7 +1164,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     if (!messageEvent->replacedEvent().isEmpty())
     {
         item.kind = ChatTimelineItemKind::MessageEdited;
-        item.content.plainText = tr("%1 edited a message.").arg(senderName);
+        item.content.plainText = tr("edited a message.");
         item.content.replyToId = messageEvent->replacedEvent();
         return item;
     }

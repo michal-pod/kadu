@@ -32,6 +32,7 @@
 class ChatTimelineController;
 class ChatConfigurationHolder;
 class ChatStyleManager;
+class Configuration;
 class Message;
 class ProtocolTimelineService;
 class SortedMessages;
@@ -79,7 +80,8 @@ public:
 
     explicit ChatViewModel(Chat chat, ProtocolTimelineService *timelineService = nullptr,
                            ChatStyleManager *chatStyleManager = nullptr,
-                           ChatConfigurationHolder *chatConfigurationHolder = nullptr, QObject *parent = nullptr);
+                           ChatConfigurationHolder *chatConfigurationHolder = nullptr, QObject *parent = nullptr,
+                           Configuration *configuration = nullptr);
     virtual ~ChatViewModel();
 
     Chat chat() const;
@@ -115,6 +117,9 @@ public:
     Q_INVOKABLE void copyText(const QString &text);
     Q_INVOKABLE QVariantList timelineActions(const QString &stableId) const;
     Q_INVOKABLE void executeTimelineAction(const QString &stableId, int action);
+    Q_INVOKABLE QVariantList frequentReactionEmojis() const;
+    Q_INVOKABLE void addReaction(const QString &stableId, const QString &key);
+    Q_INVOKABLE void requestFullReactionSelector();
     Q_INVOKABLE void removeOwnReaction(const QString &stableId, const QString &key);
     Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
     Q_INVOKABLE void markTimelineItemVisible(const QString &stableId);
@@ -136,6 +141,7 @@ signals:
     void pinnedMessagesChanged();
     void composerContextCancelled();
     void composerContextActivated(ChatViewModel::ComposerMode mode);
+    void reactionSelectorRequested(const QString &stableId);
 
 private:
     Chat m_chat;
@@ -144,6 +150,7 @@ private:
     LegacyMessageTimelineAdapter m_legacyAdapter;
     ChatStyleManager *m_chatStyleManager = nullptr;
     QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
+    QPointer<Configuration> m_configuration;
     QPointer<UrlHandlerManager> m_urlHandlerManager;
     bool m_roomInfoVisible = false;
     QString m_roomAvatarSource;
@@ -157,6 +164,7 @@ private:
     ProtocolTimelineService *timelineService(ProtocolTimelineService *service) const;
     void refreshRoomDetails();
     void setComposerContext(ComposerMode mode, const ChatTimelineItem &item);
+    void recordReactionEmojiUse(const QString &key);
 
 private slots:
     void chatUpdated();

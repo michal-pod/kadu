@@ -25,10 +25,14 @@ Item {
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
     property var openUrl: null
+    property var openLocation: null
     property var timelineActions: null
     property var executeTimelineAction: null
     property var copyText: null
     property var removeOwnReaction: null
+    property var frequentReactionEmojis: null
+    property var addReaction: null
+    property var requestFullReactionSelector: null
 
     SystemPalette {
         id: systemPalette
@@ -68,10 +72,14 @@ Item {
             colorScheme: root.colorScheme
             customColors: root.customColors
             openUrl: root.openUrl
+            openLocation: root.openLocation
             timelineActions: root.timelineActions
             executeTimelineAction: root.executeTimelineAction
             copyText: root.copyText
             removeOwnReaction: root.removeOwnReaction
+            frequentReactionEmojis: root.frequentReactionEmojis
+            addReaction: root.addReaction
+            requestFullReactionSelector: root.requestFullReactionSelector
         }
     }
 

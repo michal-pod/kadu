@@ -23,6 +23,8 @@
 #include "chat-style/chat-style-manager.h"
 #include "chat/chat-details-room.h"
 #include "chat/timeline/chat-timeline-controller.h"
+#include "configuration/configuration.h"
+#include "configuration/deprecated-configuration-api.h"
 #include "gui/configuration/chat-configuration-holder.h"
 #include "message/message.h"
 #include "message/sorted-messages.h"
@@ -32,15 +34,22 @@
 
 #include <QtCore/QBuffer>
 #include <QtCore/QByteArray>
+#include <QtCore/QDebug>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QJsonParseError>
+#include <QtCore/QStringList>
 #include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
 #include <QtWidgets/QMessageBox>
 
+#include <algorithm>
+
 ChatViewModel::ChatViewModel(
     Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
-    ChatConfigurationHolder *chatConfigurationHolder, QObject *parent)
+    ChatConfigurationHolder *chatConfigurationHolder, QObject *parent, Configuration *configuration)
         : QObject{parent}, m_chat{chat}, m_chatStyleManager{chatStyleManager},
-          m_chatConfigurationHolder{chatConfigurationHolder}
+          m_chatConfigurationHolder{chatConfigurationHolder}, m_configuration{configuration}
 {
     if (auto *protocolTimelineService = timelineService(service))
     {
@@ -304,6 +313,10 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
         return actions;
 
     const auto available = service->availableActions(m_chat, stableId);
+    if (!item.state.redacted && available.testFlag(ChatTimelineAction::React))
+        actions.append(QVariantMap{{QStringLiteral("id"), -1}, {QStringLiteral("key"), QStringLiteral("react")},
+                                   {QStringLiteral("text"), tr("Add reaction")},
+                                   {QStringLiteral("iconName"), QStringLiteral("face-smile")}});
     if (available.testFlag(ChatTimelineAction::Reply))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Reply)},
                                    {QStringLiteral("key"), QStringLiteral("reply")},
@@ -312,12 +325,13 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
     if (available.testFlag(ChatTimelineAction::Edit))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Edit)},
                                    {QStringLiteral("key"), QStringLiteral("edit")},
-                                   {QStringLiteral("text"), tr("Edit message")}});
+                                   {QStringLiteral("text"), tr("Edit message")},
+                                   {QStringLiteral("iconName"), QStringLiteral("document-open")}});
     if (available.testFlag(ChatTimelineAction::SaveAttachment))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::SaveAttachment)},
                                    {QStringLiteral("key"), QStringLiteral("saveAttachment")},
                                    {QStringLiteral("text"), tr("Save attachment")},
-                                   {QStringLiteral("iconName"), QStringLiteral("document-save")}});
+                                   {QStringLiteral("iconName"), QStringLiteral("document-open")}});
     if (available.testFlag(ChatTimelineAction::Delete))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Delete)},
                                    {QStringLiteral("key"), QStringLiteral("delete")},
@@ -332,11 +346,13 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
     if (available.testFlag(ChatTimelineAction::Pin))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Pin)},
                                    {QStringLiteral("key"), QStringLiteral("pin")},
-                                   {QStringLiteral("text"), tr("Pin message")}});
+                                   {QStringLiteral("text"), tr("Pin message")},
+                                   {QStringLiteral("iconName"), QStringLiteral("list-add")}});
     if (available.testFlag(ChatTimelineAction::Unpin))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Unpin)},
                                    {QStringLiteral("key"), QStringLiteral("unpin")},
                                    {QStringLiteral("text"), tr("Unpin message")},
+                                   {QStringLiteral("iconName"), QStringLiteral("list-remove")},
                                    {QStringLiteral("destructive"), true}});
     return actions;
 }
@@ -354,6 +370,11 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
     if (action == 0)
     {
         copyText(m_timeline->item(stableId).content.plainText);
+        return;
+    }
+    if (action == -1)
+    {
+        emit reactionSelectorRequested(stableId);
         return;
     }
 
@@ -384,6 +405,64 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
     service->executeAction(m_chat, stableId, timelineAction);
 }
 
+QVariantList ChatViewModel::frequentReactionEmojis() const
+{
+    QJsonObject usage;
+    if (m_configuration)
+    {
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(
+            m_configuration->deprecatedApi()->readEntry(QStringLiteral("ChatTimeline"),
+                                                         QStringLiteral("ReactionEmojiUsage"))
+                .toUtf8(),
+            &error);
+        if (error.error == QJsonParseError::NoError && document.isObject())
+            usage = document.object();
+    }
+
+    QStringList emojis{QStringLiteral("👍"), QStringLiteral("❤️"), QStringLiteral("😂"),
+                       QStringLiteral("😮"), QStringLiteral("😢"), QStringLiteral("🙏"),
+                       QStringLiteral("🎉"), QStringLiteral("👀"), QStringLiteral("🔥")};
+    for (auto iterator = usage.constBegin(); iterator != usage.constEnd(); ++iterator)
+        if (!emojis.contains(iterator.key()))
+            emojis.append(iterator.key());
+
+    std::stable_sort(emojis.begin(), emojis.end(), [&usage](const QString &left, const QString &right) {
+        return usage.value(left).toInt() > usage.value(right).toInt();
+    });
+
+    QVariantList result;
+    for (auto index = 0; index < emojis.size() && index < 9; ++index)
+        result.append(emojis.at(index));
+    return result;
+}
+
+void ChatViewModel::addReaction(const QString &stableId, const QString &key)
+{
+    if (stableId.isEmpty() || key.isEmpty())
+        return;
+
+    auto *service = timelineService(nullptr);
+    if (!service || !service->availableActions(m_chat, stableId).testFlag(ChatTimelineAction::React))
+        return;
+
+    const auto item = m_timeline->item(stableId);
+    for (const auto &reaction : item.content.reactions)
+        if (reaction.key == key && reaction.own)
+        {
+            service->removeOwnReaction(m_chat, stableId, key);
+            return;
+        }
+
+    if (service->addReaction(m_chat, stableId, key))
+        recordReactionEmojiUse(key);
+}
+
+void ChatViewModel::requestFullReactionSelector()
+{
+    qWarning("The full emoticon reaction selector is not implemented yet.");
+}
+
 void ChatViewModel::removeOwnReaction(const QString &stableId, const QString &key)
 {
     if (stableId.isEmpty() || key.isEmpty())
@@ -391,6 +470,27 @@ void ChatViewModel::removeOwnReaction(const QString &stableId, const QString &ke
 
     if (auto *service = timelineService(nullptr))
         service->removeOwnReaction(m_chat, stableId, key);
+}
+
+void ChatViewModel::recordReactionEmojiUse(const QString &key)
+{
+    if (!m_configuration)
+        return;
+
+    QJsonObject usage;
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(
+        m_configuration->deprecatedApi()->readEntry(QStringLiteral("ChatTimeline"),
+                                                     QStringLiteral("ReactionEmojiUsage"))
+            .toUtf8(),
+        &error);
+    if (error.error == QJsonParseError::NoError && document.isObject())
+        usage = document.object();
+
+    usage.insert(key, usage.value(key).toInt() + 1);
+    m_configuration->deprecatedApi()->writeEntry(
+        QStringLiteral("ChatTimeline"), QStringLiteral("ReactionEmojiUsage"),
+        QString::fromUtf8(QJsonDocument{usage}.toJson(QJsonDocument::Compact)));
 }
 
 void ChatViewModel::setTimelineAtNewest(bool atNewest)

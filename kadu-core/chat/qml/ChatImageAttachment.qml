@@ -26,6 +26,9 @@ Item {
     property color placeholderColor: "#808080"
     property color placeholderTextColor: "#ffffff"
     property var openImage: null
+    property real maximumWidth: 360
+    property real maximumHeight: 260
+    property real availableWidth: parent ? parent.width : maximumWidth
 
     readonly property size dimensions: attachment && attachment.dimensions ? attachment.dimensions : Qt.size(0, 0)
     readonly property real imageWidth: Number(dimensions.width) > 0 ? Number(dimensions.width) : 4
@@ -39,8 +42,8 @@ Item {
     readonly property bool failed: attachment && attachment.state === 3
     readonly property real progress: attachment && attachment.progress !== undefined ? attachment.progress : 0.0
 
-    width: parent ? parent.width : 1
-    height: Math.min(320, width * imageHeight / imageWidth)
+    width: Math.max(1, Math.min(availableWidth, maximumWidth))
+    height: Math.min(maximumHeight, width * imageHeight / imageWidth)
     clip: true
 
     Rectangle {

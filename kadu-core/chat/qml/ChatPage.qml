@@ -87,6 +87,20 @@ Item {
             chatViewModel.removeOwnReaction(stableId, key)
     }
 
+    function frequentReactionEmojis() {
+        return chatViewModel ? chatViewModel.frequentReactionEmojis() : []
+    }
+
+    function addReaction(stableId, key) {
+        if (chatViewModel)
+            chatViewModel.addReaction(stableId, key)
+    }
+
+    function requestFullReactionSelector() {
+        if (chatViewModel)
+            chatViewModel.requestFullReactionSelector()
+    }
+
     function cancelComposerContext() {
         if (chatViewModel)
             chatViewModel.cancelComposerContext()
@@ -149,6 +163,10 @@ Item {
         imageViewer.openFor(sourceUri, title, width, height, state)
     }
 
+    function openLocation(geoUri) {
+        locationViewer.openFor(geoUri)
+    }
+
     readonly property bool darkSurface: themeValue("darkSurface", systemDarkSurface)
     readonly property bool usesSystemColors: activeThemeColorScheme === "System"
     readonly property color fallbackBackgroundColor: usesSystemColors ? systemPalette.base
@@ -203,6 +221,8 @@ Item {
         item.errorText = Qt.binding(function() { return delegate.errorText })
         if (item.openImage !== undefined)
             item.openImage = root.openImage
+        if (item.openLocation !== undefined)
+            item.openLocation = root.openLocation
         if (item.timelineActions !== undefined)
             item.timelineActions = root.timelineActions
         if (item.executeTimelineAction !== undefined)
@@ -211,6 +231,12 @@ Item {
             item.copyText = root.copyText
         if (item.removeOwnReaction !== undefined)
             item.removeOwnReaction = root.removeOwnReaction
+        if (item.frequentReactionEmojis !== undefined)
+            item.frequentReactionEmojis = root.frequentReactionEmojis
+        if (item.addReaction !== undefined)
+            item.addReaction = root.addReaction
+        if (item.requestFullReactionSelector !== undefined)
+            item.requestFullReactionSelector = root.requestFullReactionSelector
     }
 
     function atBottom() {
@@ -735,6 +761,20 @@ Item {
         reloadToken: root.attachmentImageRevision
     }
 
+    LocationViewerDialog {
+        id: locationViewer
+        parentItem: root
+    }
+
+    ReactionSelectorPopup {
+        id: contextReactionSelector
+        parent: root
+        addReaction: root.addReaction
+        requestFullSelector: root.requestFullReactionSelector
+        textColor: root.fallbackTextColor
+        backgroundColor: root.fallbackBackgroundColor
+    }
+
     Connections {
         target: root.chatViewModel
         function onTimelineStateChanged() {
@@ -754,6 +794,11 @@ Item {
         function onPinnedMessagesChanged() {
             if (pinnedMessagesContainer.rendererItem)
                 root.bindPinnedMessagesPanel(pinnedMessagesContainer.rendererItem)
+        }
+        function onReactionSelectorRequested(stableId) {
+            contextReactionSelector.stableId = stableId
+            contextReactionSelector.emojiProvider = root.frequentReactionEmojis
+            contextReactionSelector.openFor(timeline)
         }
     }
 

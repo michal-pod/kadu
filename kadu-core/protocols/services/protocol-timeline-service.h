@@ -78,6 +78,14 @@ public:
     virtual bool removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key);
 
     /**
+     * @short Add an annotation to one timeline event.
+     *
+     * The view supplies only the protocol-neutral event ID and the selected
+     * Unicode key. Protocols own the relation/event representation.
+     */
+    virtual bool addReaction(const Chat &chat, const QString &stableId, const QString &key);
+
+    /**
      * @short Return protocol-native pinned entries for a chat.
      *
      * The list keeps the protocol order and contains lightweight QVariantMap

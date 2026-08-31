@@ -27,18 +27,24 @@ Item {
     property string geoUri: ""
     property color textColor: "black"
     property color markerColor: "#3b78b4"
+    property var openLocation: null
+    property real maximumWidth: 360
+    property real availableWidth: parent ? parent.width : maximumWidth
     readonly property var coordinateParts: geoUri.replace(/^geo:/, "").split(/[;,]/)
     readonly property real latitude: Number(coordinateParts[0])
     readonly property real longitude: Number(coordinateParts[1])
     readonly property bool validLocation: !isNaN(latitude) && !isNaN(longitude) && latitude >= -90 && latitude <= 90 &&
                                          longitude >= -180 && longitude <= 180
 
-    implicitHeight: validLocation ? 180 : locationText.implicitHeight
+    width: Math.max(1, Math.min(availableWidth, maximumWidth))
+    readonly property real mapHeight: Math.min(220, Math.max(140, width * 0.62))
+    implicitHeight: validLocation ? mapHeight + locationText.implicitHeight + 5 : locationText.implicitHeight
 
     Map {
+        id: map
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 160
+        height: root.mapHeight
         visible: root.validLocation
         plugin: Plugin { name: "osm" }
         center: QtPositioning.coordinate(root.latitude, root.longitude)
@@ -58,6 +64,14 @@ Item {
                 border.color: "white"
             }
         }
+
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onTapped: {
+                if (root.openLocation)
+                    root.openLocation(root.geoUri)
+            }
+        }
     }
 
     Text {
@@ -65,7 +79,8 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        text: root.geoUri
+        text: root.validLocation ? qsTr("Location: %1, %2").arg(root.latitude.toFixed(6)).arg(root.longitude.toFixed(6))
+                                 : root.geoUri
         color: root.textColor
         wrapMode: Text.Wrap
         visible: root.geoUri.length > 0

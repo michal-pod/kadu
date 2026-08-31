@@ -18,22 +18,27 @@ Item {
     property var actions: []
     property var executeAction: null
     property color fallbackTextColor: "#202020"
+    property color backgroundColor: "#f4f6f8"
     property bool alignRight: true
     property bool shown: true
 
-    implicitWidth: actionRow.implicitWidth
-    implicitHeight: actionRow.implicitHeight
-    visible: actions.length > 0
-    opacity: shown ? 1.0 : 0.0
-    enabled: shown
+    signal reactionRequested(var sourceItem)
 
-    Behavior on opacity {
-        NumberAnimation { duration: 100 }
-    }
+    // The host places this zero-sized anchor over an entry. The actual bar is
+    // deliberately painted above it, so showing actions never changes a
+    // timeline delegate's height or moves the ListView viewport.
+    implicitWidth: 0
+    implicitHeight: 0
+    width: 0
+    height: 0
+    visible: actions.length > 0
+    z: 20
 
     function fallbackSymbol(action) {
         if (action.key === "copy")
             return "⧉"
+        if (action.key === "react")
+            return "☺"
         if (action.key === "reply")
             return "↩"
         if (action.key === "edit")
@@ -51,65 +56,93 @@ Item {
         return "⋯"
     }
 
-    Row {
-        id: actionRow
-        anchors.right: root.alignRight ? parent.right : undefined
-        anchors.left: root.alignRight ? undefined : parent.left
-        spacing: 2
+    Rectangle {
+        id: actionPopup
 
-        Repeater {
-            model: root.actions
+        x: root.alignRight ? -width : 0
+        y: 0
+        implicitWidth: actionRow.implicitWidth + 8
+        implicitHeight: actionRow.implicitHeight + 8
+        radius: 5
+        color: root.backgroundColor
+        border.width: 1
+        border.color: Qt.rgba(root.fallbackTextColor.r, root.fallbackTextColor.g,
+                              root.fallbackTextColor.b, 0.20)
+        visible: root.shown || popupHover.hovered
+        opacity: visible ? 1.0 : 0.0
 
-            delegate: ToolButton {
-                id: actionButton
+        Behavior on opacity {
+            NumberAnimation { duration: 100 }
+        }
 
-                required property var modelData
-                readonly property string iconName: modelData.iconName || ""
+        HoverHandler {
+            id: popupHover
+        }
 
-                implicitWidth: 24
-                implicitHeight: 24
-                padding: 4
-                enabled: modelData.enabled === undefined || modelData.enabled
-                Accessible.name: modelData.text || ""
-                ToolTip.visible: hovered
-                ToolTip.text: modelData.text || ""
+        Row {
+            id: actionRow
+            anchors.centerIn: parent
+            spacing: 2
 
-                contentItem: Item {
-                    implicitWidth: 16
-                    implicitHeight: 16
+            Repeater {
+                model: root.actions
 
-                    Image {
-                        id: actionIcon
-                        anchors.centerIn: parent
-                        width: 16
-                        height: 16
-                        source: actionButton.iconName.length > 0
-                                ? "image://kaduicon/" + encodeURIComponent(actionButton.iconName) : ""
-                        sourceSize.width: 16
-                        sourceSize.height: 16
-                        visible: status === Image.Ready && source.length > 0
+                delegate: ToolButton {
+                    id: actionButton
+
+                    required property var modelData
+                    readonly property string iconName: modelData.iconName || ""
+
+                    implicitWidth: 24
+                    implicitHeight: 24
+                    padding: 4
+                    enabled: modelData.enabled === undefined || modelData.enabled
+                    Accessible.name: modelData.text || ""
+                    ToolTip.visible: hovered
+                    ToolTip.text: modelData.text || ""
+
+                    contentItem: Item {
+                        implicitWidth: 16
+                        implicitHeight: 16
+
+                        Image {
+                            id: actionIcon
+                            anchors.centerIn: parent
+                            width: 16
+                            height: 16
+                            source: actionButton.iconName.length > 0
+                                    ? "image://kaduicon/" + encodeURIComponent(actionButton.iconName) : ""
+                            // A missing icon is represented by the provider as a transparent
+                            // 1x1 image, which still has Ready status. Keep the textual fallback
+                            // visible in that case.
+                            visible: status === Image.Ready && source.toString().length > 0 && sourceSize.width > 1
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !actionIcon.visible
+                            text: root.fallbackSymbol(actionButton.modelData)
+                            color: root.fallbackTextColor
+                            font.pixelSize: 14
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
 
-                    Text {
-                        anchors.centerIn: parent
-                        visible: !actionIcon.visible
-                        text: root.fallbackSymbol(actionButton.modelData)
-                        color: root.fallbackTextColor
-                        font.pixelSize: 14
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
+                    background: Rectangle {
+                        radius: 3
+                        color: actionButton.hovered ? Qt.rgba(root.fallbackTextColor.r, root.fallbackTextColor.g,
+                                                              root.fallbackTextColor.b, 0.14) : "transparent"
                     }
-                }
 
-                background: Rectangle {
-                    radius: 3
-                    color: actionButton.hovered ? Qt.rgba(root.fallbackTextColor.r, root.fallbackTextColor.g,
-                                                          root.fallbackTextColor.b, 0.14) : "transparent"
-                }
-
-                onClicked: {
-                    if (root.executeAction)
-                        root.executeAction(modelData.id)
+                    onClicked: {
+                        if (modelData.key === "react") {
+                            root.reactionRequested(actionButton)
+                            return
+                        }
+                        if (root.executeAction)
+                            root.executeAction(modelData.id)
+                    }
                 }
             }
         }

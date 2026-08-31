@@ -24,12 +24,21 @@ KaduIconImageProvider::KaduIconImageProvider(IconsManager *iconsManager)
 
 QImage KaduIconImageProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
-    const auto iconPath = QUrl::fromPercentEncoding(id.section(u'?', 0, 0).toUtf8());
+    auto iconPath = QUrl::fromPercentEncoding(id.section(u'?', 0, 0).toUtf8());
+    // QQuickImageProvider passes the URL path as the ID. Depending on the
+    // Qt path used by Image, that can retain its leading slash; KaduIcon
+    // treats such a path as an absolute file name instead of an icon name.
+    while (iconPath.startsWith(u'/'))
+        iconPath.remove(0, 1);
     if (!m_iconsManager || iconPath.isEmpty())
         return transparentImage();
 
     const auto imageSize = requestedSize.isValid() ? requestedSize : QSize{16, 16};
-    const auto pixmap = m_iconsManager->iconByPath(KaduIcon{iconPath}).pixmap(imageSize);
+    KaduIcon icon{iconPath, QStringLiteral("%1x%2").arg(imageSize.width()).arg(imageSize.height())};
+    const auto filePath = m_iconsManager->iconPath(icon, IconsManager::EmptyAllowed);
+    const auto pixmap = filePath.isEmpty() ? m_iconsManager->iconByPath(icon).pixmap(imageSize)
+                                           : QPixmap{filePath}.scaled(imageSize, Qt::KeepAspectRatio,
+                                                                       Qt::SmoothTransformation);
     if (pixmap.isNull())
         return transparentImage();
 

@@ -64,6 +64,7 @@ public:
     ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const override;
     bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action) override;
     bool removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key) override;
+    bool addReaction(const Chat &chat, const QString &stableId, const QString &key) override;
     QVariantList pinnedMessages(const Chat &chat) const override;
     void markTimelineItemRead(const Chat &chat, const QString &stableId) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;

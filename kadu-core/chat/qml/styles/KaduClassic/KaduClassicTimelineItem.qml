@@ -57,10 +57,14 @@ Item {
     property var customColors: ({ "enabled": false })
     property var openUrl: null
     property var openImage: null
+    property var openLocation: null
     property var timelineActions: null
     property var executeTimelineAction: null
     property var copyText: null
     property var removeOwnReaction: null
+    property var frequentReactionEmojis: null
+    property var addReaction: null
+    property var requestFullReactionSelector: null
     property string contextSelectedText: ""
     property string contextLink: ""
 
@@ -107,6 +111,11 @@ Item {
         if (formattedText.length > 0)
             return formattedText
         return plainText
+    }
+    function displayedMessageText() {
+        if (!emote)
+            return messageText()
+        return "* " + (ownEvent ? qsTr("You") : senderDisplayName) + " " + plainText
     }
     function replyText() {
         if (reply && reply.found)
@@ -199,6 +208,7 @@ Item {
 
             Row {
                 anchors.centerIn: parent
+                anchors.horizontalCenterOffset: -8
                 spacing: 8
 
                 Rectangle {
@@ -230,36 +240,94 @@ Item {
             id: systemEventItem
             visible: root.isSystemEvent()
             width: parent.width
-            implicitHeight: Math.max(systemEventLabel.implicitHeight + 10, showSourceButton.implicitHeight + 4)
+            implicitHeight: Math.max(systemSenderAvatar.visible ? systemSenderAvatar.height : 0,
+                                     systemEventLabel.implicitHeight) + 6
 
-            Text {
-                id: systemEventLabel
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.rightMargin: showSourceButton.visible ? showSourceButton.width + 4 : 0
-                anchors.verticalCenter: parent.verticalCenter
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                text: "•  " + root.systemEventDescription()
-                color: root.textColor
-                opacity: 0.80
-                font.italic: true
+            HoverHandler {
+                id: systemEventHover
             }
 
-            ToolButton {
-                id: showSourceButton
-                anchors.right: parent.right
+            Rectangle {
+                id: systemSenderAvatar
+                anchors.left: parent.left
+                anchors.leftMargin: 11
                 anchors.verticalCenter: parent.verticalCenter
-                visible: root.actionId("showSource") >= 0
-                text: "{}"
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Show source")
-                onClicked: root.triggerAction(root.actionId("showSource"))
+                visible: root.senderDisplayName.length > 0
+                width: 18
+                height: 18
+                radius: width / 2
+                clip: false
+                color: systemSenderAvatarImage.status === Image.Ready
+                       ? "transparent"
+                       : (root.senderColor.a > 0 ? root.senderColor
+                                                : (root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor))
+
+                Image {
+                    id: systemSenderAvatarImage
+                    anchors.fill: parent
+                    source: root.senderAvatarSource
+                    fillMode: Image.PreserveAspectFit
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: systemSenderAvatarImage.status !== Image.Ready
+                    text: root.senderDisplayName.slice(0, 1).toUpperCase()
+                    color: "white"
+                    font.pixelSize: 10
+                }
+            }
+
+            Item {
+                id: systemText
+                x: root.senderDisplayName.length > 0 ? 38 : 8
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - x - 16
+                implicitHeight: systemEventLabel.implicitHeight
+
+                Text {
+                    id: systemSender
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.senderDisplayName.length > 0
+                    width: Math.min(implicitWidth, 120)
+                    text: root.ownEvent ? qsTr("You") : root.senderDisplayName
+                    color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
+                    elide: Text.ElideRight
+                    font.bold: true
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    id: systemEventLabel
+                    anchors.left: systemSender.visible ? systemSender.right : parent.left
+                    anchors.leftMargin: systemSender.visible ? 12 : 0
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.systemEventDescription()
+                    color: root.textColor
+                    opacity: 0.80
+                    elide: Text.ElideRight
+                    font.italic: true
+                    font.pixelSize: 12
+                }
+            }
+
+            KaduChat.TimelineActionsBar {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                actions: root.availableActions()
+                executeAction: root.triggerAction
+                fallbackTextColor: root.mutedTextColor
+                backgroundColor: root.darkSurface ? "#39424d" : "#f7f8fa"
+                shown: systemEventHover.hovered
+                onReactionRequested: function(sourceItem) {
+                    reactionSelector.openFor(sourceItem)
+                }
             }
 
             MouseArea {
                 anchors.fill: parent
-                anchors.rightMargin: showSourceButton.visible ? showSourceButton.width : 0
                 acceptedButtons: Qt.RightButton
                 onClicked: eventMenu.popup()
             }
@@ -300,25 +368,28 @@ Item {
                 Item {
                     visible: root.showSender
                     width: parent.width
-                    implicitHeight: Math.max(senderAvatar.implicitHeight, sender.implicitHeight, timestamp.implicitHeight)
+                    implicitHeight: Math.max(senderAvatar.visible ? senderAvatar.height : 0,
+                                             sender.implicitHeight, timestamp.implicitHeight)
 
                     Rectangle {
                         id: senderAvatar
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: root.showAvatar
-                        width: 20
-                        height: 20
+                        visible: root.showAvatar && !root.emote
+                        width: 24
+                        height: 24
                         radius: width / 2
-                        clip: true
-                        color: root.senderColor.a > 0 ? root.senderColor
-                                                           : (root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor)
+                        clip: false
+                        color: senderAvatarImage.status === Image.Ready
+                               ? "transparent"
+                               : (root.senderColor.a > 0 ? root.senderColor
+                                                        : (root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor))
 
                         Image {
                             id: senderAvatarImage
                             anchors.fill: parent
                             source: root.senderAvatarSource
-                            fillMode: Image.PreserveAspectCrop
+                            fillMode: Image.PreserveAspectFit
                         }
 
                         Text {
@@ -336,18 +407,19 @@ Item {
                         anchors.leftMargin: senderAvatar.visible ? 6 : 0
                         anchors.right: timestamp.left
                         anchors.rightMargin: 8
-                        text: root.emote ? "* " + (root.ownEvent ? qsTr("You") : root.senderDisplayName)
-                                         : (root.ownEvent ? qsTr("You") : root.senderDisplayName)
+                        visible: !root.emote
+                        text: root.ownEvent ? qsTr("You") : root.senderDisplayName
                         elide: Text.ElideRight
                         color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
                         font.bold: true
-                        font.italic: root.emote
+                        font.italic: false
                     }
 
                     Text {
                         id: timestamp
                         visible: root.showTimestamp
                         anchors.right: parent.right
+                        anchors.rightMargin: 16
                         text: Qt.formatTime(root.timestamp, "HH:mm")
                         color: root.timestampColor
                         opacity: 0.70
@@ -357,14 +429,28 @@ Item {
 
                 Item {
                     id: messageRow
-                    width: parent.width
+                    x: 30
+                    width: parent.width - x
                     implicitHeight: Math.max(message.implicitHeight, trailingTimestamp.implicitHeight)
+
+                    Image {
+                        id: redactedIcon
+                        anchors.left: parent.left
+                        anchors.verticalCenter: message.verticalCenter
+                        visible: root.redacted
+                        width: 16
+                        height: 16
+                        source: "image://kaduicon/edit-delete"
+                    }
 
                     TextEdit {
                         id: message
-                        width: trailingTimestamp.visible ? parent.width - trailingTimestamp.implicitWidth - 8 : parent.width
-                        text: root.redacted ? qsTr("Message removed") : root.messageText()
-                        textFormat: root.formattedText.length > 0 ? TextEdit.RichText : TextEdit.PlainText
+                        x: redactedIcon.visible ? redactedIcon.width + 6 : 0
+                        width: trailingTimestamp.visible ? parent.width - x - trailingTimestamp.implicitWidth - 8
+                                                      : parent.width - x
+                        text: root.redacted ? qsTr("Message removed") : root.displayedMessageText()
+                        textFormat: !root.emote && root.formattedText.length > 0
+                                    ? TextEdit.RichText : TextEdit.PlainText
                         color: root.textColor
                         wrapMode: TextEdit.Wrap
                         readOnly: true
@@ -397,6 +483,7 @@ Item {
                         id: trailingTimestamp
                         visible: !root.showSender && root.showTimestamp
                         anchors.right: parent.right
+                        anchors.rightMargin: 16
                         anchors.bottom: parent.bottom
                         text: Qt.formatTime(root.timestamp, "HH:mm")
                         color: root.timestampColor
@@ -423,14 +510,6 @@ Item {
                     font.italic: true
                 }
 
-                KaduChat.TimelineActionsBar {
-                    width: parent.width
-                    actions: root.availableActions()
-                    executeAction: root.triggerAction
-                    fallbackTextColor: root.mutedTextColor
-                    shown: hoverHandler.hovered
-                }
-
                 Repeater {
                     model: root.attachments.filter(function(attachment) {
                         return Number(attachment.kind) !== 0
@@ -438,7 +517,8 @@ Item {
 
                     delegate: KaduChat.ChatFileAttachment {
                         required property var modelData
-                        width: parent ? parent.width : 1
+                        x: 30
+                        width: parent ? parent.width - x : 1
                         attachment: modelData
                         textColor: root.textColor
                         linkColor: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
@@ -451,10 +531,12 @@ Item {
 
                 KaduChat.ChatLocation {
                     visible: root.locationUri.length > 0
-                    width: parent.width
+                    x: 30
+                    availableWidth: parent.width - x
                     geoUri: root.locationUri
                     textColor: root.textColor
                     markerColor: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
+                    openLocation: root.openLocation
                 }
 
                 Repeater {
@@ -464,7 +546,8 @@ Item {
 
                     delegate: KaduChat.ChatImageAttachment {
                         required property var modelData
-                        width: parent ? parent.width : 1
+                        x: 30
+                        availableWidth: parent.width - x
                         attachment: modelData
                         placeholderColor: root.darkSurface ? "#5a6472" : "#b7c0cc"
                         placeholderTextColor: root.textColor
@@ -474,12 +557,12 @@ Item {
 
                 KaduChat.TimelineReactionsBar {
                     width: parent.width
+                    leftInset: 30
                     reactions: root.reactions
                     removeOwnReaction: root.removeOwnReaction
                     textColor: root.textColor
                     accentColor: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
                     backgroundColor: root.darkSurface ? "#3d4652" : "#e8edf3"
-                    shown: root.reactions.length > 0 || hoverHandler.hovered
                 }
 
                 Text {
@@ -492,6 +575,32 @@ Item {
                     font.pixelSize: 11
                 }
             }
+
+            KaduChat.TimelineActionsBar {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.rightMargin: 6
+                anchors.topMargin: 6
+                actions: root.availableActions()
+                executeAction: root.triggerAction
+                fallbackTextColor: root.mutedTextColor
+                backgroundColor: root.darkSurface ? "#39424d" : "#f7f8fa"
+                shown: hoverHandler.hovered
+                onReactionRequested: function(sourceItem) {
+                    reactionSelector.openFor(sourceItem)
+                }
+            }
         }
+    }
+
+    KaduChat.ReactionSelectorPopup {
+        id: reactionSelector
+        parent: root
+        stableId: root.stableId
+        emojiProvider: root.frequentReactionEmojis
+        addReaction: root.addReaction
+        requestFullSelector: root.requestFullReactionSelector
+        textColor: root.textColor
+        backgroundColor: root.darkSurface ? "#39424d" : "#f7f8fa"
     }
 }

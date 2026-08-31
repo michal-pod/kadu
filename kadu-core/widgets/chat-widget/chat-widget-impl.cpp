@@ -237,7 +237,8 @@ void ChatWidgetImpl::createGui()
     frameLayout->setContentsMargins(0, 0, 0, 0);
     frameLayout->setSpacing(0);
 
-    m_chatViewModel = new ChatViewModel(CurrentChat, nullptr, m_chatStyleManager, m_chatConfigurationHolder, frame);
+    m_chatViewModel =
+        new ChatViewModel(CurrentChat, nullptr, m_chatStyleManager, m_chatConfigurationHolder, frame, m_configuration);
     m_chatViewModel->setUrlHandlerManager(m_urlHandlerManager);
     TimelineView = new QQuickWidget(frame);
     TimelineView->setResizeMode(QQuickWidget::SizeRootObjectToView);
