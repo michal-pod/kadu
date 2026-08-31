@@ -40,6 +40,11 @@ bool ProtocolTimelineService::executeAction(const Chat &, const QString &, ChatT
     return false;
 }
 
+bool ProtocolTimelineService::removeOwnReaction(const Chat &, const QString &, const QString &)
+{
+    return false;
+}
+
 QVariantList ProtocolTimelineService::pinnedMessages(const Chat &) const
 {
     return {};

@@ -23,6 +23,7 @@
 #include <Quotient/csapi/key_backup.h>
 #include <Quotient/database.h>
 #include <Quotient/e2ee/cryptoutils.h>
+#include <Quotient/e2ee/sssshandler.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/room.h>
 
@@ -40,6 +41,17 @@ void MatrixMegolmSessionRecovery::setConnection(Quotient::Connection *connection
     m_connection = connection;
     m_pendingRequests.clear();
     m_requestAttempts.clear();
+    m_crossSigningRequested = false;
+    if (m_crossSigningRecovery)
+        m_crossSigningRecovery->deleteLater();
+    m_crossSigningRecovery = nullptr;
+
+    if (!m_connection)
+        return;
+
+    m_crossSigningRecovery = new Quotient::SSSSHandler{this};
+    m_crossSigningRecovery->setConnection(m_connection);
+    connect(m_crossSigningRecovery, &Quotient::SSSSHandler::finished, this, [this] { emit backupRestored(); });
 }
 
 void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
@@ -54,7 +66,10 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
 
     const auto backupDecryptionKey = database->loadEncrypted(QStringLiteral("m.megolm_backup.v1"));
     if (backupDecryptionKey.isEmpty())
+    {
+        requestBackupKeyFromVerifiedDevice();
         return;
+    }
 
     const auto roomId = room->id();
     const auto sessionId = event.sessionId();
@@ -147,4 +162,13 @@ void MatrixMegolmSessionRecovery::finishRequest(const QString &requestId, Quotie
 {
     if (connection == m_connection)
         m_pendingRequests.remove(requestId);
+}
+
+void MatrixMegolmSessionRecovery::requestBackupKeyFromVerifiedDevice()
+{
+    if (m_crossSigningRequested || !m_crossSigningRecovery || !m_connection)
+        return;
+
+    m_crossSigningRequested = true;
+    m_crossSigningRecovery->unlockSSSSFromCrossSigning();
 }

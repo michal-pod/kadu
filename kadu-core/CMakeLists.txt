@@ -189,6 +189,8 @@ qt_add_qml_module (libkadu
 	IMPORTS QtLocation QtPositioning QtQuick.Controls
 	QML_FILES
 		chat/qml/ChatPage.qml
+		chat/qml/TimelineActionsBar.qml
+		chat/qml/TimelineReactionsBar.qml
 		chat/qml/ChatFileAttachment.qml
 		chat/qml/ChatImageAttachment.qml
 		chat/qml/ImageViewerDialog.qml

@@ -115,6 +115,7 @@ public:
     Q_INVOKABLE void copyText(const QString &text);
     Q_INVOKABLE QVariantList timelineActions(const QString &stableId) const;
     Q_INVOKABLE void executeTimelineAction(const QString &stableId, int action);
+    Q_INVOKABLE void removeOwnReaction(const QString &stableId, const QString &key);
     Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
     Q_INVOKABLE void markTimelineItemVisible(const QString &stableId);
     Q_INVOKABLE void cancelComposerContext();

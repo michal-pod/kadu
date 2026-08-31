@@ -63,6 +63,7 @@ public:
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
     ChatTimelineActions availableActions(const Chat &chat, const QString &stableId) const override;
     bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action) override;
+    bool removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key) override;
     QVariantList pinnedMessages(const Chat &chat) const override;
     void markTimelineItemRead(const Chat &chat, const QString &stableId) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
@@ -109,6 +110,7 @@ private:
     void updateTimelineEvent(Quotient::Room *room, const QString &eventId);
     void updateTimelineEventsForMember(Quotient::Room *room, const QString &memberId);
     void updateTimelineEventsForMegolmSession(Quotient::Room *room, const QString &sessionId);
+    void appendReactions(ChatTimelineItem &item, Quotient::Room *room, const Quotient::RoomEvent &event) const;
     void showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const;
     void updateAttachmentEvent(Quotient::Room *room, const QString &eventId);
     void handleAttachmentDownloadProgress(Quotient::Room *room, const QString &resourceId, const QString &eventId,

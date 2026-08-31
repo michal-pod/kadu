@@ -42,6 +42,9 @@
 #include <Quotient/connection.h>
 #include <Quotient/csapi/authed-content-repo.h>
 #include <Quotient/database.h>
+#include <Quotient/events/encryptedevent.h>
+#include <Quotient/events/keyverificationevent.h>
+#include <Quotient/events/roommessageevent.h>
 #include <Quotient/keyverificationsession.h>
 #include <Quotient/room.h>
 
@@ -49,6 +52,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QJsonObject>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QUrl>
 
@@ -179,6 +183,7 @@ void MatrixProtocol::createConnection()
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
     connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
             [this](Quotient::KeyVerificationSession *session) {
+                registerInRoomVerificationSession(session);
                 if (m_deviceVerificationNotificationService)
                     m_deviceVerificationNotificationService->notifyVerificationRequest(account(), session);
             });
@@ -346,6 +351,89 @@ void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSessi
 
     auto *dialog = new MatrixDeviceVerificationDialog{session};
     dialog->show();
+}
+
+void MatrixProtocol::registerInRoomVerificationSession(Quotient::KeyVerificationSession *session)
+{
+    if (!m_connection || !session || !session->userVerification())
+        return;
+
+    for (auto *room : m_connection->allRooms())
+    {
+        if (!room)
+            continue;
+
+        const Quotient::TimelineItem *matchingRequest = nullptr;
+        for (const auto &item : room->messageEvents())
+        {
+            const auto *request = item.viewAs<Quotient::RoomMessageEvent>();
+            if (!request || request->senderId() != m_connection->userId()
+                || request->rawMsgtype() != QStringLiteral("m.key.verification.request")
+                || request->contentPart<QString>(QStringLiteral("from_device"))
+                       != session->remoteDeviceId())
+                continue;
+
+            if (!matchingRequest || item.index() > matchingRequest->index())
+                matchingRequest = &item;
+        }
+
+        if (!matchingRequest)
+            continue;
+
+        const auto requestEventId = matchingRequest->event()->id();
+        m_inRoomVerificationSessions.insert(requestEventId, session);
+        connect(session, &QObject::destroyed, this, [this, requestEventId, session] {
+            if (m_inRoomVerificationSessions.value(requestEventId).data() == session)
+            {
+                m_inRoomVerificationSessions.remove(requestEventId);
+                m_handledInRoomVerificationEvents.remove(requestEventId);
+            }
+        });
+
+        if (!m_inRoomVerificationRooms.contains(room))
+        {
+            m_inRoomVerificationRooms.insert(room);
+            connect(room, &QObject::destroyed, this, [this, room] {
+                m_inRoomVerificationRooms.remove(room);
+            });
+            connect(room, &Quotient::Room::addedMessages, this,
+                    [this, room](int fromIndex, int toIndex) {
+                        handleInRoomVerificationEvents(room, fromIndex, toIndex);
+                    });
+        }
+
+        handleInRoomVerificationEvents(room, room->minTimelineIndex(), room->maxTimelineIndex());
+        return;
+    }
+}
+
+void MatrixProtocol::handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex)
+{
+    if (!m_connection || !room)
+        return;
+
+    for (const auto &item : room->messageEvents())
+    {
+        if (item.index() < fromIndex || item.index() > toIndex)
+            continue;
+
+        const auto *event = item.viewAs<Quotient::KeyVerificationEvent>();
+        if (!event || event->senderId() != m_connection->userId()
+            || !event->originalEvent()
+            || event->originalEvent()->deviceId() == m_connection->deviceId())
+            continue;
+
+        const auto requestEventId = event->contentPart<QJsonObject>(QStringLiteral("m.relates_to"))
+                                        .value(QStringLiteral("event_id"))
+                                        .toString();
+        const auto session = m_inRoomVerificationSessions.value(requestEventId);
+        const auto eventId = item.event()->id();
+        if (!session || m_handledInRoomVerificationEvents[requestEventId].contains(eventId))
+            continue;
+
+        m_handledInRoomVerificationEvents[requestEventId].insert(eventId);
+        session->handleEvent(*event);
+    }
 }
 
 void MatrixProtocol::logout()

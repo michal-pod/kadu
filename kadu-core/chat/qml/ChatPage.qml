@@ -82,6 +82,11 @@ Item {
             chatViewModel.copyText(text)
     }
 
+    function removeOwnReaction(stableId, key) {
+        if (chatViewModel)
+            chatViewModel.removeOwnReaction(stableId, key)
+    }
+
     function cancelComposerContext() {
         if (chatViewModel)
             chatViewModel.cancelComposerContext()
@@ -204,6 +209,8 @@ Item {
             item.executeTimelineAction = root.executeTimelineAction
         if (item.copyText !== undefined)
             item.copyText = root.copyText
+        if (item.removeOwnReaction !== undefined)
+            item.removeOwnReaction = root.removeOwnReaction
     }
 
     function atBottom() {

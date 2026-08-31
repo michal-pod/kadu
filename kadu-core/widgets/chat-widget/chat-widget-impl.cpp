@@ -41,6 +41,7 @@
 #include "html/html-conversion.h"
 #include "html/html-string.h"
 #include "icons/icons-manager.h"
+#include "icons/kadu-icon-image-provider.h"
 #include "message/message-manager.h"
 #include "message/message-storage.h"
 #include "message/sorted-messages.h"
@@ -246,6 +247,7 @@ void ChatWidgetImpl::createGui()
                                 : nullptr;
     TimelineView->engine()->addImageProvider(
         QStringLiteral("kaduimg"), new TimelineImageProvider{CurrentChat, timelineService});
+    TimelineView->engine()->addImageProvider(QStringLiteral("kaduicon"), new KaduIconImageProvider{m_iconsManager});
     TimelineView->rootContext()->setContextProperty(QStringLiteral("_chatViewModel"), m_chatViewModel);
     TimelineView->setSource(QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/ChatPage.qml")});
     frameLayout->addWidget(TimelineView);

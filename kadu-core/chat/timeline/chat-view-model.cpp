@@ -296,7 +296,8 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
     const auto item = m_timeline->item(stableId);
     if (!item.stableId.isEmpty() && !item.state.redacted && !item.content.plainText.isEmpty())
         actions.append(QVariantMap{{QStringLiteral("id"), 0}, {QStringLiteral("key"), QStringLiteral("copy")},
-                                   {QStringLiteral("text"), tr("Copy message")}});
+                                   {QStringLiteral("text"), tr("Copy message")},
+                                   {QStringLiteral("iconName"), QStringLiteral("edit-copy")}});
 
     auto *service = timelineService(nullptr);
     if (!service)
@@ -306,7 +307,8 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
     if (available.testFlag(ChatTimelineAction::Reply))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Reply)},
                                    {QStringLiteral("key"), QStringLiteral("reply")},
-                                   {QStringLiteral("text"), tr("Reply")}});
+                                   {QStringLiteral("text"), tr("Reply")},
+                                   {QStringLiteral("iconName"), QStringLiteral("go-previous")}});
     if (available.testFlag(ChatTimelineAction::Edit))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Edit)},
                                    {QStringLiteral("key"), QStringLiteral("edit")},
@@ -314,16 +316,19 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
     if (available.testFlag(ChatTimelineAction::SaveAttachment))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::SaveAttachment)},
                                    {QStringLiteral("key"), QStringLiteral("saveAttachment")},
-                                   {QStringLiteral("text"), tr("Save attachment")}});
+                                   {QStringLiteral("text"), tr("Save attachment")},
+                                   {QStringLiteral("iconName"), QStringLiteral("document-save")}});
     if (available.testFlag(ChatTimelineAction::Delete))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Delete)},
                                    {QStringLiteral("key"), QStringLiteral("delete")},
                                    {QStringLiteral("text"), tr("Delete message")},
+                                   {QStringLiteral("iconName"), QStringLiteral("edit-delete")},
                                    {QStringLiteral("destructive"), true}});
     if (available.testFlag(ChatTimelineAction::ShowSource))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::ShowSource)},
                                    {QStringLiteral("key"), QStringLiteral("showSource")},
-                                   {QStringLiteral("text"), tr("Show source")}});
+                                   {QStringLiteral("text"), tr("Show source")},
+                                   {QStringLiteral("iconName"), QStringLiteral("help-contents")}});
     if (available.testFlag(ChatTimelineAction::Pin))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Pin)},
                                    {QStringLiteral("key"), QStringLiteral("pin")},
@@ -377,6 +382,15 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
         return;
 
     service->executeAction(m_chat, stableId, timelineAction);
+}
+
+void ChatViewModel::removeOwnReaction(const QString &stableId, const QString &key)
+{
+    if (stableId.isEmpty() || key.isEmpty())
+        return;
+
+    if (auto *service = timelineService(nullptr))
+        service->removeOwnReaction(m_chat, stableId, key);
 }
 
 void ChatViewModel::setTimelineAtNewest(bool atNewest)

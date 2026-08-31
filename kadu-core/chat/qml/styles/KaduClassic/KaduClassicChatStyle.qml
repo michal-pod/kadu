@@ -28,6 +28,7 @@ Item {
     property var timelineActions: null
     property var executeTimelineAction: null
     property var copyText: null
+    property var removeOwnReaction: null
 
     SystemPalette {
         id: systemPalette
@@ -70,6 +71,7 @@ Item {
             timelineActions: root.timelineActions
             executeTimelineAction: root.executeTimelineAction
             copyText: root.copyText
+            removeOwnReaction: root.removeOwnReaction
         }
     }
 

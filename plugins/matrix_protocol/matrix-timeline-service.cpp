@@ -84,6 +84,8 @@ MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
     m_attachmentImages.setMaxCost(64);
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRestored, this,
             &MatrixTimelineService::updateTimelineEventsForMegolmSession);
+    connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::backupRestored, this,
+            &MatrixTimelineService::refreshEncryptedEvents);
 }
 
 MatrixTimelineService::~MatrixTimelineService()
@@ -349,6 +351,25 @@ bool MatrixTimelineService::executeAction(const Chat &chat, const QString &stabl
         QMessageBox::warning(nullptr, tr("Save attachment"), tr("Could not save the attachment: %1").arg(errorText));
     });
     return true;
+}
+
+bool MatrixTimelineService::removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key)
+{
+    auto *room = roomForChat(chat);
+    if (!room || !m_connection || stableId.isEmpty() || key.isEmpty())
+        return false;
+
+    for (const auto *relatedEvent : room->relatedEvents(stableId, Quotient::EventRelation::AnnotationType))
+    {
+        const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(relatedEvent);
+        if (!reactionEvent || relatedEvent->isRedacted() || reactionEvent->key() != key ||
+            reactionEvent->senderId() != m_connection->userId())
+            continue;
+
+        room->redactEvent(relatedEvent->id());
+        return true;
+    }
+    return false;
 }
 
 QVariantList MatrixTimelineService::pinnedMessages(const Chat &chat) const
@@ -780,7 +801,7 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
     connect(room, &Quotient::Room::updatedEvent, this,
             [this, room](const QString &eventId) { updateTimelineEvent(room, eventId); });
     connect(room, &Quotient::Room::replacedEvent, this,
-            [this, room](const Quotient::RoomEvent *newEvent, const Quotient::RoomEvent *) {
+            [this, room](const Quotient::RoomEvent *newEvent, const Quotient::RoomEvent *oldEvent) {
                 if (!newEvent)
                     return;
 
@@ -789,6 +810,11 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                     return;
                 if (newEvent->isRedacted())
                 {
+                    if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(oldEvent))
+                    {
+                        updateTimelineEvent(room, reactionEvent->eventId());
+                        return;
+                    }
                     emit eventRedacted(chat, newEvent->id(), newEvent->redactionReason());
                     emit availableActionsChanged(chat);
                 }
@@ -825,6 +851,11 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         if (!event)
             continue;
 
+        if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(event))
+        {
+            updateTimelineEvent(room, reactionEvent->eventId());
+            continue;
+        }
         if (shouldHideEventFromTimeline(*event))
             continue;
 
@@ -1080,12 +1111,6 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         }
         return item;
     }
-    if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(&event))
-    {
-        item.kind = ChatTimelineItemKind::ReactionAdded;
-        item.content.plainText = tr("%1 reacted with %2.").arg(senderName, reactionEvent->key());
-        return item;
-    }
     if (const auto *redactionEvent = Quotient::eventCast<const Quotient::RedactionEvent>(&event))
     {
         item.kind = ChatTimelineItemKind::MessageRedacted;
@@ -1104,6 +1129,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         item.kind = ChatTimelineItemKind::EncryptedEvent;
         item.content.plainText = tr("Encrypted Matrix event is waiting for a key (%1).").arg(eventType);
         item.state.errorText = tr("The event could not be decrypted yet.");
+        appendReactions(item, room, event);
         return item;
     }
 
@@ -1151,31 +1177,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         return item;
     }
 
-    if (room)
-    {
-        for (const auto *relatedEvent : room->relatedEvents(event, Quotient::EventRelation::AnnotationType))
-        {
-            const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(relatedEvent);
-            if (!reactionEvent || relatedEvent->isRedacted())
-                continue;
-
-            const auto reactionKey = reactionEvent->key();
-            auto reaction = std::find_if(item.content.reactions.begin(), item.content.reactions.end(),
-                                         [&reactionKey](const ChatTimelineReaction &candidate) {
-                                             return candidate.key == reactionKey;
-                                         });
-            if (reaction == item.content.reactions.end())
-            {
-                item.content.reactions.append({reactionKey});
-                reaction = std::prev(item.content.reactions.end());
-            }
-            const auto reactionMember = room->member(reactionEvent->senderId());
-            reaction->senderIds.append(reactionEvent->senderId());
-            reaction->senderDisplayNames.append(reactionMember.id().isEmpty() ? reactionEvent->senderId()
-                                                                              : reactionMember.displayName());
-            reaction->own = reaction->own || (m_connection && reactionEvent->senderId() == m_connection->userId());
-        }
-    }
+    appendReactions(item, room, event);
 
     if (const auto fileContent = messageEvent->get<Quotient::EventContent::FileContentBase>())
     {
@@ -1270,6 +1272,11 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
         if (!event)
             return;
+        if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(event))
+        {
+            updateTimelineEvent(room, reactionEvent->eventId());
+            return;
+        }
         if (shouldHideEventFromTimeline(*event))
             return;
         if (event->matrixType() == QStringLiteral("m.room.encrypted"))
@@ -1313,6 +1320,36 @@ void MatrixTimelineService::updateTimelineEventsForMegolmSession(Quotient::Room 
         if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>();
             encryptedEvent && encryptedEvent->sessionId() == sessionId)
             updateTimelineEvent(room, timelineItem->id());
+}
+
+void MatrixTimelineService::appendReactions(ChatTimelineItem &item, Quotient::Room *room,
+                                            const Quotient::RoomEvent &event) const
+{
+    if (!room)
+        return;
+
+    for (const auto *relatedEvent : room->relatedEvents(event, Quotient::EventRelation::AnnotationType))
+    {
+        const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(relatedEvent);
+        if (!reactionEvent || relatedEvent->isRedacted())
+            continue;
+
+        const auto reactionKey = reactionEvent->key();
+        auto reaction = std::find_if(item.content.reactions.begin(), item.content.reactions.end(),
+                                     [&reactionKey](const ChatTimelineReaction &candidate) {
+                                         return candidate.key == reactionKey;
+                                     });
+        if (reaction == item.content.reactions.end())
+        {
+            item.content.reactions.append({reactionKey});
+            reaction = std::prev(item.content.reactions.end());
+        }
+        const auto reactionMember = room->member(reactionEvent->senderId());
+        reaction->senderIds.append(reactionEvent->senderId());
+        reaction->senderDisplayNames.append(reactionMember.id().isEmpty() ? reactionEvent->senderId()
+                                                                          : reactionMember.displayName());
+        reaction->own = reaction->own || (m_connection && reactionEvent->senderId() == m_connection->userId());
+    }
 }
 
 void MatrixTimelineService::refreshEncryptedEvents()
@@ -1465,6 +1502,13 @@ void MatrixTimelineService::clearAttachmentDownloads()
 bool MatrixTimelineService::shouldHideEventFromTimeline(const Quotient::RoomEvent &event)
 {
     if (Quotient::eventCast<const Quotient::RedactionEvent>(&event))
+        return true;
+    if (Quotient::eventCast<const Quotient::ReactionEvent>(&event))
+        return true;
+    if (event.matrixType().startsWith(QStringLiteral("m.key.verification.")))
+        return true;
+    if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(&event);
+        messageEvent && messageEvent->rawMsgtype() == QStringLiteral("m.key.verification.request"))
         return true;
 
     const auto eventType = event.matrixType();

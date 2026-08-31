@@ -30,6 +30,7 @@ namespace Quotient
 class Connection;
 class EncryptedEvent;
 class Room;
+class SSSSHandler;
 }
 
 class MatrixMegolmSessionRecovery final : public QObject
@@ -44,11 +45,15 @@ public:
 
 signals:
     void sessionRestored(Quotient::Room *room, const QString &sessionId);
+    void backupRestored();
 
 private:
     QPointer<Quotient::Connection> m_connection;
+    QPointer<Quotient::SSSSHandler> m_crossSigningRecovery;
     QSet<QString> m_pendingRequests;
     QHash<QString, QDateTime> m_requestAttempts;
+    bool m_crossSigningRequested = false;
 
     void finishRequest(const QString &requestId, Quotient::Connection *connection);
+    void requestBackupKeyFromVerifiedDevice();
 };

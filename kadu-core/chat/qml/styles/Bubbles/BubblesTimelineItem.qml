@@ -60,6 +60,7 @@ Item {
     property var timelineActions: null
     property var executeTimelineAction: null
     property var copyText: null
+    property var removeOwnReaction: null
     property string contextSelectedText: ""
     property string contextLink: ""
 
@@ -110,14 +111,6 @@ Item {
             return formattedText
         return plainText
     }
-    function reactionsText() {
-        const labels = []
-        for (let index = 0; index < reactions.length; ++index) {
-            const reaction = reactions[index]
-            labels.push(reaction.key + " " + reaction.senderIds.length)
-        }
-        return labels.join("  ")
-    }
     function replyText() {
         if (reply && reply.found)
             return qsTr("Reply to %1: %2").arg(reply.senderDisplayName).arg(reply.plainText)
@@ -140,23 +133,6 @@ Item {
     }
     function availableActions() {
         return timelineActions ? timelineActions(stableId) : []
-    }
-    function actionSymbol(actionKey) {
-        if (actionKey === "reply")
-            return "↩"
-        if (actionKey === "edit")
-            return "✎"
-        if (actionKey === "delete")
-            return "⌫"
-        if (actionKey === "saveAttachment")
-            return "⇩"
-        if (actionKey === "showSource")
-            return "{}"
-        if (actionKey === "pin")
-            return "⌖"
-        if (actionKey === "unpin")
-            return "⊘"
-        return "⋯"
     }
     function triggerAction(action) {
         if (executeTimelineAction)
@@ -214,6 +190,7 @@ Item {
             delegate: MenuItem {
                 required property var modelData
                 text: modelData.text
+                icon.source: modelData.iconName ? "image://kaduicon/" + encodeURIComponent(modelData.iconName) : ""
                 onTriggered: root.triggerAction(modelData.id)
             }
         }
@@ -327,37 +304,15 @@ Item {
                         id: hoverHandler
                     }
 
-                    Row {
+                    KaduChat.TimelineActionsBar {
                         anchors.top: parent.top
                         anchors.right: parent.right
                         anchors.margins: 4
-                        spacing: 2
-                        visible: hoverHandler.hovered && root.availableActions().length > 0
+                        actions: root.availableActions()
+                        executeAction: root.triggerAction
+                        fallbackTextColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                        shown: hoverHandler.hovered
                         z: 2
-
-                        Repeater {
-                            model: root.availableActions()
-
-                            delegate: ToolButton {
-                                required property int index
-                                required property var modelData
-                                visible: index < 3
-                                text: root.actionSymbol(modelData.key)
-                                font.pixelSize: 14
-                                ToolTip.visible: hovered
-                                ToolTip.text: modelData.text
-                                onClicked: root.triggerAction(modelData.id)
-                            }
-                        }
-
-                        ToolButton {
-                            visible: root.availableActions().length > 3
-                            text: "⋯"
-                            font.pixelSize: 16
-                            ToolTip.visible: hovered
-                            ToolTip.text: qsTr("More actions")
-                            onClicked: eventMenu.popup()
-                        }
                     }
 
                     Column {
@@ -454,12 +409,14 @@ Item {
                             }
                         }
 
-                        Text {
-                            visible: root.reactions.length > 0
+                        KaduChat.TimelineReactionsBar {
                             width: parent.width
-                            text: root.reactionsText()
-                            color: root.ownEvent ? root.outgoingTextColor : root.textColor
-                            font.pixelSize: 12
+                            reactions: root.reactions
+                            removeOwnReaction: root.removeOwnReaction
+                            textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                            accentColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
+                            backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
+                            shown: root.reactions.length > 0 || hoverHandler.hovered
                         }
 
                         Text {

@@ -573,7 +573,7 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
             continue;
         if (!event->transactionId().isEmpty() && m_localTransactionIds.remove(event->transactionId()))
             continue;
-        if (event->isRedacted() || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
+        if (event->isRedacted() || event->rawMsgtype() != QStringLiteral("m.text"))
             continue;
 
         // The decrypted RoomMessageEvent is a view of the timeline event. Keep the ID

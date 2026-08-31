@@ -21,7 +21,9 @@
 
 #include "protocols/protocol.h"
 
+#include <QtCore/QHash>
 #include <QtCore/QPointer>
+#include <QtCore/QSet>
 #include <QtCore/QStringList>
 #include <injeqt/injeqt.h>
 
@@ -45,6 +47,7 @@ namespace Quotient
 {
 class Connection;
 class KeyVerificationSession;
+class Room;
 }
 
 class MatrixProtocol final : public Protocol
@@ -113,12 +116,17 @@ private:
     qint64 m_maximumAttachmentSize = 0;
     bool m_recoveryKeyRestorePrompted = false;
     bool m_applicationQuitting = false;
+    QHash<QString, QPointer<Quotient::KeyVerificationSession>> m_inRoomVerificationSessions;
+    QHash<QString, QSet<QString>> m_handledInRoomVerificationEvents;
+    QSet<Quotient::Room *> m_inRoomVerificationRooms;
 
     void createConnection();
     void handleConnectionError(const QString &message, const QString &details = {});
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
     void showDeviceVerificationDialog(Quotient::KeyVerificationSession *session);
+    void registerInRoomVerificationSession(Quotient::KeyVerificationSession *session);
+    void handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex);
 
 private slots:
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);

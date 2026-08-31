@@ -69,6 +69,15 @@ public:
     virtual bool executeAction(const Chat &chat, const QString &stableId, ChatTimelineAction action);
 
     /**
+     * @short Remove the current user's annotation with @a key from a timeline event.
+     *
+     * A reaction chip only passes its target event ID and key across the QML
+     * boundary. The protocol keeps ownership of reaction event IDs and decides
+     * whether the current user has an annotation that can be removed.
+     */
+    virtual bool removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key);
+
+    /**
      * @short Return protocol-native pinned entries for a chat.
      *
      * The list keeps the protocol order and contains lightweight QVariantMap

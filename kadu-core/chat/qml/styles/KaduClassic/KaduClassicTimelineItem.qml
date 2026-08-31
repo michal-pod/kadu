@@ -60,6 +60,7 @@ Item {
     property var timelineActions: null
     property var executeTimelineAction: null
     property var copyText: null
+    property var removeOwnReaction: null
     property string contextSelectedText: ""
     property string contextLink: ""
 
@@ -107,14 +108,6 @@ Item {
             return formattedText
         return plainText
     }
-    function reactionsText() {
-        const labels = []
-        for (let index = 0; index < reactions.length; ++index) {
-            const reaction = reactions[index]
-            labels.push(reaction.key + " " + reaction.senderIds.length)
-        }
-        return labels.join("  ")
-    }
     function replyText() {
         if (reply && reply.found)
             return qsTr("Reply to %1: %2").arg(reply.senderDisplayName).arg(reply.plainText)
@@ -131,23 +124,6 @@ Item {
     }
     function availableActions() {
         return timelineActions ? timelineActions(stableId) : []
-    }
-    function actionSymbol(actionKey) {
-        if (actionKey === "reply")
-            return "↩"
-        if (actionKey === "edit")
-            return "✎"
-        if (actionKey === "delete")
-            return "⌫"
-        if (actionKey === "saveAttachment")
-            return "⇩"
-        if (actionKey === "showSource")
-            return "{}"
-        if (actionKey === "pin")
-            return "⌖"
-        if (actionKey === "unpin")
-            return "⊘"
-        return "⋯"
     }
     function triggerAction(action) {
         if (executeTimelineAction)
@@ -205,6 +181,7 @@ Item {
             delegate: MenuItem {
                 required property var modelData
                 text: modelData.text
+                icon.source: modelData.iconName ? "image://kaduicon/" + encodeURIComponent(modelData.iconName) : ""
                 onTriggered: root.triggerAction(modelData.id)
             }
         }
@@ -311,40 +288,6 @@ Item {
                                                                : root.customColors.buddyBackground)
                                              : (root.darkSurface ? "#ffffff" : "#000000")
                 opacity: root.usesCustomColors ? 1.0 : (hoverHandler.hovered ? 0.08 : 0.0)
-            }
-
-            Row {
-                id: actionButtons
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 4
-                spacing: 2
-                visible: hoverHandler.hovered && root.availableActions().length > 0
-                z: 2
-
-                Repeater {
-                    model: root.availableActions()
-
-                    delegate: ToolButton {
-                        required property int index
-                        required property var modelData
-                        visible: index < 3
-                        text: root.actionSymbol(modelData.key)
-                        font.pixelSize: 14
-                        ToolTip.visible: hovered
-                        ToolTip.text: modelData.text
-                        onClicked: root.triggerAction(modelData.id)
-                    }
-                }
-
-                ToolButton {
-                    visible: root.availableActions().length > 3
-                    text: "⋯"
-                    font.pixelSize: 16
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("More actions")
-                    onClicked: eventMenu.popup()
-                }
             }
 
             Column {
@@ -480,6 +423,14 @@ Item {
                     font.italic: true
                 }
 
+                KaduChat.TimelineActionsBar {
+                    width: parent.width
+                    actions: root.availableActions()
+                    executeAction: root.triggerAction
+                    fallbackTextColor: root.mutedTextColor
+                    shown: hoverHandler.hovered
+                }
+
                 Repeater {
                     model: root.attachments.filter(function(attachment) {
                         return Number(attachment.kind) !== 0
@@ -521,12 +472,14 @@ Item {
                     }
                 }
 
-                Text {
-                    visible: root.reactions.length > 0
+                KaduChat.TimelineReactionsBar {
                     width: parent.width
-                    text: root.reactionsText()
-                    color: root.textColor
-                    font.pixelSize: 12
+                    reactions: root.reactions
+                    removeOwnReaction: root.removeOwnReaction
+                    textColor: root.textColor
+                    accentColor: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
+                    backgroundColor: root.darkSurface ? "#3d4652" : "#e8edf3"
+                    shown: root.reactions.length > 0 || hoverHandler.hovered
                 }
 
                 Text {
