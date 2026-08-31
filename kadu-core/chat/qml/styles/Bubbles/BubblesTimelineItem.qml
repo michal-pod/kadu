@@ -55,6 +55,7 @@ Item {
     required property string errorText
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var chatFont: ({ "family": "", "pointSize": 10, "bold": false, "italic": false, "underline": false })
     property var openUrl: null
     property var openImage: null
     property var openLocation: null
@@ -80,6 +81,13 @@ Item {
                                         systemPalette.base.g * 0.7152 +
                                         systemPalette.base.b * 0.0722 < 0.5)
     readonly property bool usesCustomColors: customColors && customColors.enabled
+    readonly property string configuredFontFamily: chatFont && chatFont.family ? chatFont.family : ""
+    readonly property bool configuredFontForced: chatFont && chatFont.forced === true
+    readonly property real configuredFontPointSize: configuredFontForced && Number(chatFont.pointSize) > 0
+                                                  ? Number(chatFont.pointSize) : 10
+    readonly property bool configuredFontBold: configuredFontForced && chatFont.bold
+    readonly property bool configuredFontItalic: configuredFontForced && chatFont.italic
+    readonly property bool configuredFontUnderline: configuredFontForced && chatFont.underline
     readonly property color textColor: usesCustomColors ? customColors.buddyText
                                                          : (colorScheme === "System" ? systemPalette.text
                                                                                      : (darkSurface ? "#f2f4f8" : "#202020"))
@@ -217,13 +225,15 @@ Item {
             text: Qt.formatDate(root.timestamp, "dddd, d MMMM")
             color: root.textColor
             opacity: 0.75
-            font.pixelSize: 12
+            font.family: root.configuredFontFamily
+            font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
         }
 
         Item {
             id: systemEventItem
             visible: root.isSystemEvent()
-            width: parent.width
+            x: 12
+            width: parent.width - 32
             implicitHeight: Math.max(systemSenderAvatar.visible ? systemSenderAvatar.height : 0,
                                      systemEventLabel.implicitHeight) + 6
 
@@ -279,7 +289,8 @@ Item {
                     color: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
                     elide: Text.ElideRight
                     font.bold: true
-                    font.pixelSize: 12
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
                 }
 
                 Text {
@@ -293,7 +304,8 @@ Item {
                     opacity: 0.80
                     elide: Text.ElideRight
                     font.italic: true
-                    font.pixelSize: 12
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
                 }
             }
 
@@ -317,15 +329,20 @@ Item {
             }
         }
 
-        Row {
+        Item {
+            id: messageItem
             visible: !root.isSystemEvent()
-            width: parent.width
-            layoutDirection: root.ownEvent ? Qt.RightToLeft : Qt.LeftToRight
-            spacing: 7
+            x: 12
+            width: parent.width - 32
+            implicitHeight: Math.max(messageColumn.implicitHeight,
+                                     senderAvatar.visible ? senderAvatar.y + senderAvatar.height : 0)
 
             Rectangle {
                 id: senderAvatar
                 visible: root.showAvatar && !root.emote
+                x: root.ownEvent ? parent.width - width : 0
+                y: messageColumn.y + (senderName.visible
+                                      ? senderName.implicitHeight + messageColumn.spacing : 0)
                 width: 28
                 height: 28
                 radius: width / 2
@@ -351,21 +368,33 @@ Item {
             }
 
             Column {
-                width: Math.min(parent.width - (senderAvatar.visible ? 42 : 0), Math.max(120, bubble.implicitWidth))
+                id: messageColumn
+                x: root.ownEvent ? (senderAvatar.visible ? parent.width - senderAvatar.width - 7 - width
+                                                         : parent.width - width)
+                                 : (senderAvatar.visible ? senderAvatar.width + 7 : 0)
+                width: Math.max(1, Math.min(parent.width - (senderAvatar.visible ? senderAvatar.width + 7 : 0),
+                                              Math.max(160, Math.floor(parent.width * 0.70))))
                 spacing: 2
 
                 Text {
+                    id: senderName
                     visible: root.showSender && !root.emote
+                    width: parent.width
                     text: root.ownEvent ? qsTr("You") : root.senderDisplayName
                     color: root.mutedTextColor
+                    horizontalAlignment: root.ownEvent ? Text.AlignRight : Text.AlignLeft
                     font.bold: true
                     font.italic: false
-                    font.pixelSize: 12
+                    font.family: root.configuredFontFamily
+                    font.pointSize: root.configuredFontPointSize
                 }
 
                 Rectangle {
                     id: bubble
-                    width: root.hasImageAttachments() ? parent.width : Math.min(parent.width, message.implicitWidth + 22)
+                    x: root.ownEvent ? parent.width - width : 0
+                    width: root.hasImageAttachments() || root.locationUri.length > 0 || root.attachments.length > 0
+                           ? parent.width
+                           : Math.min(parent.width, Math.max(112, message.implicitWidth + 22))
                     implicitHeight: bubbleContent.implicitHeight + 14
                     radius: 8
                     color: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
@@ -430,7 +459,11 @@ Item {
                                 wrapMode: TextEdit.Wrap
                                 readOnly: true
                                 selectByMouse: true
-                                font.italic: root.emote
+                                font.family: root.configuredFontFamily
+                                font.pointSize: root.configuredFontPointSize
+                                font.bold: root.configuredFontBold
+                                font.italic: root.configuredFontItalic || root.emote
+                                font.underline: root.configuredFontUnderline
                                 onLinkActivated: {
                                     if (root.openUrl)
                                         root.openUrl(link)
@@ -494,40 +527,51 @@ Item {
                             }
                         }
 
-                        KaduChat.TimelineReactionsBar {
-                            width: parent.width
-                            reactions: root.reactions
-                            removeOwnReaction: root.removeOwnReaction
-                            textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
-                            accentColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
-                            backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
-                        }
-
                         Text {
                             visible: root.edited && !root.redacted
                             width: parent.width
                             text: qsTr("edited")
                             color: root.ownEvent ? root.outgoingTextColor : root.textColor
                             opacity: 0.70
-                            font.pixelSize: 11
+                            font.family: root.configuredFontFamily
+                            font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                             font.italic: true
                         }
                     }
                 }
 
+                KaduChat.TimelineReactionsBar {
+                    x: bubble.x
+                    width: bubble.width
+                    alignRight: root.ownEvent
+                    reactions: root.reactions
+                    removeOwnReaction: root.removeOwnReaction
+                    textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                    accentColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
+                    backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
+                }
+
                 Text {
                     visible: root.showTimestamp
+                    x: bubble.x
+                    width: bubble.width
                     text: Qt.formatTime(root.timestamp, "HH:mm")
                     color: root.timestampColor
+                    horizontalAlignment: root.ownEvent ? Text.AlignRight : Text.AlignLeft
                     opacity: 0.70
-                    font.pixelSize: 11
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                 }
 
                 Text {
                     visible: root.ownEvent && root.deliveryText().length > 0
+                    x: bubble.x
+                    width: bubble.width
                     text: root.deliveryText()
                     color: root.deliveryState === 4 ? "#ff8b8b" : root.mutedTextColor
-                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignRight
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                 }
             }
         }

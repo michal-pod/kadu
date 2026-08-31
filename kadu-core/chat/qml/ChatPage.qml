@@ -35,6 +35,10 @@ Item {
                                                     ? themeColorSchemeOverride
                                                     : (chatViewModel ? chatViewModel.themeColorScheme : "System")
     readonly property var activeCustomColors: chatViewModel ? chatViewModel.customColors : ({ "enabled": false })
+    readonly property var activeChatFont: chatViewModel ? chatViewModel.chatFont
+                                                        : ({ "family": "", "pointSize": 10,
+                                                             "bold": false, "italic": false,
+                                                             "underline": false, "forced": false })
     readonly property var activeTheme: themeLoader.item
     readonly property bool composerActive: chatViewModel && chatViewModel.composerActive
     property bool initialPositioned: false
@@ -112,6 +116,8 @@ Item {
             item.colorScheme = Qt.binding(function() { return root.activeThemeColorScheme })
         if (item.customColors !== undefined)
             item.customColors = Qt.binding(function() { return root.activeCustomColors })
+        if (item.chatFont !== undefined)
+            item.chatFont = Qt.binding(function() { return root.activeChatFont })
         if (item.context !== undefined)
             item.context = Qt.binding(function() {
                 return root.chatViewModel ? root.chatViewModel.composerContext : ({})
@@ -191,6 +197,8 @@ Item {
             item.senderAvatarSource = Qt.binding(function() { return delegate.senderAvatarSource })
         if (item.senderColor !== undefined)
             item.senderColor = Qt.binding(function() { return delegate.senderColor })
+        if (item.chatFont !== undefined)
+            item.chatFont = Qt.binding(function() { return root.activeChatFont })
         item.plainText = Qt.binding(function() { return delegate.plainText })
         item.formattedText = Qt.binding(function() { return delegate.formattedText })
         if (item.replyToId !== undefined)
@@ -316,6 +324,8 @@ Item {
             item.colorScheme = root.activeThemeColorScheme
             if (item.customColors !== undefined)
                 item.customColors = root.activeCustomColors
+            if (item.chatFont !== undefined)
+                item.chatFont = root.activeChatFont
             if (item.openUrl !== undefined)
                 item.openUrl = root.openUrl
             if (item.timelineActions !== undefined)
@@ -338,6 +348,11 @@ Item {
     onActiveCustomColorsChanged: {
         if (themeLoader.item && themeLoader.item.customColors !== undefined)
             themeLoader.item.customColors = activeCustomColors
+    }
+
+    onActiveChatFontChanged: {
+        if (themeLoader.item && themeLoader.item.chatFont !== undefined)
+            themeLoader.item.chatFont = activeChatFont
     }
 
     Rectangle {
@@ -653,7 +668,8 @@ Item {
                     "redacted": delegateRoot.redacted,
                     "encrypted": delegateRoot.encrypted,
                     "decryptionState": delegateRoot.decryptionState,
-                    "errorText": delegateRoot.errorText
+                    "errorText": delegateRoot.errorText,
+                    "chatFont": root.activeChatFont
                 })
                 if (rendererItem) {
                     rendererItem.y = Qt.binding(function() { return newMessagesMarker.implicitHeight })

@@ -21,6 +21,7 @@ Item {
     property color accentColor: "#4f8ecb"
     property color backgroundColor: "#e8edf3"
     property real leftInset: 0
+    property bool alignRight: false
 
     implicitWidth: reactionRow.implicitWidth
     implicitHeight: reactions.length > 0 ? reactionRow.implicitHeight : 0
@@ -33,8 +34,10 @@ Item {
 
     Row {
         id: reactionRow
-        anchors.left: parent.left
-        anchors.leftMargin: root.leftInset
+        anchors.left: root.alignRight ? undefined : parent.left
+        anchors.leftMargin: root.alignRight ? 0 : root.leftInset
+        anchors.right: root.alignRight ? parent.right : undefined
+        anchors.rightMargin: root.alignRight ? root.leftInset : 0
         spacing: 4
 
         Repeater {

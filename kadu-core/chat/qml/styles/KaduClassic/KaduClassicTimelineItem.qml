@@ -55,6 +55,7 @@ Item {
     required property string errorText
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var chatFont: ({ "family": "", "pointSize": 10, "bold": false, "italic": false, "underline": false })
     property var openUrl: null
     property var openImage: null
     property var openLocation: null
@@ -80,6 +81,13 @@ Item {
                                         systemPalette.base.g * 0.7152 +
                                         systemPalette.base.b * 0.0722 < 0.5)
     readonly property bool usesCustomColors: customColors && customColors.enabled
+    readonly property string configuredFontFamily: chatFont && chatFont.family ? chatFont.family : ""
+    readonly property bool configuredFontForced: chatFont && chatFont.forced === true
+    readonly property real configuredFontPointSize: configuredFontForced && Number(chatFont.pointSize) > 0
+                                                  ? Number(chatFont.pointSize) : 10
+    readonly property bool configuredFontBold: configuredFontForced && chatFont.bold
+    readonly property bool configuredFontItalic: configuredFontForced && chatFont.italic
+    readonly property bool configuredFontUnderline: configuredFontForced && chatFont.underline
     readonly property color incomingSenderColor: usesCustomColors ? customColors.buddyNick
                                                                   : (colorScheme === "System" ? systemPalette.text
                                                                                               : (darkSurface ? "#7db8f4" : "#1f5d9c"))
@@ -223,7 +231,8 @@ Item {
                     text: Qt.formatDate(root.timestamp, "dddd, d MMMM")
                     color: root.timestampColor
                     opacity: 0.75
-                    font.pixelSize: 11
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                 }
 
                 Rectangle {
@@ -295,7 +304,8 @@ Item {
                     color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
                     elide: Text.ElideRight
                     font.bold: true
-                    font.pixelSize: 12
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
                 }
 
                 Text {
@@ -309,7 +319,8 @@ Item {
                     opacity: 0.80
                     elide: Text.ElideRight
                     font.italic: true
-                    font.pixelSize: 12
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
                 }
             }
 
@@ -413,6 +424,8 @@ Item {
                         color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
                         font.bold: true
                         font.italic: false
+                        font.family: root.configuredFontFamily
+                        font.pointSize: root.configuredFontPointSize
                     }
 
                     Text {
@@ -423,7 +436,8 @@ Item {
                         text: Qt.formatTime(root.timestamp, "HH:mm")
                         color: root.timestampColor
                         opacity: 0.70
-                        font.pixelSize: 11
+                        font.family: root.configuredFontFamily
+                        font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                     }
                 }
 
@@ -455,8 +469,11 @@ Item {
                         wrapMode: TextEdit.Wrap
                         readOnly: true
                         selectByMouse: true
-                        font.pixelSize: 13
-                        font.italic: root.emote
+                        font.family: root.configuredFontFamily
+                        font.pointSize: root.configuredFontPointSize
+                        font.bold: root.configuredFontBold
+                        font.italic: root.configuredFontItalic || root.emote
+                        font.underline: root.configuredFontUnderline
                         onLinkActivated: {
                             if (root.openUrl)
                                 root.openUrl(link)
@@ -488,7 +505,8 @@ Item {
                         text: Qt.formatTime(root.timestamp, "HH:mm")
                         color: root.timestampColor
                         opacity: 0.70
-                        font.pixelSize: 11
+                        font.family: root.configuredFontFamily
+                        font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                     }
                 }
 
@@ -498,7 +516,8 @@ Item {
                     text: root.replyText()
                     color: root.mutedTextColor
                     elide: Text.ElideMiddle
-                    font.pixelSize: 11
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                 }
 
                 Text {
@@ -506,7 +525,8 @@ Item {
                     width: parent.width
                     text: qsTr("edited")
                     color: root.mutedTextColor
-                    font.pixelSize: 11
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                     font.italic: true
                 }
 
@@ -572,7 +592,8 @@ Item {
                     text: root.deliveryText()
                     color: root.deliveryState === 4 ? root.failureColor : root.mutedTextColor
                     opacity: root.deliveryState === 4 ? 1.0 : 0.50
-                    font.pixelSize: 11
+                    font.family: root.configuredFontFamily
+                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                 }
             }
 

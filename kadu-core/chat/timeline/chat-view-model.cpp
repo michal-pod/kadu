@@ -40,6 +40,7 @@
 #include <QtCore/QJsonParseError>
 #include <QtCore/QStringList>
 #include <QtGui/QClipboard>
+#include <QtGui/QFont>
 #include <QtGui/QGuiApplication>
 #include <QtWidgets/QMessageBox>
 
@@ -190,6 +191,19 @@ bool ChatViewModel::loadingOlder() const
 bool ChatViewModel::hasOlder() const
 {
     return m_timelineController && m_timelineController->hasOlder();
+}
+
+QVariantMap ChatViewModel::chatFont() const
+{
+    const auto font = m_chatConfigurationHolder ? m_chatConfigurationHolder->chatFont() : QFont{};
+    const auto pointSize = font.pointSizeF() > 0.0 ? font.pointSizeF() : 10.0;
+
+    return {{QStringLiteral("family"), font.family()},
+            {QStringLiteral("pointSize"), pointSize},
+            {QStringLiteral("bold"), font.bold()},
+            {QStringLiteral("italic"), font.italic()},
+            {QStringLiteral("underline"), font.underline()},
+            {QStringLiteral("forced"), m_chatConfigurationHolder && m_chatConfigurationHolder->forceCustomChatFont()}};
 }
 
 QString ChatViewModel::readMarkerId() const
@@ -582,6 +596,7 @@ void ChatViewModel::styleChanged()
 void ChatViewModel::customColorsChangedSlot()
 {
     emit customColorsChanged();
+    emit chatFontChanged();
 }
 
 void ChatViewModel::timelineStateChangedSlot()

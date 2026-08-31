@@ -54,6 +54,7 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(QUrl themeSource READ themeSource NOTIFY themeSourceChanged)
     Q_PROPERTY(QString themeColorScheme READ themeColorScheme NOTIFY themeSourceChanged)
     Q_PROPERTY(QVariantMap customColors READ customColors NOTIFY customColorsChanged)
+    Q_PROPERTY(QVariantMap chatFont READ chatFont NOTIFY chatFontChanged)
     Q_PROPERTY(bool roomInfoVisible READ roomInfoVisible NOTIFY roomDetailsChanged)
     Q_PROPERTY(QString roomAvatarSource READ roomAvatarSource NOTIFY roomDetailsChanged)
     Q_PROPERTY(QString roomName READ roomName NOTIFY roomDetailsChanged)
@@ -90,6 +91,7 @@ public:
     QUrl themeSource() const;
     QString themeColorScheme() const;
     QVariantMap customColors() const;
+    QVariantMap chatFont() const;
     bool roomInfoVisible() const;
     QString roomAvatarSource() const;
     QString roomName() const;
@@ -134,6 +136,7 @@ signals:
     void titleChanged();
     void themeSourceChanged();
     void customColorsChanged();
+    void chatFontChanged();
     void roomDetailsChanged();
     void timelineStateChanged();
     void timelineActionsChanged();

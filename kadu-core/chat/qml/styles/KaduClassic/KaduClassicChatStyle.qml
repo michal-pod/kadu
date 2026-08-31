@@ -24,6 +24,7 @@ Item {
     visible: false
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var chatFont: ({ "family": "", "pointSize": 10, "bold": false, "italic": false, "underline": false })
     property var openUrl: null
     property var openLocation: null
     property var timelineActions: null
@@ -71,6 +72,7 @@ Item {
         KaduClassicTimelineItem {
             colorScheme: root.colorScheme
             customColors: root.customColors
+            chatFont: root.chatFont
             openUrl: root.openUrl
             openLocation: root.openLocation
             timelineActions: root.timelineActions
