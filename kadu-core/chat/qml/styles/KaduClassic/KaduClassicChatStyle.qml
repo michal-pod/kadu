@@ -58,6 +58,11 @@ Item {
     property color loadingTextColor: colorScheme === "System" ? systemPalette.text
                                                         : (darkSurface ? "#f2f4f8" : "#202020")
     property color textColor: loadingTextColor
+    property color jumpToLatestTextColor: darkSurface ? "#f2f4f8" : "#202020"
+    property color jumpToLatestBackgroundColor: darkSurface ? "#303944" : "#f8fbfe"
+    property color jumpToLatestBorderColor: darkSurface ? "#586675" : "#8fb9d9"
+    property color jumpToLatestHoverColor: darkSurface ? "#344b60" : "#d4e7f5"
+    property color jumpToLatestHoverTextColor: darkSurface ? "#ffffff" : "#202020"
     property color roomHeaderBackgroundColor: colorScheme === "System" ? systemPalette.alternateBase
                                                                   : (darkSurface ? "#2d323a" : "#f4f6f8")
     property int timelineMargin: 8

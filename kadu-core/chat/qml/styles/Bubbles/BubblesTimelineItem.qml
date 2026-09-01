@@ -132,10 +132,15 @@ Item {
             return messageText()
         return "* " + (ownEvent ? qsTr("You") : senderDisplayName) + " " + plainText
     }
-    function replyText() {
+    function replySenderText() {
+        if (reply && reply.found && reply.senderDisplayName)
+            return reply.senderDisplayName
+        return qsTr("Original message")
+    }
+    function replyPreviewText() {
         if (reply && reply.found)
-            return qsTr("Reply to %1: %2").arg(reply.senderDisplayName).arg(reply.plainText)
-        return qsTr("Reply to: %1").arg(replyToId)
+            return reply.plainText && reply.plainText.length > 0 ? reply.plainText : qsTr("Message")
+        return qsTr("Message unavailable")
     }
     function deliveryText() {
         if (deliveryState === 1)
@@ -402,7 +407,8 @@ Item {
                            ? Math.min(parent.width, 380)
                            : (root.attachments.length > 0
                               ? parent.width
-                              : Math.min(parent.width, Math.max(112, message.implicitWidth + 22)))
+                              : Math.min(parent.width, Math.max(root.replyToId.length > 0 ? 240 : 112,
+                                                                message.implicitWidth + 22)))
                     implicitHeight: bubbleContent.implicitHeight + 14
                     radius: 8
                     color: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
@@ -417,14 +423,64 @@ Item {
                         anchors.margins: 10
                         spacing: 4
 
-                        Text {
+                        Rectangle {
+                            id: replyBubble
+
                             visible: root.replyToId.length > 0
                             width: parent.width
-                            text: root.replyText()
-                            color: root.ownEvent ? root.outgoingTextColor : root.textColor
-                            opacity: 0.70
-                            elide: Text.ElideMiddle
-                            font.pixelSize: 11
+                            implicitHeight: replyContent.implicitHeight + 12
+                            radius: 6
+                            color: Qt.rgba((root.ownEvent ? root.outgoingTextColor : root.textColor).r,
+                                           (root.ownEvent ? root.outgoingTextColor : root.textColor).g,
+                                           (root.ownEvent ? root.outgoingTextColor : root.textColor).b,
+                                           0.10)
+                            border.width: 1
+                            border.color: Qt.rgba((root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor).r,
+                                                  (root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor).g,
+                                                  (root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor).b,
+                                                  0.42)
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 3
+                                radius: 2
+                                color: root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor
+                            }
+
+                            Column {
+                                id: replyContent
+
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10
+                                anchors.right: parent.right
+                                anchors.rightMargin: 7
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+
+                                Text {
+                                    width: parent.width
+                                    text: root.replySenderText()
+                                    color: root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor
+                                    elide: Text.ElideRight
+                                    font.family: root.configuredFontFamily
+                                    font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: root.replyPreviewText()
+                                    color: root.ownEvent ? root.outgoingTextColor : root.textColor
+                                    opacity: 0.78
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                    font.family: root.configuredFontFamily
+                                    font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
+                                }
+                            }
                         }
 
                         Item {
@@ -539,6 +595,10 @@ Item {
                     alignRight: root.layoutAsOutgoing
                     reactions: root.reactions
                     removeOwnReaction: root.removeOwnReaction
+                    stableId: root.stableId
+                    removeReactionIconSource: "image://kaduicon/edit-delete"
+                    removeReactionHoverColor: root.darkSurface ? "#344b60" : "#d4e7f5"
+                    removeReactionHoverTextColor: root.darkSurface ? "#ffffff" : "#202020"
                     textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
                     accentColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
                     backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor

@@ -127,10 +127,15 @@ Item {
             return messageText()
         return "* " + (ownEvent ? qsTr("You") : senderDisplayName) + " " + plainText
     }
-    function replyText() {
+    function replySenderText() {
+        if (reply && reply.found && reply.senderDisplayName)
+            return reply.senderDisplayName
+        return qsTr("Original message")
+    }
+    function replyPreviewText() {
         if (reply && reply.found)
-            return qsTr("Reply to %1: %2").arg(reply.senderDisplayName).arg(reply.plainText)
-        return qsTr("Reply to: %1").arg(replyToId)
+            return reply.plainText && reply.plainText.length > 0 ? reply.plainText : qsTr("Message")
+        return qsTr("Message unavailable")
     }
     function deliveryText() {
         if (deliveryState === 1)
@@ -444,6 +449,69 @@ Item {
                     }
                 }
 
+                Rectangle {
+                    id: replyBubble
+
+                    visible: root.replyToId.length > 0
+                    x: 30
+                    width: Math.min(parent.width - x,
+                                    Math.max(180, Math.min(360, replyPreview.implicitWidth + 28)))
+                    implicitHeight: replyContent.implicitHeight + 12
+                    radius: 6
+                    color: root.darkSurface ? "#303a45" : "#edf2f7"
+                    border.width: 1
+                    border.color: Qt.rgba((root.ownEvent ? root.outgoingSenderColor
+                                                          : root.incomingSenderColor).r,
+                                          (root.ownEvent ? root.outgoingSenderColor
+                                                          : root.incomingSenderColor).g,
+                                          (root.ownEvent ? root.outgoingSenderColor
+                                                          : root.incomingSenderColor).b, 0.55)
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 3
+                        radius: 2
+                        color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
+                    }
+
+                    Column {
+                        id: replyContent
+
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.right: parent.right
+                        anchors.rightMargin: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+
+                        Text {
+                            width: parent.width
+                            text: root.replySenderText()
+                            color: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
+                            elide: Text.ElideRight
+                            font.family: root.configuredFontFamily
+                            font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
+                            font.bold: true
+                        }
+
+                        Text {
+                            id: replyPreview
+
+                            width: parent.width
+                            text: root.replyPreviewText()
+                            color: root.textColor
+                            opacity: 0.78
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                            font.family: root.configuredFontFamily
+                            font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
+                        }
+                    }
+                }
+
                 Item {
                     id: messageRow
                     x: 30
@@ -514,16 +582,6 @@ Item {
                 }
 
                 Text {
-                    visible: root.replyToId.length > 0
-                    width: parent.width
-                    text: root.replyText()
-                    color: root.mutedTextColor
-                    elide: Text.ElideMiddle
-                    font.family: root.configuredFontFamily
-                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
-                }
-
-                Text {
                     visible: root.edited && !root.redacted
                     width: parent.width
                     text: qsTr("edited")
@@ -583,6 +641,10 @@ Item {
                     leftInset: 30
                     reactions: root.reactions
                     removeOwnReaction: root.removeOwnReaction
+                    stableId: root.stableId
+                    removeReactionIconSource: "image://kaduicon/edit-delete"
+                    removeReactionHoverColor: root.darkSurface ? "#344b60" : "#d4e7f5"
+                    removeReactionHoverTextColor: root.darkSurface ? "#ffffff" : "#202020"
                     textColor: root.textColor
                     accentColor: root.ownEvent ? root.outgoingSenderColor : root.incomingSenderColor
                     backgroundColor: root.darkSurface ? "#3d4652" : "#e8edf3"

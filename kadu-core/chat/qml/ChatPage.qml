@@ -52,6 +52,18 @@ Item {
     property var defaultComposerOverlayComponent: null
     property var defaultPinnedMessagesPanelComponent: null
     readonly property int newEventsBelow: chatViewModel ? chatViewModel.newEventsBelow : 0
+    readonly property int latestMessagesHidden: {
+        if (!timeline || timeline.count === 0)
+            return 0
+
+        const maximum = Math.max(timeline.originY, timeline.contentHeight - timeline.height + timeline.originY)
+        if (timeline.contentY >= maximum - 8)
+            return 0
+
+        const bottomIndex = timeline.indexAt(timeline.width / 2, timeline.contentY + timeline.height - 2)
+        return bottomIndex < 0 ? 0 : Math.max(0, timeline.count - bottomIndex - 1)
+    }
+    readonly property bool jumpToLatestVisible: latestMessagesHidden >= 3
 
     // These values also make the fallback renderer readable when a selected
     // external style cannot be loaded.
@@ -793,16 +805,89 @@ Item {
         z: 2
     }
 
-    Button {
+    Rectangle {
         id: newMessagesButton
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: 14
-        visible: root.newEventsBelow > 0 && !root.composerActive
-        text: root.newEventsBelow === 1 ? qsTr("1 new message") : qsTr("%1 new messages").arg(root.newEventsBelow)
+        anchors.horizontalCenter: timeline.horizontalCenter
+        anchors.bottom: timeline.bottom
+        anchors.bottomMargin: 18
+        visible: root.jumpToLatestVisible && !root.composerActive
+        implicitWidth: jumpContent.implicitWidth + 28
+        implicitHeight: 40
+        radius: height / 2
+        color: newMessagesHover.hovered
+               ? jumpHoverColor : root.themeValue("jumpToLatestBackgroundColor",
+                                                   root.darkSurface ? "#303944" : "#f8fbfe")
+        border.width: 1
+        border.color: newMessagesHover.hovered
+                      ? jumpHoverTextColor : root.themeValue("jumpToLatestBorderColor",
+                                                             root.darkSurface ? "#586675" : "#bed4e6")
+        activeFocusOnTab: true
         z: 3
-        Accessible.name: text
-        onClicked: root.scrollToBottom()
+        readonly property color jumpAccentColor: root.themeValue(
+                                                   "accentColor", root.darkSurface ? "#82c5ff" : "#1675bd")
+        readonly property color jumpTextColor: root.themeValue("jumpToLatestTextColor",
+                                                                 root.fallbackTextColor)
+        readonly property color jumpHoverColor: root.themeValue("jumpToLatestHoverColor",
+                                                                  root.darkSurface ? "#344b60" : "#d4e7f5")
+        readonly property color jumpHoverTextColor: root.themeValue("jumpToLatestHoverTextColor",
+                                                                      root.darkSurface ? "#ffffff" : "#202020")
+        Accessible.name: qsTr("Jump to latest messages")
+        Accessible.role: Accessible.Button
+
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                root.scrollToBottom()
+                event.accepted = true
+            }
+        }
+
+        Row {
+            id: jumpContent
+            anchors.centerIn: parent
+            height: 24
+            spacing: 8
+
+            Rectangle {
+                width: 24
+                height: 24
+                radius: width / 2
+                color: newMessagesHover.hovered
+                       ? Qt.rgba(newMessagesButton.jumpHoverTextColor.r,
+                                 newMessagesButton.jumpHoverTextColor.g,
+                                 newMessagesButton.jumpHoverTextColor.b, 0.18)
+                       : Qt.rgba(newMessagesButton.jumpAccentColor.r,
+                                 newMessagesButton.jumpAccentColor.g,
+                                 newMessagesButton.jumpAccentColor.b, 0.20)
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "↓"
+                    color: newMessagesHover.hovered
+                           ? newMessagesButton.jumpHoverTextColor
+                           : newMessagesButton.jumpAccentColor
+                    font.pixelSize: 17
+                    font.bold: true
+                }
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Jump to latest messages")
+                color: newMessagesHover.hovered
+                       ? newMessagesButton.jumpHoverTextColor : newMessagesButton.jumpTextColor
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+            }
+        }
+
+        HoverHandler {
+            id: newMessagesHover
+        }
+
+        TapHandler {
+            onTapped: root.scrollToBottom()
+        }
     }
 
     Item {
