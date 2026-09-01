@@ -24,6 +24,7 @@
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
 #include "chat/chat-storage.h"
+#include "chat/timeline/chat-timeline-model.h"
 #include "chat/type/chat-type-contact.h"
 #include "chat/type/chat-type-room.h"
 #include "contacts/contact-manager.h"
@@ -428,23 +429,24 @@ QVariantList MatrixTimelineService::pinnedMessages(const Chat &chat) const
             if (!event)
                 break;
 
-            const auto item = itemForEvent(room, *event, eventId, timelineItem.index(), encrypted);
+            record = ChatTimelineModel::itemData(itemForEvent(room, *event, eventId, timelineItem.index(), encrypted));
             record.insert(QStringLiteral("available"), true);
-            record.insert(QStringLiteral("plainText"), item.content.plainText);
-            record.insert(QStringLiteral("formattedText"), item.content.formattedText);
-            record.insert(QStringLiteral("senderDisplayName"), item.sender.displayName);
-            record.insert(QStringLiteral("senderAvatarSource"), item.sender.avatarSource);
-            record.insert(QStringLiteral("senderColor"), item.sender.color);
-            record.insert(QStringLiteral("protocolEventType"), item.protocolEventType);
-            record.insert(QStringLiteral("timestamp"), item.timestamp);
-            record.insert(QStringLiteral("encrypted"), item.state.encrypted);
-            record.insert(QStringLiteral("decryptionState"), static_cast<int>(item.state.decryptionState));
-            record.insert(QStringLiteral("redacted"), item.state.redacted);
             break;
         }
         result.append(record);
     }
     return result;
+}
+
+QString MatrixTimelineService::chatHeaderTitle(const Chat &chat) const
+{
+    const auto name = chat.display().isEmpty() ? chat.name() : chat.display();
+    if (name.isEmpty())
+        return {};
+
+    const auto *room = roomForChat(chat);
+    const auto directChat = room && m_connection && m_connection->isDirectChat(room->id());
+    return directChat ? tr("Chat with %1").arg(name) : tr("Room %1").arg(name);
 }
 
 void MatrixTimelineService::markTimelineItemRead(const Chat &chat, const QString &stableId)
@@ -818,7 +820,10 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
     connect(room, &Quotient::Room::changed, this, [this, room](Quotient::Room::Changes) {
         const auto chat = chatForRoom(room);
         if (chat)
+        {
             emit availableActionsChanged(chat);
+            emit chatHeaderChanged(chat);
+        }
     });
     connect(room, &Quotient::Room::updatedEvent, this,
             [this, room](const QString &eventId) { updateTimelineEvent(room, eventId); });
@@ -839,6 +844,8 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                     }
                     emit eventRedacted(chat, newEvent->id(), newEvent->redactionReason());
                     emit availableActionsChanged(chat);
+                    if (oldEvent && room->pinnedEventIds().contains(oldEvent->id()))
+                        emit pinnedMessagesChanged(chat);
                 }
                 else
                     updateTimelineEvent(room, newEvent->id());
@@ -892,6 +899,8 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
             emit eventUpdated(
                 chat, itemForEvent(room, *event, timelineItem->id(), timelineItem.index(), encrypted));
             emit availableActionsChanged(chat);
+            if (room->pinnedEventIds().contains(timelineItem->id()))
+                emit pinnedMessagesChanged(chat);
             continue;
         }
 
@@ -1309,6 +1318,8 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         {
             emit eventRedacted(chat, eventId, event->redactionReason());
             emit availableActionsChanged(chat);
+            if (room->pinnedEventIds().contains(eventId))
+                emit pinnedMessagesChanged(chat);
             return;
         }
 

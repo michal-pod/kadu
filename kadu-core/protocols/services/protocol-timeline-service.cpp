@@ -55,6 +55,11 @@ QVariantList ProtocolTimelineService::pinnedMessages(const Chat &) const
     return {};
 }
 
+QString ProtocolTimelineService::chatHeaderTitle(const Chat &) const
+{
+    return {};
+}
+
 void ProtocolTimelineService::markTimelineItemRead(const Chat &, const QString &)
 {
 }

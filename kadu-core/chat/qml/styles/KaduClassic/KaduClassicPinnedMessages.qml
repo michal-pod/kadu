@@ -19,6 +19,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import "qrc:/Kadu/Chat/chat/qml" as KaduChat
 
 Item {
     id: root
@@ -28,6 +29,16 @@ Item {
     property var pinnedMessages: []
     property var timelineActions: null
     property var executeTimelineAction: null
+    property var chatFont: ({})
+    property var openUrl: null
+    property var openImage: null
+    property var openLocation: null
+    property var copyText: null
+    property var removeOwnReaction: null
+    property var frequentReactionEmojis: null
+    property var addReaction: null
+    property var requestFullReactionSelector: null
+    property bool showTrigger: false
 
     readonly property bool darkSurface: colorScheme === "Dark" ||
                                        (colorScheme !== "Light" && systemPalette.base.r * 0.2126 +
@@ -41,11 +52,23 @@ Item {
                                                                         : (darkSurface ? "#aeb8c7" : "#666666")
     readonly property var entries: pinnedMessages || []
 
-    implicitHeight: visible ? pinButton.implicitHeight + 8 : 0
+    implicitHeight: showTrigger && visible ? pinButton.implicitHeight + 8 : 0
     visible: entries.length > 0
 
     function actionsFor(stableId) {
         return timelineActions ? timelineActions(stableId) : []
+    }
+
+    function showPinnedMessages() {
+        if (entries.length > 0)
+            pinnedMessagesPopup.open()
+    }
+
+    function togglePinnedMessages() {
+        if (pinnedMessagesPopup.opened)
+            pinnedMessagesPopup.close()
+        else
+            showPinnedMessages()
     }
 
     SystemPalette {
@@ -55,6 +78,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
+        visible: root.showTrigger
         color: root.backgroundColor
         border.width: 1
         border.color: root.colorScheme === "System" ? systemPalette.mid
@@ -66,10 +90,11 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: 8
         anchors.verticalCenter: parent.verticalCenter
+        visible: root.showTrigger
         text: root.entries.length === 1 ? qsTr("1 pinned message")
                                         : qsTr("%1 pinned messages").arg(root.entries.length)
         Accessible.name: text
-        onClicked: pinnedMessagesPopup.open()
+        onClicked: root.showPinnedMessages()
     }
 
     Popup {
@@ -82,7 +107,10 @@ Item {
         padding: 10
         modal: false
         z: 10
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        // Closing on an outside press races with the header button: the popup
+        // closes before the button's clicked signal and is opened again by the
+        // toggle. The header button and Escape deliberately own closing it.
+        closePolicy: Popup.CloseOnEscape
 
         background: Rectangle {
             color: root.colorScheme === "System" ? systemPalette.base
@@ -113,19 +141,74 @@ Item {
                 spacing: 6
                 model: root.entries
 
-                delegate: Rectangle {
+                delegate: Item {
                     id: entryCard
                     required property var modelData
                     readonly property var entry: modelData
 
                     width: pinnedMessagesList.width
-                    implicitHeight: entryContent.implicitHeight + 14
-                    color: root.colorScheme === "System" ? systemPalette.alternateBase
-                                                           : (root.darkSurface ? "#303740" : "#f3f5f7")
-                    radius: 3
+                    implicitHeight: timelineEntry.item ? timelineEntry.item.implicitHeight : entryContent.implicitHeight + 14
+
+                    Component {
+                        id: timelineItemComponent
+
+                        KaduClassicTimelineItem {
+                            width: parent ? parent.width : 1
+                            stableId: entry.stableId || ""
+                            protocolEventType: entry.protocolEventType || ""
+                            kind: Number(entry.kind)
+                            timestamp: entry.timestamp
+                            ownEvent: entry.ownEvent === true
+                            senderDisplayName: entry.senderDisplayName || ""
+                            senderAvatarSource: entry.senderAvatarSource || ""
+                            senderColor: entry.senderColor
+                            plainText: entry.plainText || ""
+                            formattedText: entry.formattedText || ""
+                            replyToId: entry.replyToId || ""
+                            reply: entry.reply || ({})
+                            attachments: entry.attachments || []
+                            locationUri: entry.locationUri || ""
+                            reactions: entry.reactions || []
+                            showSender: entry.showSender !== false
+                            showAvatar: entry.showAvatar !== false
+                            showTimestamp: entry.showTimestamp !== false
+                            startsNewDay: false
+                            deliveryState: Number(entry.deliveryState)
+                            edited: entry.edited === true
+                            systemEvent: entry.systemEvent === true
+                            emote: entry.emote === true
+                            redacted: entry.redacted === true
+                            encrypted: entry.encrypted === true
+                            decryptionState: Number(entry.decryptionState)
+                            errorText: entry.errorText || ""
+                            forceIncomingAlignment: true
+                            colorScheme: root.colorScheme
+                            customColors: root.customColors
+                            chatFont: root.chatFont
+                            openUrl: root.openUrl
+                            openImage: root.openImage
+                            openLocation: root.openLocation
+                            timelineActions: root.timelineActions
+                            executeTimelineAction: root.executeTimelineAction
+                            copyText: root.copyText
+                            removeOwnReaction: root.removeOwnReaction
+                            frequentReactionEmojis: root.frequentReactionEmojis
+                            addReaction: root.addReaction
+                            requestFullReactionSelector: root.requestFullReactionSelector
+                        }
+                    }
+
+                    Loader {
+                        id: timelineEntry
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        active: entry.available === true
+                        sourceComponent: timelineItemComponent
+                    }
 
                     Column {
                         id: entryContent
+                        visible: !entry.available
                         x: 7
                         y: 7
                         width: parent.width - 14

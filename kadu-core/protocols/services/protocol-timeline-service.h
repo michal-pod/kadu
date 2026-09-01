@@ -96,6 +96,16 @@ public:
     virtual QVariantList pinnedMessages(const Chat &chat) const;
 
     /**
+     * @short Return a protocol-owned title for the timeline header.
+     *
+     * The title is deliberately separate from Chat::display(), which is also
+     * used by tabs and window titles. A timeline provider can therefore
+     * describe direct conversations and rooms in its own vocabulary without
+     * teaching the QML view about protocol-specific chat types.
+     */
+    virtual QString chatHeaderTitle(const Chat &chat) const;
+
+    /**
      * @short Mark a timeline event as read in the native protocol.
      *
      * The controller calls this only while the event is visibly read.  A
@@ -138,4 +148,9 @@ signals:
      * @short The protocol changed the pinned entries of a chat.
      */
     void pinnedMessagesChanged(const Chat &chat);
+
+    /**
+     * @short The protocol changed title, avatar or description metadata shown above a timeline.
+     */
+    void chatHeaderChanged(const Chat &chat);
 };

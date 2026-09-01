@@ -66,6 +66,9 @@ Item {
     property var frequentReactionEmojis: null
     property var addReaction: null
     property var requestFullReactionSelector: null
+    // Auxiliary views can retain the regular entry component while asking the
+    // style to place it in the incoming column.
+    property bool forceIncomingAlignment: false
     property string contextSelectedText: ""
     property string contextLink: ""
 
@@ -109,6 +112,8 @@ Item {
     readonly property color outgoingBubbleColor: usesCustomColors ? customColors.myBackground
                                                                    : (colorScheme === "System" ? systemPalette.highlight
                                                                                                : (darkSurface ? "#4b3764" : "#eadff5"))
+    readonly property bool layoutAsOutgoing: ownEvent && !forceIncomingAlignment && !emote
+    readonly property bool reservesAvatarSpace: true
 
     function isSystemEvent() { return systemEvent }
     function systemEventDescription() {
@@ -340,7 +345,7 @@ Item {
             Rectangle {
                 id: senderAvatar
                 visible: root.showAvatar && !root.emote
-                x: root.ownEvent ? parent.width - width : 0
+                x: root.layoutAsOutgoing ? parent.width - width : 0
                 y: messageColumn.y + (senderName.visible
                                       ? senderName.implicitHeight + messageColumn.spacing : 0)
                 width: 28
@@ -369,10 +374,11 @@ Item {
 
             Column {
                 id: messageColumn
-                x: root.ownEvent ? (senderAvatar.visible ? parent.width - senderAvatar.width - 7 - width
-                                                         : parent.width - width)
-                                 : (senderAvatar.visible ? senderAvatar.width + 7 : 0)
-                width: Math.max(1, Math.min(parent.width - (senderAvatar.visible ? senderAvatar.width + 7 : 0),
+                x: root.layoutAsOutgoing ? (root.reservesAvatarSpace
+                                             ? parent.width - senderAvatar.width - 7 - width
+                                             : parent.width - width)
+                                         : (root.reservesAvatarSpace ? senderAvatar.width + 7 : 0)
+                width: Math.max(1, Math.min(parent.width - (root.reservesAvatarSpace ? senderAvatar.width + 7 : 0),
                                               Math.max(160, Math.floor(parent.width * 0.70))))
                 spacing: 2
 
@@ -382,7 +388,7 @@ Item {
                     width: parent.width
                     text: root.ownEvent ? qsTr("You") : root.senderDisplayName
                     color: root.mutedTextColor
-                    horizontalAlignment: root.ownEvent ? Text.AlignRight : Text.AlignLeft
+                    horizontalAlignment: root.layoutAsOutgoing ? Text.AlignRight : Text.AlignLeft
                     font.bold: true
                     font.italic: false
                     font.family: root.configuredFontFamily
@@ -391,31 +397,18 @@ Item {
 
                 Rectangle {
                     id: bubble
-                    x: root.ownEvent ? parent.width - width : 0
-                    width: root.hasImageAttachments() || root.locationUri.length > 0 || root.attachments.length > 0
-                           ? parent.width
-                           : Math.min(parent.width, Math.max(112, message.implicitWidth + 22))
+                    x: root.layoutAsOutgoing ? parent.width - width : 0
+                    width: root.hasImageAttachments() || root.locationUri.length > 0
+                           ? Math.min(parent.width, 380)
+                           : (root.attachments.length > 0
+                              ? parent.width
+                              : Math.min(parent.width, Math.max(112, message.implicitWidth + 22)))
                     implicitHeight: bubbleContent.implicitHeight + 14
                     radius: 8
                     color: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
 
                     HoverHandler {
                         id: hoverHandler
-                    }
-
-                    KaduChat.TimelineActionsBar {
-                        anchors.top: parent.top
-                        anchors.right: parent.right
-                        anchors.margins: 4
-                        actions: root.availableActions()
-                        executeAction: root.triggerAction
-                        fallbackTextColor: root.ownEvent ? root.outgoingTextColor : root.textColor
-                        backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
-                        shown: hoverHandler.hovered
-                        z: 2
-                        onReactionRequested: function(sourceItem) {
-                            reactionSelector.openFor(sourceItem)
-                        }
                     }
 
                     Column {
@@ -543,7 +536,7 @@ Item {
                 KaduChat.TimelineReactionsBar {
                     x: bubble.x
                     width: bubble.width
-                    alignRight: root.ownEvent
+                    alignRight: root.layoutAsOutgoing
                     reactions: root.reactions
                     removeOwnReaction: root.removeOwnReaction
                     textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
@@ -557,7 +550,7 @@ Item {
                     width: bubble.width
                     text: Qt.formatTime(root.timestamp, "HH:mm")
                     color: root.timestampColor
-                    horizontalAlignment: root.ownEvent ? Text.AlignRight : Text.AlignLeft
+                    horizontalAlignment: root.layoutAsOutgoing ? Text.AlignRight : Text.AlignLeft
                     opacity: 0.70
                     font.family: root.configuredFontFamily
                     font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
@@ -569,9 +562,27 @@ Item {
                     width: bubble.width
                     text: root.deliveryText()
                     color: root.deliveryState === 4 ? "#ff8b8b" : root.mutedTextColor
-                    horizontalAlignment: Text.AlignRight
+                    horizontalAlignment: root.layoutAsOutgoing ? Text.AlignRight : Text.AlignLeft
                     font.family: root.configuredFontFamily
                     font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
+                }
+            }
+
+            KaduChat.TimelineActionsBar {
+                // Anchor the linear popup to the whole entry rather than to a
+                // short bubble. A short incoming message otherwise gives the
+                // action row too little space on its left side.
+                x: root.layoutAsOutgoing ? parent.width : 0
+                y: messageColumn.y
+                alignRight: root.layoutAsOutgoing
+                actions: root.availableActions()
+                executeAction: root.triggerAction
+                fallbackTextColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
+                shown: hoverHandler.hovered
+                z: 2
+                onReactionRequested: function(sourceItem) {
+                    reactionSelector.openFor(sourceItem)
                 }
             }
         }

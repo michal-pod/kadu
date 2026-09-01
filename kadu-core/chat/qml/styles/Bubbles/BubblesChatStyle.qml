@@ -26,6 +26,7 @@ Item {
     property var customColors: ({ "enabled": false })
     property var chatFont: ({ "family": "", "pointSize": 10, "bold": false, "italic": false, "underline": false })
     property var openUrl: null
+    property var openImage: null
     property var openLocation: null
     property var timelineActions: null
     property var executeTimelineAction: null
@@ -100,6 +101,8 @@ Item {
             colorScheme: root.colorScheme
             customColors: root.customColors
             chatFont: root.chatFont
+            backgroundColor: root.backgroundColor
+            textColor: root.textColor
         }
     }
 
@@ -109,8 +112,17 @@ Item {
         BubblesPinnedMessages {
             colorScheme: root.colorScheme
             customColors: root.customColors
+            chatFont: root.chatFont
+            openUrl: root.openUrl
+            openImage: root.openImage
+            openLocation: root.openLocation
             timelineActions: root.timelineActions
             executeTimelineAction: root.executeTimelineAction
+            copyText: root.copyText
+            removeOwnReaction: root.removeOwnReaction
+            frequentReactionEmojis: root.frequentReactionEmojis
+            addReaction: root.addReaction
+            requestFullReactionSelector: root.requestFullReactionSelector
         }
     }
 }

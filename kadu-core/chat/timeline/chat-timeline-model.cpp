@@ -26,6 +26,7 @@
 #include <QtCore/QVariantList>
 #include <QtCore/QVariantMap>
 #include <QtCore/QtGlobal>
+#include <QtGui/QColor>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QFileIconProvider>
 
@@ -106,6 +107,38 @@ ChatTimelineItem ChatTimelineModel::item(const QString &stableId) const
 {
     const auto row = rowForStableId(stableId);
     return row < 0 ? ChatTimelineItem{} : m_items.at(row);
+}
+
+QVariantMap ChatTimelineModel::itemData(const ChatTimelineItem &item, bool showSender, bool showAvatar,
+                                        bool showTimestamp, bool startsNewDay)
+{
+    return {{QStringLiteral("stableId"), item.stableId},
+            {QStringLiteral("protocolEventType"), item.protocolEventType},
+            {QStringLiteral("kind"), static_cast<int>(item.kind)},
+            {QStringLiteral("timestamp"), item.timestamp},
+            {QStringLiteral("ownEvent"), item.sender.own},
+            {QStringLiteral("senderDisplayName"), item.sender.displayName},
+            {QStringLiteral("senderAvatarSource"), item.sender.avatarSource},
+            {QStringLiteral("senderColor"), item.sender.color.isValid() ? item.sender.color : QColor{Qt::transparent}},
+            {QStringLiteral("plainText"), item.content.plainText},
+            {QStringLiteral("formattedText"), item.content.formattedText},
+            {QStringLiteral("replyToId"), item.content.replyToId},
+            {QStringLiteral("reply"), QVariantMap{}},
+            {QStringLiteral("attachments"), attachmentData(item.content.attachments)},
+            {QStringLiteral("locationUri"), item.content.locationUri},
+            {QStringLiteral("reactions"), reactionData(item.content.reactions)},
+            {QStringLiteral("deliveryState"), static_cast<int>(item.state.deliveryState)},
+            {QStringLiteral("edited"), item.state.edited},
+            {QStringLiteral("redacted"), item.state.redacted},
+            {QStringLiteral("encrypted"), item.state.encrypted},
+            {QStringLiteral("decryptionState"), static_cast<int>(item.state.decryptionState)},
+            {QStringLiteral("errorText"), item.state.errorText},
+            {QStringLiteral("systemEvent"), !isMessage(item)},
+            {QStringLiteral("emote"), item.kind == ChatTimelineItemKind::EmoteMessage},
+            {QStringLiteral("showSender"), showSender},
+            {QStringLiteral("showAvatar"), showAvatar},
+            {QStringLiteral("showTimestamp"), showTimestamp},
+            {QStringLiteral("startsNewDay"), startsNewDay}};
 }
 
 int ChatTimelineModel::rowForStableId(const QString &stableId) const { return m_rowsByStableId.value(stableId, -1); }

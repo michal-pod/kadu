@@ -61,10 +61,11 @@ Item {
 
         x: root.alignRight ? -width : 0
         y: 0
-        implicitWidth: actionRow.implicitWidth + 8
-        implicitHeight: actionRow.implicitHeight + 8
+        width: actionRow.implicitWidth + 8
+        height: actionRow.implicitHeight + 8
         radius: 5
-        color: root.backgroundColor
+        color: Qt.rgba(root.backgroundColor.r, root.backgroundColor.g,
+                       root.backgroundColor.b, 1.0)
         border.width: 1
         border.color: Qt.rgba(root.fallbackTextColor.r, root.fallbackTextColor.g,
                               root.fallbackTextColor.b, 0.20)

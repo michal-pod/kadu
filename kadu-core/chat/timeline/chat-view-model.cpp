@@ -74,7 +74,10 @@ ChatViewModel::ChatViewModel(
         connect(protocolTimelineService, &ProtocolTimelineService::pinnedMessagesChanged, this,
                 [this](const Chat &chat) {
                     if (chat == m_chat)
+                    {
                         emit pinnedMessagesChanged();
+                        emit chatHeaderActionsChanged();
+                    }
                 });
         connect(protocolTimelineService, &ProtocolTimelineService::availableActionsChanged, this,
                 [this](const Chat &chat) {
@@ -84,6 +87,11 @@ ChatViewModel::ChatViewModel(
                     ++m_timelineActionsRevision;
                     emit timelineActionsChanged();
                 });
+        connect(protocolTimelineService, &ProtocolTimelineService::chatHeaderChanged, this,
+                [this](const Chat &chat) {
+                    if (chat == m_chat)
+                        refreshChatHeader();
+                });
     }
     else
         m_timeline = new ChatTimelineModel{this};
@@ -92,7 +100,7 @@ ChatViewModel::ChatViewModel(
     {
         connect(m_chat, SIGNAL(updated()), this, SLOT(chatUpdated()));
         if (auto *details = qobject_cast<ChatDetailsRoom *>(m_chat.details()))
-            connect(details, &ChatDetails::updated, this, &ChatViewModel::refreshRoomDetails);
+            connect(details, &ChatDetails::updated, this, &ChatViewModel::refreshChatHeader);
     }
     if (m_chatStyleManager)
         connect(
@@ -102,7 +110,7 @@ ChatViewModel::ChatViewModel(
             m_chatConfigurationHolder, &ChatConfigurationHolder::chatConfigurationUpdated, this,
             &ChatViewModel::customColorsChangedSlot);
 
-    refreshRoomDetails();
+    refreshChatHeader();
 }
 
 ChatViewModel::~ChatViewModel()
@@ -158,24 +166,24 @@ QVariantMap ChatViewModel::customColors() const
         {QStringLiteral("background"), m_chatConfigurationHolder->chatBgColor().name()}};
 }
 
-bool ChatViewModel::roomInfoVisible() const
+bool ChatViewModel::chatHeaderVisible() const
 {
-    return m_roomInfoVisible;
+    return m_chatHeaderVisible;
 }
 
-QString ChatViewModel::roomAvatarSource() const
+QString ChatViewModel::chatHeaderAvatarSource() const
 {
-    return m_roomAvatarSource;
+    return m_chatHeaderAvatarSource;
 }
 
-QString ChatViewModel::roomName() const
+QString ChatViewModel::chatHeaderTitle() const
 {
-    return m_roomName;
+    return m_chatHeaderTitle;
 }
 
-QString ChatViewModel::roomDescription() const
+QString ChatViewModel::chatHeaderDescription() const
 {
-    return m_roomDescription;
+    return m_chatHeaderDescription;
 }
 
 bool ChatViewModel::loadingInitial() const
@@ -249,6 +257,16 @@ QVariantList ChatViewModel::pinnedMessages() const
     if (auto *service = timelineService(nullptr))
         return service->pinnedMessages(m_chat);
     return {};
+}
+
+QVariantList ChatViewModel::chatHeaderActions() const
+{
+    if (pinnedMessages().isEmpty())
+        return {};
+
+    return {QVariantMap{{QStringLiteral("id"), QStringLiteral("showPinnedMessages")},
+                        {QStringLiteral("text"), tr("Pinned messages")},
+                        {QStringLiteral("iconName"), QStringLiteral("list-add")}}};
 }
 
 ChatViewModel::ComposerMode ChatViewModel::composerMode() const
@@ -486,6 +504,12 @@ void ChatViewModel::removeOwnReaction(const QString &stableId, const QString &ke
         service->removeOwnReaction(m_chat, stableId, key);
 }
 
+void ChatViewModel::executeChatHeaderAction(const QString &actionId)
+{
+    if (actionId == QStringLiteral("showPinnedMessages") && !pinnedMessages().isEmpty())
+        emit pinnedMessagesRequested();
+}
+
 void ChatViewModel::recordReactionEmojiUse(const QString &key)
 {
     if (!m_configuration)
@@ -585,7 +609,7 @@ ProtocolTimelineService *ChatViewModel::timelineService(ProtocolTimelineService 
 void ChatViewModel::chatUpdated()
 {
     emit titleChanged();
-    refreshRoomDetails();
+    refreshChatHeader();
 }
 
 void ChatViewModel::styleChanged()
@@ -604,47 +628,37 @@ void ChatViewModel::timelineStateChangedSlot()
     emit timelineStateChanged();
 }
 
-void ChatViewModel::refreshRoomDetails()
+void ChatViewModel::refreshChatHeader()
 {
-    const auto *details = m_chat ? qobject_cast<ChatDetailsRoom *>(m_chat.details()) : nullptr;
-    if (!details)
-    {
-        if (!m_roomInfoVisible)
-            return;
-
-        m_roomInfoVisible = false;
-        m_roomAvatarSource.clear();
-        m_roomName.clear();
-        m_roomDescription.clear();
-        emit roomDetailsChanged();
-        return;
-    }
-
-    auto roomName = m_chat.display();
-    if (roomName.isEmpty())
-        roomName = m_chat.name();
-    if (roomName.isEmpty())
-        roomName = details->name();
+    auto *service = timelineService(nullptr);
+    auto headerTitle = service ? service->chatHeaderTitle(m_chat) : QString{};
+    if (headerTitle.isEmpty())
+        headerTitle = ::title(m_chat);
 
     QString avatarSource;
-    const auto avatar = details->avatar();
-    if (!avatar.isNull())
+    QString description;
+    if (const auto *details = m_chat ? qobject_cast<ChatDetailsRoom *>(m_chat.details()) : nullptr)
     {
-        QByteArray imageData;
-        QBuffer buffer{&imageData};
-        buffer.open(QIODevice::WriteOnly);
-        if (avatar.save(&buffer, "PNG"))
-            avatarSource = QStringLiteral("data:image/png;base64,") + QString::fromLatin1(imageData.toBase64());
+        const auto avatar = details->avatar();
+        if (!avatar.isNull())
+        {
+            QByteArray imageData;
+            QBuffer buffer{&imageData};
+            buffer.open(QIODevice::WriteOnly);
+            if (avatar.save(&buffer, "PNG"))
+                avatarSource = QStringLiteral("data:image/png;base64,") + QString::fromLatin1(imageData.toBase64());
+        }
+        description = details->description();
     }
 
-    const auto description = details->description();
-    if (m_roomInfoVisible && m_roomAvatarSource == avatarSource && m_roomName == roomName &&
-        m_roomDescription == description)
+    const auto visible = !m_chat.isNull();
+    if (m_chatHeaderVisible == visible && m_chatHeaderAvatarSource == avatarSource &&
+        m_chatHeaderTitle == headerTitle && m_chatHeaderDescription == description)
         return;
 
-    m_roomInfoVisible = true;
-    m_roomAvatarSource = avatarSource;
-    m_roomName = roomName;
-    m_roomDescription = description;
-    emit roomDetailsChanged();
+    m_chatHeaderVisible = visible;
+    m_chatHeaderAvatarSource = avatarSource;
+    m_chatHeaderTitle = headerTitle;
+    m_chatHeaderDescription = description;
+    emit chatHeaderChanged();
 }

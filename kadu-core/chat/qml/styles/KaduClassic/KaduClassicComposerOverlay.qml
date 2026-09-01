@@ -37,10 +37,10 @@ Item {
     readonly property string fontFamily: chatFont && chatFont.family ? chatFont.family : ""
     readonly property real fontPointSize: chatFont && chatFont.forced === true && Number(chatFont.pointSize) > 0
                                          ? Number(chatFont.pointSize) : 10
-    readonly property color backgroundColor: colorScheme === "System" ? systemPalette.alternateBase
-                                                                        : (darkSurface ? "#2d323a" : "#edf0f4")
-    readonly property color textColor: colorScheme === "System" ? systemPalette.text
-                                                                  : (darkSurface ? "#f2f4f8" : "#202020")
+    property color backgroundColor: colorScheme === "System" ? systemPalette.base
+                                                               : (darkSurface ? "#2d323a" : "#edf0f4")
+    property color textColor: colorScheme === "System" ? systemPalette.text
+                                                         : (darkSurface ? "#f2f4f8" : "#202020")
     readonly property color mutedTextColor: colorScheme === "System" ? systemPalette.mid
                                                                        : (darkSurface ? "#aeb8c7" : "#666666")
     readonly property color accentColor: customColors && customColors.enabled
@@ -60,7 +60,8 @@ Item {
         width: parent.width
         implicitHeight: content.implicitHeight + 28
         radius: 7
-        color: root.backgroundColor
+        color: Qt.rgba(root.backgroundColor.r, root.backgroundColor.g,
+                       root.backgroundColor.b, 1.0)
         border.width: 1
         border.color: root.colorScheme === "System" ? systemPalette.mid
                                                       : (root.darkSurface ? "#4d5662" : "#c7cdd5")
@@ -69,7 +70,7 @@ Item {
             id: content
             x: 14
             y: 14
-            width: parent.width - 28
+            width: parent.width - 14 - cancelButton.width - 12
             spacing: 10
 
             Item {
@@ -103,17 +104,23 @@ Item {
 
             Column {
                 id: details
-                width: parent.width - 36 - cancelButton.width - parent.spacing * 2
+                width: parent.width - 36 - parent.spacing
                 spacing: 2
 
                 Text {
                     id: modeLabel
                     width: parent.width
                     text: root.context.mode === "edit" ? qsTr("Editing message") : qsTr("Replying to")
-                    color: root.mutedTextColor
+                    color: root.textColor
+                    opacity: 0.72
                     elide: Text.ElideRight
                     font.family: root.fontFamily
                     font.pointSize: Math.max(8, root.fontPointSize - 2)
+                }
+
+                Item {
+                    width: 1
+                    height: 3
                 }
 
                 Text {
@@ -138,37 +145,41 @@ Item {
                 }
             }
 
-            ToolButton {
-                id: cancelButton
-                width: 32
-                height: 32
-                display: AbstractButton.IconOnly
-                Accessible.name: qsTr("Cancel")
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Cancel")
-                background: Item {}
-                onClicked: {
-                    if (root.cancelComposerContext)
-                        root.cancelComposerContext()
+        }
+
+        ToolButton {
+            id: cancelButton
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 8
+            width: 32
+            height: 32
+            display: AbstractButton.IconOnly
+            Accessible.name: qsTr("Cancel")
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("Cancel")
+            background: Item {}
+            onClicked: {
+                if (root.cancelComposerContext)
+                    root.cancelComposerContext()
+            }
+
+            contentItem: Item {
+                Image {
+                    id: cancelIcon
+                    anchors.centerIn: parent
+                    width: 16
+                    height: 16
+                    source: "image://kaduicon/application-exit"
+                    visible: status === Image.Ready && sourceSize.width > 1
                 }
 
-                contentItem: Item {
-                    Image {
-                        id: cancelIcon
-                        anchors.centerIn: parent
-                        width: 16
-                        height: 16
-                        source: "image://kaduicon/application-exit"
-                        visible: status === Image.Ready && sourceSize.width > 1
-                    }
-
-                    Text {
-                        anchors.centerIn: parent
-                        visible: !cancelIcon.visible
-                        text: "×"
-                        color: root.textColor
-                        font.pixelSize: 20
-                    }
+                Text {
+                    anchors.centerIn: parent
+                    visible: !cancelIcon.visible
+                    text: "×"
+                    color: root.textColor
+                    font.pixelSize: 20
                 }
             }
         }

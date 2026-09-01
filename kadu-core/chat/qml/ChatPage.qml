@@ -112,6 +112,16 @@ Item {
             chatViewModel.cancelComposerContext()
     }
 
+    function togglePinnedMessages() {
+        if (!pinnedMessagesContainer.rendererItem)
+            return
+
+        if (pinnedMessagesContainer.rendererItem.togglePinnedMessages)
+            pinnedMessagesContainer.rendererItem.togglePinnedMessages()
+        else if (pinnedMessagesContainer.rendererItem.showPinnedMessages)
+            pinnedMessagesContainer.rendererItem.showPinnedMessages()
+    }
+
     function bindComposerContext(item) {
         item.width = Qt.binding(function() {
             return Math.max(1, Math.min(460, composerContextContainer.width - 40))
@@ -136,6 +146,14 @@ Item {
             item.colorScheme = Qt.binding(function() { return root.activeThemeColorScheme })
         if (item.customColors !== undefined)
             item.customColors = Qt.binding(function() { return root.activeCustomColors })
+        if (item.chatFont !== undefined)
+            item.chatFont = Qt.binding(function() { return root.activeChatFont })
+        if (item.openUrl !== undefined)
+            item.openUrl = root.openUrl
+        if (item.openImage !== undefined)
+            item.openImage = root.openImage
+        if (item.openLocation !== undefined)
+            item.openLocation = root.openLocation
         if (item.pinnedMessages !== undefined)
             item.pinnedMessages = Qt.binding(function() {
                 return root.chatViewModel ? root.chatViewModel.pinnedMessages : []
@@ -144,6 +162,16 @@ Item {
             item.timelineActions = root.timelineActions
         if (item.executeTimelineAction !== undefined)
             item.executeTimelineAction = root.executeTimelineAction
+        if (item.copyText !== undefined)
+            item.copyText = root.copyText
+        if (item.removeOwnReaction !== undefined)
+            item.removeOwnReaction = root.removeOwnReaction
+        if (item.frequentReactionEmojis !== undefined)
+            item.frequentReactionEmojis = root.frequentReactionEmojis
+        if (item.addReaction !== undefined)
+            item.addReaction = root.addReaction
+        if (item.requestFullReactionSelector !== undefined)
+            item.requestFullReactionSelector = root.requestFullReactionSelector
     }
 
     function defaultComposerContext() {
@@ -376,59 +404,47 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: visible ? Math.max(56, roomHeaderContent.implicitHeight + 16) : 0
-        visible: root.chatViewModel && root.chatViewModel.roomInfoVisible
+        height: visible ? Math.max(48, roomHeaderContent.implicitHeight + 16) : 0
+        visible: root.chatViewModel && root.chatViewModel.chatHeaderVisible
         color: root.themeValue("roomHeaderBackgroundColor", root.darkSurface ? "#2d323a" : "#f4f6f8")
         border.width: 1
         border.color: root.themeValue("separatorColor", root.fallbackSeparatorColor)
         clip: true
 
-        Row {
+        Item {
             id: roomHeaderContent
             x: 8
             y: 8
             width: parent.width - 16
-            spacing: 10
+            implicitHeight: Math.max(roomAvatar.height, headerDetails.implicitHeight)
 
             Item {
                 id: roomAvatar
-                width: 40
+                width: roomAvatarImage.status === Image.Ready ? 40 : 0
                 height: width
-                implicitHeight: height
-
-                Rectangle {
-                    anchors.fill: parent
-                    color: root.darkSurface ? "#4b86c5" : "#5a8bbd"
-                    visible: !roomAvatarImage.visible
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: root.chatViewModel && root.chatViewModel.roomName.length > 0
-                          ? root.chatViewModel.roomName.slice(0, 1).toUpperCase()
-                          : "#"
-                    color: "#ffffff"
-                    font.bold: true
-                    font.pixelSize: 19
-                    visible: !roomAvatarImage.visible
-                }
 
                 Image {
                     id: roomAvatarImage
                     anchors.fill: parent
-                    source: root.chatViewModel ? root.chatViewModel.roomAvatarSource : ""
-                    fillMode: Image.PreserveAspectCrop
+                    source: root.chatViewModel ? root.chatViewModel.chatHeaderAvatarSource : ""
+                    sourceSize.width: 40
+                    sourceSize.height: 40
+                    fillMode: Image.PreserveAspectFit
                     visible: status === Image.Ready
                 }
             }
 
             Column {
-                width: parent.width - roomAvatar.width - parent.spacing
+                id: headerDetails
+                anchors.left: roomAvatar.right
+                anchors.leftMargin: roomAvatar.width > 0 ? 10 : 0
+                anchors.right: headerActions.left
+                anchors.rightMargin: headerActions.width > 0 ? 8 : 0
                 spacing: 2
 
                 Text {
                     width: parent.width
-                    text: root.chatViewModel ? root.chatViewModel.roomName : ""
+                    text: root.chatViewModel ? root.chatViewModel.chatHeaderTitle : ""
                     color: root.themeValue("textColor", root.fallbackTextColor)
                     elide: Text.ElideRight
                     font.bold: true
@@ -438,13 +454,63 @@ Item {
                 Text {
                     visible: text.length > 0
                     width: parent.width
-                    text: root.chatViewModel ? root.chatViewModel.roomDescription : ""
+                    text: root.chatViewModel ? root.chatViewModel.chatHeaderDescription : ""
                     color: root.themeValue("textColor", root.fallbackTextColor)
                     opacity: 0.70
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
                     font.pixelSize: 12
+                }
+            }
+
+            Row {
+                id: headerActions
+                anchors.top: parent.top
+                anchors.right: parent.right
+                spacing: 2
+
+                Repeater {
+                    model: root.chatViewModel ? root.chatViewModel.chatHeaderActions : []
+
+                    delegate: ToolButton {
+                        id: actionButton
+                        required property var modelData
+
+                        width: 28
+                        height: 28
+                        padding: 6
+                        Accessible.name: modelData.text || ""
+                        ToolTip.visible: hovered
+                        ToolTip.text: modelData.text || ""
+                        background: Item {}
+
+                        contentItem: Item {
+                            Image {
+                                id: actionIcon
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 16
+                                source: actionButton.modelData.iconName
+                                        ? "image://kaduicon/" + encodeURIComponent(actionButton.modelData.iconName)
+                                        : ""
+                                visible: status === Image.Ready && sourceSize.width > 1
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                visible: !actionIcon.visible
+                                text: "•"
+                                color: root.themeValue("textColor", root.fallbackTextColor)
+                                font.pixelSize: 18
+                            }
+                        }
+
+                        onClicked: {
+                            if (root.chatViewModel)
+                                root.chatViewModel.executeChatHeaderAction(modelData.id)
+                        }
+                    }
                 }
             }
         }
@@ -879,6 +945,9 @@ Item {
         function onPinnedMessagesChanged() {
             if (pinnedMessagesContainer.rendererItem)
                 root.bindPinnedMessagesPanel(pinnedMessagesContainer.rendererItem)
+        }
+        function onPinnedMessagesRequested() {
+            root.togglePinnedMessages()
         }
         function onReactionSelectorRequested(stableId) {
             contextReactionSelector.stableId = stableId

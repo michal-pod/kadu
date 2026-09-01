@@ -89,6 +89,13 @@ public:
 
     QVector<ChatTimelineItem> items() const;
     ChatTimelineItem item(const QString &stableId) const;
+    /**
+     * Convert a timeline entry to the QML-facing data contract without exposing
+     * protocol objects. Auxiliary views, such as pinned messages, use this to
+     * render the same entry component as the main timeline.
+     */
+    static QVariantMap itemData(const ChatTimelineItem &item, bool showSender = true, bool showAvatar = true,
+                                bool showTimestamp = true, bool startsNewDay = false);
     Q_INVOKABLE int rowForStableId(const QString &stableId) const;
     Q_INVOKABLE int rowForTransactionId(const QString &transactionId) const;
     int groupingIntervalSeconds() const;

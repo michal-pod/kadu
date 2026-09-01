@@ -55,10 +55,11 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(QString themeColorScheme READ themeColorScheme NOTIFY themeSourceChanged)
     Q_PROPERTY(QVariantMap customColors READ customColors NOTIFY customColorsChanged)
     Q_PROPERTY(QVariantMap chatFont READ chatFont NOTIFY chatFontChanged)
-    Q_PROPERTY(bool roomInfoVisible READ roomInfoVisible NOTIFY roomDetailsChanged)
-    Q_PROPERTY(QString roomAvatarSource READ roomAvatarSource NOTIFY roomDetailsChanged)
-    Q_PROPERTY(QString roomName READ roomName NOTIFY roomDetailsChanged)
-    Q_PROPERTY(QString roomDescription READ roomDescription NOTIFY roomDetailsChanged)
+    Q_PROPERTY(bool chatHeaderVisible READ chatHeaderVisible NOTIFY chatHeaderChanged)
+    Q_PROPERTY(QString chatHeaderAvatarSource READ chatHeaderAvatarSource NOTIFY chatHeaderChanged)
+    Q_PROPERTY(QString chatHeaderTitle READ chatHeaderTitle NOTIFY chatHeaderChanged)
+    Q_PROPERTY(QString chatHeaderDescription READ chatHeaderDescription NOTIFY chatHeaderChanged)
+    Q_PROPERTY(QVariantList chatHeaderActions READ chatHeaderActions NOTIFY chatHeaderActionsChanged)
     Q_PROPERTY(bool usesProtocolTimeline READ usesProtocolTimeline CONSTANT)
     Q_PROPERTY(bool loadingInitial READ loadingInitial NOTIFY timelineStateChanged)
     Q_PROPERTY(bool loadingOlder READ loadingOlder NOTIFY timelineStateChanged)
@@ -92,10 +93,11 @@ public:
     QString themeColorScheme() const;
     QVariantMap customColors() const;
     QVariantMap chatFont() const;
-    bool roomInfoVisible() const;
-    QString roomAvatarSource() const;
-    QString roomName() const;
-    QString roomDescription() const;
+    bool chatHeaderVisible() const;
+    QString chatHeaderAvatarSource() const;
+    QString chatHeaderTitle() const;
+    QString chatHeaderDescription() const;
+    QVariantList chatHeaderActions() const;
     bool usesProtocolTimeline() const;
     bool loadingInitial() const;
     bool loadingOlder() const;
@@ -123,6 +125,7 @@ public:
     Q_INVOKABLE void addReaction(const QString &stableId, const QString &key);
     Q_INVOKABLE void requestFullReactionSelector();
     Q_INVOKABLE void removeOwnReaction(const QString &stableId, const QString &key);
+    Q_INVOKABLE void executeChatHeaderAction(const QString &actionId);
     Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
     Q_INVOKABLE void markTimelineItemVisible(const QString &stableId);
     Q_INVOKABLE void cancelComposerContext();
@@ -137,11 +140,13 @@ signals:
     void themeSourceChanged();
     void customColorsChanged();
     void chatFontChanged();
-    void roomDetailsChanged();
+    void chatHeaderChanged();
+    void chatHeaderActionsChanged();
     void timelineStateChanged();
     void timelineActionsChanged();
     void composerContextChanged();
     void pinnedMessagesChanged();
+    void pinnedMessagesRequested();
     void composerContextCancelled();
     void composerContextActivated(ChatViewModel::ComposerMode mode);
     void reactionSelectorRequested(const QString &stableId);
@@ -155,17 +160,17 @@ private:
     QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
     QPointer<Configuration> m_configuration;
     QPointer<UrlHandlerManager> m_urlHandlerManager;
-    bool m_roomInfoVisible = false;
-    QString m_roomAvatarSource;
-    QString m_roomName;
-    QString m_roomDescription;
+    bool m_chatHeaderVisible = false;
+    QString m_chatHeaderAvatarSource;
+    QString m_chatHeaderTitle;
+    QString m_chatHeaderDescription;
     ComposerMode m_composerMode = ComposerMode::None;
     ChatTimelineItem m_composerTarget;
     bool m_open = false;
     int m_timelineActionsRevision = 0;
 
     ProtocolTimelineService *timelineService(ProtocolTimelineService *service) const;
-    void refreshRoomDetails();
+    void refreshChatHeader();
     void setComposerContext(ComposerMode mode, const ChatTimelineItem &item);
     void recordReactionEmojiUse(const QString &key);
 

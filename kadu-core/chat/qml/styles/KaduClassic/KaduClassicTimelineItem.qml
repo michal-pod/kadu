@@ -66,6 +66,9 @@ Item {
     property var frequentReactionEmojis: null
     property var addReaction: null
     property var requestFullReactionSelector: null
+    // Auxiliary views can retain the regular entry component while asking the
+    // style to place it in the incoming column.
+    property bool forceIncomingAlignment: false
     property string contextSelectedText: ""
     property string contextLink: ""
 
