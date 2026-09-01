@@ -63,7 +63,6 @@ Item {
     property var executeTimelineAction: null
     property var copyText: null
     property var removeOwnReaction: null
-    property var frequentReactionEmojis: null
     property var addReaction: null
     property var requestFullReactionSelector: null
     // Auxiliary views can retain the regular entry component while asking the
@@ -323,7 +322,8 @@ Item {
                 backgroundColor: root.darkSurface ? "#28333e" : "#e9eef4"
                 shown: systemEventHover.hovered
                 onReactionRequested: function(sourceItem) {
-                    reactionSelector.openFor(sourceItem)
+                    if (root.requestFullReactionSelector)
+                        root.requestFullReactionSelector(root.stableId, sourceItem)
                 }
             }
 
@@ -582,20 +582,11 @@ Item {
                 shown: hoverHandler.hovered
                 z: 2
                 onReactionRequested: function(sourceItem) {
-                    reactionSelector.openFor(sourceItem)
+                    if (root.requestFullReactionSelector)
+                        root.requestFullReactionSelector(root.stableId, sourceItem)
                 }
             }
         }
     }
 
-    KaduChat.ReactionSelectorPopup {
-        id: reactionSelector
-        parent: root
-        stableId: root.stableId
-        emojiProvider: root.frequentReactionEmojis
-        addReaction: root.addReaction
-        requestFullSelector: root.requestFullReactionSelector
-        textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
-        backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
-    }
 }

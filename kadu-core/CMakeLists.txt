@@ -65,6 +65,7 @@ set (kadu_SUBDIRS
 	contacts
 	core
 	dom
+	emoji
 	execution-arguments
 	file-system
 	file-transfer
@@ -160,7 +161,11 @@ macro (kadu_subdirectory SUBDIR SRCS)
 	else ()
 		set (tmp "")
 		foreach (SRC ${SRCS})
-			list (APPEND tmp "${SUBDIR}/${SRC}")
+			if (IS_ABSOLUTE "${SRC}")
+				list (APPEND tmp "${SRC}")
+			else ()
+				list (APPEND tmp "${SUBDIR}/${SRC}")
+			endif ()
 		endforeach ()
 
 		set (${SUBDIR}_SRCS "${tmp}" PARENT_SCOPE)
@@ -188,10 +193,11 @@ qt_add_qml_module (libkadu
 	NO_PLUGIN
 	IMPORTS QtLocation QtPositioning QtQuick.Controls QtQuick.Effects
 	QML_FILES
+		chat/qml/EmojiPicker.qml
 		chat/qml/ChatPage.qml
 		chat/qml/TimelineActionsBar.qml
 		chat/qml/TimelineReactionsBar.qml
-		chat/qml/ReactionSelectorPopup.qml
+		chat/qml/ReactionEmojiPickerPopup.qml
 		chat/qml/ChatFileAttachment.qml
 		chat/qml/ChatImageAttachment.qml
 		chat/qml/ImageViewerDialog.qml

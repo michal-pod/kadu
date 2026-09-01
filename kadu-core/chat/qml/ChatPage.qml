@@ -93,18 +93,16 @@ Item {
             chatViewModel.removeOwnReaction(stableId, key)
     }
 
-    function frequentReactionEmojis() {
-        return chatViewModel ? chatViewModel.frequentReactionEmojis() : []
-    }
-
     function addReaction(stableId, key) {
         if (chatViewModel)
             chatViewModel.addReaction(stableId, key)
     }
 
-    function requestFullReactionSelector() {
-        if (chatViewModel)
-            chatViewModel.requestFullReactionSelector()
+    function requestFullReactionSelector(stableId, sourceItem) {
+        if (!stableId || !reactionEmojiPicker)
+            return
+        reactionEmojiPicker.stableId = stableId
+        reactionEmojiPicker.openFor(sourceItem || timeline)
     }
 
     function cancelComposerContext() {
@@ -166,8 +164,6 @@ Item {
             item.copyText = root.copyText
         if (item.removeOwnReaction !== undefined)
             item.removeOwnReaction = root.removeOwnReaction
-        if (item.frequentReactionEmojis !== undefined)
-            item.frequentReactionEmojis = root.frequentReactionEmojis
         if (item.addReaction !== undefined)
             item.addReaction = root.addReaction
         if (item.requestFullReactionSelector !== undefined)
@@ -278,8 +274,6 @@ Item {
             item.copyText = root.copyText
         if (item.removeOwnReaction !== undefined)
             item.removeOwnReaction = root.removeOwnReaction
-        if (item.frequentReactionEmojis !== undefined)
-            item.frequentReactionEmojis = root.frequentReactionEmojis
         if (item.addReaction !== undefined)
             item.addReaction = root.addReaction
         if (item.requestFullReactionSelector !== undefined)
@@ -917,13 +911,12 @@ Item {
         parentItem: root
     }
 
-    ReactionSelectorPopup {
-        id: contextReactionSelector
+    ReactionEmojiPickerPopup {
+        id: reactionEmojiPicker
         parent: root
+        emojiModel: root.chatViewModel ? root.chatViewModel.reactionEmojiModel : null
+        recentEmojis: root.chatViewModel ? root.chatViewModel.recentReactionEmojis : []
         addReaction: root.addReaction
-        requestFullSelector: root.requestFullReactionSelector
-        textColor: root.fallbackTextColor
-        backgroundColor: root.fallbackBackgroundColor
     }
 
     Connections {
@@ -950,9 +943,7 @@ Item {
             root.togglePinnedMessages()
         }
         function onReactionSelectorRequested(stableId) {
-            contextReactionSelector.stableId = stableId
-            contextReactionSelector.emojiProvider = root.frequentReactionEmojis
-            contextReactionSelector.openFor(timeline)
+            root.requestFullReactionSelector(stableId, timeline)
         }
     }
 

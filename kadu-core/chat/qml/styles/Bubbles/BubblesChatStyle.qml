@@ -32,7 +32,6 @@ Item {
     property var executeTimelineAction: null
     property var copyText: null
     property var removeOwnReaction: null
-    property var frequentReactionEmojis: null
     property var addReaction: null
     property var requestFullReactionSelector: null
 
@@ -79,7 +78,6 @@ Item {
             executeTimelineAction: root.executeTimelineAction
             copyText: root.copyText
             removeOwnReaction: root.removeOwnReaction
-            frequentReactionEmojis: root.frequentReactionEmojis
             addReaction: root.addReaction
             requestFullReactionSelector: root.requestFullReactionSelector
         }
@@ -120,7 +118,6 @@ Item {
             executeTimelineAction: root.executeTimelineAction
             copyText: root.copyText
             removeOwnReaction: root.removeOwnReaction
-            frequentReactionEmojis: root.frequentReactionEmojis
             addReaction: root.addReaction
             requestFullReactionSelector: root.requestFullReactionSelector
         }

@@ -35,7 +35,6 @@ Item {
     property var openLocation: null
     property var copyText: null
     property var removeOwnReaction: null
-    property var frequentReactionEmojis: null
     property var addReaction: null
     property var requestFullReactionSelector: null
     property bool showTrigger: false
@@ -192,7 +191,6 @@ Item {
                             executeTimelineAction: root.executeTimelineAction
                             copyText: root.copyText
                             removeOwnReaction: root.removeOwnReaction
-                            frequentReactionEmojis: root.frequentReactionEmojis
                             addReaction: root.addReaction
                             requestFullReactionSelector: root.requestFullReactionSelector
                         }

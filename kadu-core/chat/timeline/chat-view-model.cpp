@@ -35,8 +35,8 @@
 #include <QtCore/QBuffer>
 #include <QtCore/QByteArray>
 #include <QtCore/QDebug>
+#include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
-#include <QtCore/QJsonObject>
 #include <QtCore/QJsonParseError>
 #include <QtCore/QStringList>
 #include <QtGui/QClipboard>
@@ -44,14 +44,14 @@
 #include <QtGui/QGuiApplication>
 #include <QtWidgets/QMessageBox>
 
-#include <algorithm>
-
 ChatViewModel::ChatViewModel(
     Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
     ChatConfigurationHolder *chatConfigurationHolder, QObject *parent, Configuration *configuration)
         : QObject{parent}, m_chat{chat}, m_chatStyleManager{chatStyleManager},
           m_chatConfigurationHolder{chatConfigurationHolder}, m_configuration{configuration}
 {
+    m_reactionEmojiModel = new EmojiModel{this};
+
     if (auto *protocolTimelineService = timelineService(service))
     {
         m_timelineController = new ChatTimelineController{m_chat, protocolTimelineService, this};
@@ -259,6 +259,37 @@ QVariantList ChatViewModel::pinnedMessages() const
     return {};
 }
 
+EmojiModel *ChatViewModel::reactionEmojiModel() const
+{
+    return m_reactionEmojiModel;
+}
+
+QStringList ChatViewModel::recentReactionEmojis() const
+{
+    if (!m_configuration)
+        return {};
+
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(
+        m_configuration->deprecatedApi()->readEntry(QStringLiteral("ChatTimeline"),
+                                                     QStringLiteral("RecentReactionEmojis"))
+            .toUtf8(),
+        &error);
+    if (error.error != QJsonParseError::NoError || !document.isArray())
+        return {};
+
+    QStringList result;
+    for (const auto &value : document.array())
+    {
+        const auto emoji = value.toString();
+        if (!emoji.isEmpty() && !result.contains(emoji))
+            result.append(emoji);
+        if (result.size() == 20)
+            break;
+    }
+    return result;
+}
+
 QVariantList ChatViewModel::chatHeaderActions() const
 {
     if (pinnedMessages().isEmpty())
@@ -437,38 +468,6 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
     service->executeAction(m_chat, stableId, timelineAction);
 }
 
-QVariantList ChatViewModel::frequentReactionEmojis() const
-{
-    QJsonObject usage;
-    if (m_configuration)
-    {
-        QJsonParseError error;
-        const auto document = QJsonDocument::fromJson(
-            m_configuration->deprecatedApi()->readEntry(QStringLiteral("ChatTimeline"),
-                                                         QStringLiteral("ReactionEmojiUsage"))
-                .toUtf8(),
-            &error);
-        if (error.error == QJsonParseError::NoError && document.isObject())
-            usage = document.object();
-    }
-
-    QStringList emojis{QStringLiteral("👍"), QStringLiteral("❤️"), QStringLiteral("😂"),
-                       QStringLiteral("😮"), QStringLiteral("😢"), QStringLiteral("🙏"),
-                       QStringLiteral("🎉"), QStringLiteral("👀"), QStringLiteral("🔥")};
-    for (auto iterator = usage.constBegin(); iterator != usage.constEnd(); ++iterator)
-        if (!emojis.contains(iterator.key()))
-            emojis.append(iterator.key());
-
-    std::stable_sort(emojis.begin(), emojis.end(), [&usage](const QString &left, const QString &right) {
-        return usage.value(left).toInt() > usage.value(right).toInt();
-    });
-
-    QVariantList result;
-    for (auto index = 0; index < emojis.size() && index < 9; ++index)
-        result.append(emojis.at(index));
-    return result;
-}
-
 void ChatViewModel::addReaction(const QString &stableId, const QString &key)
 {
     if (stableId.isEmpty() || key.isEmpty())
@@ -478,6 +477,7 @@ void ChatViewModel::addReaction(const QString &stableId, const QString &key)
     if (!service || !service->availableActions(m_chat, stableId).testFlag(ChatTimelineAction::React))
         return;
 
+    recordReactionEmojiUse(key);
     const auto item = m_timeline->item(stableId);
     for (const auto &reaction : item.content.reactions)
         if (reaction.key == key && reaction.own)
@@ -486,13 +486,7 @@ void ChatViewModel::addReaction(const QString &stableId, const QString &key)
             return;
         }
 
-    if (service->addReaction(m_chat, stableId, key))
-        recordReactionEmojiUse(key);
-}
-
-void ChatViewModel::requestFullReactionSelector()
-{
-    qWarning("The full emoticon reaction selector is not implemented yet.");
+    service->addReaction(m_chat, stableId, key);
 }
 
 void ChatViewModel::removeOwnReaction(const QString &stableId, const QString &key)
@@ -515,20 +509,19 @@ void ChatViewModel::recordReactionEmojiUse(const QString &key)
     if (!m_configuration)
         return;
 
-    QJsonObject usage;
-    QJsonParseError error;
-    const auto document = QJsonDocument::fromJson(
-        m_configuration->deprecatedApi()->readEntry(QStringLiteral("ChatTimeline"),
-                                                     QStringLiteral("ReactionEmojiUsage"))
-            .toUtf8(),
-        &error);
-    if (error.error == QJsonParseError::NoError && document.isObject())
-        usage = document.object();
+    auto recent = recentReactionEmojis();
+    recent.removeAll(key);
+    recent.prepend(key);
+    while (recent.size() > 20)
+        recent.removeLast();
 
-    usage.insert(key, usage.value(key).toInt() + 1);
+    QJsonArray serialized;
+    for (const auto &emoji : recent)
+        serialized.append(emoji);
     m_configuration->deprecatedApi()->writeEntry(
-        QStringLiteral("ChatTimeline"), QStringLiteral("ReactionEmojiUsage"),
-        QString::fromUtf8(QJsonDocument{usage}.toJson(QJsonDocument::Compact)));
+        QStringLiteral("ChatTimeline"), QStringLiteral("RecentReactionEmojis"),
+        QString::fromUtf8(QJsonDocument{serialized}.toJson(QJsonDocument::Compact)));
+    emit recentReactionEmojisChanged();
 }
 
 void ChatViewModel::setTimelineAtNewest(bool atNewest)

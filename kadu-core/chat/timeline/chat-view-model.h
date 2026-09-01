@@ -22,6 +22,7 @@
 #include "chat/chat.h"
 #include "chat/timeline/chat-timeline-model.h"
 #include "chat/timeline/legacy-message-timeline-adapter.h"
+#include "emoji/emoji-model.h"
 #include "exports.h"
 
 #include <QtCore/QPointer>
@@ -70,6 +71,8 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(bool composerActive READ composerActive NOTIFY composerContextChanged)
     Q_PROPERTY(QVariantMap composerContext READ composerContext NOTIFY composerContextChanged)
     Q_PROPERTY(QVariantList pinnedMessages READ pinnedMessages NOTIFY pinnedMessagesChanged)
+    Q_PROPERTY(EmojiModel *reactionEmojiModel READ reactionEmojiModel CONSTANT)
+    Q_PROPERTY(QStringList recentReactionEmojis READ recentReactionEmojis NOTIFY recentReactionEmojisChanged)
 
 public:
     enum class ComposerMode
@@ -108,6 +111,8 @@ public:
     bool composerActive() const;
     QVariantMap composerContext() const;
     QVariantList pinnedMessages() const;
+    EmojiModel *reactionEmojiModel() const;
+    QStringList recentReactionEmojis() const;
     ComposerMode composerMode() const;
     QString composerTargetId() const;
     QString composerTargetPlainText() const;
@@ -121,9 +126,7 @@ public:
     Q_INVOKABLE void copyText(const QString &text);
     Q_INVOKABLE QVariantList timelineActions(const QString &stableId) const;
     Q_INVOKABLE void executeTimelineAction(const QString &stableId, int action);
-    Q_INVOKABLE QVariantList frequentReactionEmojis() const;
     Q_INVOKABLE void addReaction(const QString &stableId, const QString &key);
-    Q_INVOKABLE void requestFullReactionSelector();
     Q_INVOKABLE void removeOwnReaction(const QString &stableId, const QString &key);
     Q_INVOKABLE void executeChatHeaderAction(const QString &actionId);
     Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
@@ -150,6 +153,7 @@ signals:
     void composerContextCancelled();
     void composerContextActivated(ChatViewModel::ComposerMode mode);
     void reactionSelectorRequested(const QString &stableId);
+    void recentReactionEmojisChanged();
 
 private:
     Chat m_chat;
@@ -160,6 +164,7 @@ private:
     QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
     QPointer<Configuration> m_configuration;
     QPointer<UrlHandlerManager> m_urlHandlerManager;
+    EmojiModel *m_reactionEmojiModel = nullptr;
     bool m_chatHeaderVisible = false;
     QString m_chatHeaderAvatarSource;
     QString m_chatHeaderTitle;
