@@ -28,6 +28,7 @@ Item {
     property var customColors: ({ "enabled": false })
     property var chatFont: ({ "family": "", "pointSize": 10, "bold": false, "italic": false,
                               "underline": false, "forced": false })
+    property var roomInfo: ({})
     property var openUrl: null
     property var openImage: null
     property var openLocation: null
@@ -72,6 +73,7 @@ Item {
             required property int kind
             required property var timestamp
             required property bool ownEvent
+            property string senderId: ""
             required property string senderDisplayName
             required property url senderAvatarSource
             required property color senderColor
@@ -190,6 +192,7 @@ Item {
                         color: root.mutedTextColor
                         wrapMode: Text.Wrap
                         text: item.valueLabel("senderDisplayName", item.senderDisplayName) + " | " +
+                              item.valueLabel("senderId", item.senderId) + " | " +
                               item.valueLabel("senderAvatarSource", item.senderAvatarSource) + " | " +
                               item.valueLabel("senderColor", item.senderColor) + " | " +
                               item.valueLabel("ownEvent", item.ownEvent) + " | " +
