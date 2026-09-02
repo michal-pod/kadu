@@ -69,6 +69,7 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(bool loadingNewer READ loadingNewer NOTIFY timelineStateChanged)
     Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY timelineStateChanged)
     Q_PROPERTY(bool hasNewer READ hasNewer NOTIFY timelineStateChanged)
+    Q_PROPERTY(QString historyError READ historyError NOTIFY timelineStateChanged)
     Q_PROPERTY(QString readMarkerId READ readMarkerId NOTIFY timelineStateChanged)
     Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
     Q_PROPERTY(int timelineActionsRevision READ timelineActionsRevision NOTIFY timelineActionsChanged)
@@ -113,6 +114,7 @@ public:
     bool loadingNewer() const;
     bool hasOlder() const;
     bool hasNewer() const;
+    QString historyError() const;
     QString readMarkerId() const;
     int newEventsBelow() const;
     int timelineActionsRevision() const;
@@ -148,6 +150,7 @@ public slots:
     void loadOlder();
     void loadNewer();
     void loadLatest();
+    void retryHistory();
 
 signals:
     void titleChanged();

@@ -14,6 +14,8 @@ Item {
     property var timelineActions: null
     property var executeTimelineAction: null
     property var jumpToTimelineItem: null
+    property var popupOpened: null
+    property var popupClosed: null
     property string terminalFont: "monospace"
     property int actionsRevision: 0
     readonly property var entries: pinnedMessages || []
@@ -68,6 +70,15 @@ Item {
         modal: true
         dim: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: {
+            if (root.popupOpened)
+                root.popupOpened()
+        }
+        onClosed: {
+            pinnedMessagesList.cancelFlick()
+            if (root.popupClosed)
+                root.popupClosed()
+        }
 
         background: Rectangle {
             color: "#000000"

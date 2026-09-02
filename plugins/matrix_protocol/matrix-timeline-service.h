@@ -73,6 +73,12 @@ public:
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
 
 private:
+    struct DecodedAttachmentImage
+    {
+        QImage image;
+        QSize originalSize;
+    };
+
     QPointer<ChatManager> m_chatManager;
     QPointer<ChatStorage> m_chatStorage;
     QPointer<ContactManager> m_contactManager;
@@ -88,6 +94,7 @@ private:
     QHash<QString, QString> m_attachmentErrors;
     QHash<QString, QString> m_attachmentDownloadPaths;
     QSet<QString> m_attachmentThumbnailRequests;
+    QSet<QString> m_attachmentImageDecodes;
     QSet<QString> m_unavailableAttachmentThumbnails;
     mutable QSet<QString> m_attachmentPreviewsUsingOriginal;
     QSet<QString> m_invalidImageAttachments;
@@ -99,6 +106,8 @@ private:
     QHash<QString, QString> m_eventTransactionIds;
     mutable QHash<QString, QString> m_reactionEventTargets;
     MatrixMegolmSessionRecovery *m_sessionRecovery;
+
+    static constexpr int AttachmentImageCacheSizeKiB = 256 * 1024;
 
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;
@@ -131,6 +140,9 @@ private:
                                            const QUrl &localFile);
     void handleAttachmentDownloadFailed(Quotient::Room *room, const QString &resourceId, const QString &eventId,
                                         const QString &errorMessage);
+    static DecodedAttachmentImage decodeAttachmentImage(const QString &localPath, const QString &temporaryPath,
+                                                        const QSize &requestedSize);
+    static int attachmentImageCacheCost(const QImage &image);
     void clearAttachmentDownloads();
     bool canManagePinnedMessages(const Quotient::Room *room) const;
     bool canRedactEvent(const Quotient::Room *room, const Quotient::RoomEvent &event) const;
@@ -146,6 +158,9 @@ private:
                                    qint64 timelineIndex) const;
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const;
     void finishRequest(const std::shared_ptr<QPromise<ChatTimelinePage>> &promise, ChatTimelinePage page) const;
+    void finishInitialStateRequest(const std::shared_ptr<QPromise<ChatTimelinePage>> &promise,
+                                   const std::shared_ptr<bool> &finished, const QPointer<QObject> &context,
+                                   ChatTimelinePage page) const;
 
 private slots:
     INJEQT_SET void setChatManager(ChatManager *chatManager);

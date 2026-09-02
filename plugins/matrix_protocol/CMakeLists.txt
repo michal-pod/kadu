@@ -34,6 +34,7 @@ set (SOURCES
 kadu_plugin (matrix_protocol
 	PLUGIN_SOURCES ${SOURCES}
 	PLUGIN_LIBRARIES QuotientQt6
+	PLUGIN_ADDITIONAL_QT_MODULES Concurrent
 )
 
 # LibQuotient public headers use C++23 facilities (for example std::to_underlying).

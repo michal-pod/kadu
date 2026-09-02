@@ -32,6 +32,8 @@ Item {
     readonly property url activeThemeSource: themeSourceOverride.toString().length > 0
                                             ? themeSourceOverride
                                             : (chatViewModel ? chatViewModel.themeSource : "")
+    readonly property url fallbackThemeSource: "qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml"
+    property url effectiveThemeSource: activeThemeSource
     readonly property string activeThemeColorScheme: themeColorSchemeOverride.length > 0
                                                     ? themeColorSchemeOverride
                                                     : (chatViewModel ? chatViewModel.themeColorScheme : "System")
@@ -84,6 +86,25 @@ Item {
 
     function themeValue(name, fallback) {
         return activeTheme && activeTheme[name] !== undefined ? activeTheme[name] : fallback
+    }
+
+    function useFallbackTheme() {
+        if (effectiveThemeSource.toString() !== fallbackThemeSource.toString())
+            effectiveThemeSource = fallbackThemeSource
+    }
+
+    function attachmentEventId(sourceUri) {
+        const value = sourceUri ? sourceUri.toString() : ""
+        const prefix = "kaduimg:/"
+        if (!value.startsWith(prefix))
+            return ""
+        const queryOffset = value.indexOf("?", prefix.length)
+        const encodedId = value.substring(prefix.length, queryOffset < 0 ? value.length : queryOffset)
+        try {
+            return decodeURIComponent(encodedId)
+        } catch (error) {
+            return encodedId
+        }
     }
 
     function openUrl(url) {
@@ -182,6 +203,28 @@ Item {
             pinnedMessagesContainer.rendererItem.showPinnedMessages()
     }
 
+    function pinnedMessagesPopupOpened() {
+        timeline.cancelFlick()
+    }
+
+    function pinnedMessagesPopupClosed() {
+        // A modal popup owns focus and wheel delivery while it is open. Wait
+        // until Controls removes its overlay before returning both to the
+        // conversation and checking whether pagination should resume.
+        Qt.callLater(function() {
+            timeline.forceActiveFocus()
+            timeline.returnToBounds()
+            Qt.callLater(function() {
+                if (timeline.contentY <= timeline.originY + 64)
+                    root.requestOlder()
+                if (timeline.contentY + timeline.height >=
+                        timeline.originY + timeline.contentHeight - 64)
+                    root.requestNewer()
+                root.updateVisibleTimelineItem()
+            })
+        })
+    }
+
     function bindComposerContext(item) {
         item.width = Qt.binding(function() {
             return Math.max(1, Math.min(460, composerContextContainer.width - 40))
@@ -236,6 +279,10 @@ Item {
             item.requestFullReactionSelector = root.requestFullReactionSelector
         if (item.jumpToTimelineItem !== undefined)
             item.jumpToTimelineItem = root.jumpToTimelineItem
+        if (item.popupOpened !== undefined)
+            item.popupOpened = root.pinnedMessagesPopupOpened
+        if (item.popupClosed !== undefined)
+            item.popupClosed = root.pinnedMessagesPopupClosed
     }
 
     function bindStatusBar(item) {
@@ -504,10 +551,15 @@ Item {
 
     Loader {
         id: themeLoader
-        source: root.activeThemeSource
+        source: root.effectiveThemeSource
 
         onLoaded: {
-            item.colorScheme = root.activeThemeColorScheme
+            if (!item || item.timelineItem === undefined || !item.timelineItem) {
+                root.useFallbackTheme()
+                return
+            }
+            if (item.colorScheme !== undefined)
+                item.colorScheme = root.activeThemeColorScheme
             if (item.customColors !== undefined)
                 item.customColors = root.activeCustomColors
             if (item.chatFont !== undefined)
@@ -524,6 +576,10 @@ Item {
                 item.copyText = root.copyText
             root.applyTimelineStyleProperties()
         }
+        onStatusChanged: {
+            if (status === Loader.Error)
+                root.useFallbackTheme()
+        }
     }
 
     Timer {
@@ -534,8 +590,10 @@ Item {
 
     onActiveThemeChanged: applyTimelineStyleProperties()
 
+    onActiveThemeSourceChanged: effectiveThemeSource = activeThemeSource
+
     onActiveThemeColorSchemeChanged: {
-        if (themeLoader.item)
+        if (themeLoader.item && themeLoader.item.colorScheme !== undefined)
             themeLoader.item.colorScheme = activeThemeColorScheme
     }
 
@@ -848,7 +906,8 @@ Item {
 
             Row {
                 anchors.centerIn: parent
-                visible: root.chatViewModel && !root.chatViewModel.hasOlder && !root.chatViewModel.loadingInitial
+                visible: root.chatViewModel && root.chatViewModel.historyError.length === 0 &&
+                         !root.chatViewModel.hasOlder && !root.chatViewModel.loadingInitial
                 spacing: 8
                 Rectangle { width: 70; height: 1; color: root.themeValue("separatorColor", root.fallbackSeparatorColor) }
                 Text {
@@ -857,6 +916,28 @@ Item {
                     font.pixelSize: 12
                 }
                 Rectangle { width: 70; height: 1; color: root.themeValue("separatorColor", root.fallbackSeparatorColor) }
+            }
+
+            Row {
+                anchors.centerIn: parent
+                visible: root.chatViewModel && root.chatViewModel.historyError.length > 0 &&
+                         !root.chatViewModel.loadingInitial && !root.chatViewModel.loadingOlder &&
+                         !root.chatViewModel.loadingNewer
+                spacing: 8
+
+                Text {
+                    width: Math.min(implicitWidth, Math.max(80, timeline.width - retryHistoryButton.width - 28))
+                    text: root.chatViewModel ? root.chatViewModel.historyError : ""
+                    color: root.themeValue("messagePopupWarningColor", root.darkSurface ? "#f1b86a" : "#b45309")
+                    elide: Text.ElideRight
+                    font.pixelSize: 12
+                }
+
+                Button {
+                    id: retryHistoryButton
+                    text: qsTr("Retry")
+                    onClicked: if (root.chatViewModel) root.chatViewModel.retryHistory()
+                }
             }
         }
 
@@ -977,7 +1058,8 @@ Item {
                 if (rendererItem) {
                     rendererItem.y = Qt.binding(function() { return newMessagesMarker.implicitHeight })
                     root.bindTimelineItem(rendererItem, delegateRoot)
-                }
+                } else
+                    root.useFallbackTheme()
             }
 
             Component.onCompleted: createRenderer()
@@ -1239,7 +1321,6 @@ Item {
     Connections {
         target: root.chatViewModel
         function onTimelineStateChanged() {
-            ++root.attachmentImageRevision
             if (!root.chatViewModel)
                 return
             if (!root.chatViewModel.loadingInitial && !root.initialPositioned) {
@@ -1277,8 +1358,12 @@ Item {
 
     Connections {
         target: root.chatViewModel ? root.chatViewModel.timeline : null
-        function onDataChanged() {
-            if (imageViewer.visible)
+        function onDataChanged(topLeft, bottomRight, roles) {
+            if (!imageViewer.visible || !root.chatViewModel)
+                return
+            const eventId = root.attachmentEventId(imageViewer.sourceUri)
+            const row = eventId.length > 0 ? root.chatViewModel.timeline.rowForStableId(eventId) : -1
+            if (row >= topLeft.row && row <= bottomRight.row)
                 ++root.attachmentImageRevision
         }
         function onRowsInserted(parent, first, last) {

@@ -73,6 +73,9 @@ ChatViewModel::ChatViewModel(
             m_timelineController, &ChatTimelineController::hasNewerChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
         connect(
+            m_timelineController, &ChatTimelineController::historyErrorChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
+        connect(
             m_timelineController, &ChatTimelineController::readMarkerIdChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
         connect(
@@ -242,6 +245,11 @@ bool ChatViewModel::hasOlder() const
 bool ChatViewModel::hasNewer() const
 {
     return m_timelineController && m_timelineController->hasNewer();
+}
+
+QString ChatViewModel::historyError() const
+{
+    return m_timelineController ? m_timelineController->historyError() : QString{};
 }
 
 QVariantMap ChatViewModel::chatFont() const
@@ -643,6 +651,12 @@ void ChatViewModel::loadLatest()
 {
     if (m_timelineController)
         m_timelineController->loadLatest();
+}
+
+void ChatViewModel::retryHistory()
+{
+    if (m_timelineController)
+        m_timelineController->retryHistory();
 }
 
 ProtocolTimelineService *ChatViewModel::timelineService(ProtocolTimelineService *service) const

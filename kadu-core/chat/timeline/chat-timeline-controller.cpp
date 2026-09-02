@@ -166,13 +166,16 @@ void ChatTimelineController::jumpTo(const QString &stableId, int limit)
 
 void ChatTimelineController::retryHistory()
 {
-    if (m_loadingInitial || m_loadingOlder || m_loadingNewer)
+    if (m_loadingInitial || m_loadingOlder || m_loadingNewer || !m_hasFailedRequest)
         return;
 
-    if (m_timeline->rowCount() == 0)
-        loadInitial();
-    else
-        m_hasNewer ? loadNewer() : loadOlder();
+    const auto requestKind = m_failedRequestKind;
+    const auto cursor = m_failedRequestCursor;
+    const auto anchor = m_failedRequestAnchor;
+    const auto limit = m_failedRequestLimit;
+    clearFailedRequest();
+    setHistoryError({});
+    requestPage(requestKind, cursor, anchor, limit);
 }
 
 void ChatTimelineController::cancelRequests()
@@ -235,6 +238,8 @@ void ChatTimelineController::requestPage(RequestKind requestKind, const QByteArr
     if (!m_timelineService)
         return;
 
+    clearFailedRequest();
+
     ChatTimelineRequest request;
     request.chat = m_chat;
     request.cursor = cursor;
@@ -247,6 +252,7 @@ void ChatTimelineController::requestPage(RequestKind requestKind, const QByteArr
     case RequestKind::Around: request.mode = ChatTimelineRequestMode::Around; break;
     }
     request.limit = qMax(1, limit);
+    const auto requestedLimit = request.limit;
 
     if (requestKind == RequestKind::Latest || requestKind == RequestKind::Around)
         setLoadingInitial(true);
@@ -258,20 +264,25 @@ void ChatTimelineController::requestPage(RequestKind requestKind, const QByteArr
     const auto generation = ++m_requestGeneration;
     auto future = m_timelineService->requestTimeline(request);
     m_pageContinuation = future.then(
-        this, [this, requestKind, generation, cursor, anchorId](const ChatTimelinePage &page) {
-            pageAvailable(requestKind, generation, cursor, anchorId, page);
+        this, [this, requestKind, generation, cursor, anchorId, requestedLimit](const ChatTimelinePage &page) {
+            pageAvailable(requestKind, generation, cursor, anchorId, requestedLimit, page);
         });
 }
 
 void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 generation,
                                            const QByteArray &requestedCursor, const QString &requestedAnchor,
-                                           const ChatTimelinePage &page)
+                                           int requestedLimit, const ChatTimelinePage &page)
 {
     if (generation != m_requestGeneration)
         return;
 
     if (!page.error.isEmpty())
     {
+        m_failedRequestKind = requestKind;
+        m_failedRequestCursor = requestedCursor;
+        m_failedRequestAnchor = requestedAnchor;
+        m_failedRequestLimit = requestedLimit;
+        m_hasFailedRequest = true;
         setHistoryError(page.error);
         if (requestKind == RequestKind::Older)
             setHasOlder(false);
@@ -285,6 +296,8 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
             setLoadingNewer(false);
         return;
     }
+
+    clearFailedRequest();
 
     auto windowTrimmed = false;
     if (requestKind == RequestKind::Latest)
@@ -432,6 +445,14 @@ void ChatTimelineController::setHistoryError(const QString &error)
 
     m_historyError = error;
     emit historyErrorChanged();
+}
+
+void ChatTimelineController::clearFailedRequest()
+{
+    m_hasFailedRequest = false;
+    m_failedRequestCursor.clear();
+    m_failedRequestAnchor.clear();
+    m_failedRequestLimit = 0;
 }
 
 void ChatTimelineController::setReadMarkerId(const QString &stableId)

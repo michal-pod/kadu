@@ -318,8 +318,8 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
     {
         QImageReader thumbnailReader{fileInfo.absoluteFilePath()};
         thumbnailReader.setAutoTransform(true);
-        const auto image = thumbnailReader.read();
-        const auto thumbnail = image.scaled(QSize{320, 240}, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        thumbnailReader.setScaledSize(imageSize.scaled(QSize{320, 240}, Qt::KeepAspectRatio));
+        const auto thumbnail = thumbnailReader.read();
         auto candidate = std::make_shared<QTemporaryFile>();
         if (!thumbnail.isNull() && candidate->open() && thumbnail.save(candidate.get(), "PNG"))
         {

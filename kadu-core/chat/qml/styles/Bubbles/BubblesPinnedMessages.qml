@@ -38,6 +38,8 @@ Item {
     property var addReaction: null
     property var requestFullReactionSelector: null
     property var jumpToTimelineItem: null
+    property var popupOpened: null
+    property var popupClosed: null
     property bool showTrigger: false
 
     readonly property bool darkSurface: colorScheme === "Dark" ||
@@ -120,6 +122,15 @@ Item {
         dim: true
         z: 10
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: {
+            if (root.popupOpened)
+                root.popupOpened()
+        }
+        onClosed: {
+            pinnedMessagesList.cancelFlick()
+            if (root.popupClosed)
+                root.popupClosed()
+        }
 
         background: Rectangle {
             color: root.colorScheme === "System" ? systemPalette.base

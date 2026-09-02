@@ -68,6 +68,7 @@
 #include <QtCore/QTimer>
 #include <QtCore/QUrlQuery>
 #include <QtCore/QVariantMap>
+#include <QtConcurrent/QtConcurrentRun>
 #include <QtGui/QColor>
 #include <QtGui/QImageReader>
 #include <QtWidgets/QDialog>
@@ -86,7 +87,7 @@
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
         : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
 {
-    m_attachmentImages.setMaxCost(64);
+    m_attachmentImages.setMaxCost(AttachmentImageCacheSizeKiB);
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRestored, this,
             &MatrixTimelineService::updateTimelineEventsForMegolmSession);
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::backupRestored, this,
@@ -120,6 +121,7 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_attachmentProgress.clear();
     m_attachmentErrors.clear();
     m_attachmentThumbnailRequests.clear();
+    m_attachmentImageDecodes.clear();
     m_unavailableAttachmentThumbnails.clear();
     m_attachmentPreviewsUsingOriginal.clear();
     m_invalidImageAttachments.clear();
@@ -626,7 +628,8 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
         return *image;
     if (m_attachmentStates.value(resourceId) == ChatTimelineAttachmentState::Failed)
         return {};
-    if (m_attachmentDownloadPaths.contains(resourceId) || m_attachmentThumbnailRequests.contains(resourceId))
+    if (m_attachmentDownloadPaths.contains(resourceId) || m_attachmentThumbnailRequests.contains(resourceId) ||
+        m_attachmentImageDecodes.contains(resourceId))
         return {};
 
     const auto source = m_attachmentSources.constFind(resourceId);
@@ -676,7 +679,7 @@ QImage MatrixTimelineService::requestAttachmentImage(const Chat &chat, const QUr
                 }
                 else
                 {
-                    m_attachmentImages.insert(resourceId, new QImage{image});
+                    m_attachmentImages.insert(resourceId, new QImage{image}, attachmentImageCacheCost(image));
                     m_attachmentImageDimensions.insert(eventId, image.size());
                     m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Available);
                     m_attachmentProgress.insert(resourceId, 1.0);
@@ -965,29 +968,51 @@ QFuture<ChatTimelinePage> MatrixTimelineService::waitForRoomInitialState(const C
     auto future = promise->future();
     promise->start();
 
+    auto requestStarted = std::make_shared<bool>(false);
+    auto requestFinished = std::make_shared<bool>(false);
+    auto *requestContextObject = new QObject{this};
+    const QPointer<QObject> requestContext{requestContextObject};
+    auto *initialStateTimer = new QTimer{requestContextObject};
+    initialStateTimer->setSingleShot(true);
+    initialStateTimer->setInterval(30000);
     const QPointer<Quotient::Room> watchedRoom{room};
-    connect(room, &Quotient::Room::baseStateLoaded, this, [this, promise, request, watchedRoom] {
+    connect(room, &Quotient::Room::baseStateLoaded, requestContextObject,
+            [this, promise, request, watchedRoom, requestStarted, requestFinished, requestContext, initialStateTimer] {
+        if (*requestStarted || *requestFinished)
+            return;
+        *requestStarted = true;
+        initialStateTimer->stop();
         if (!watchedRoom)
         {
             ChatTimelinePage page;
             page.error = tr("Matrix room is no longer available.");
-            finishRequest(promise, std::move(page));
+            finishInitialStateRequest(promise, requestFinished, requestContext, std::move(page));
             return;
         }
 
-        auto *futureWatcher = new QFutureWatcher<ChatTimelinePage>{this};
-        connect(futureWatcher, &QFutureWatcher<ChatTimelinePage>::finished, this,
-                [this, promise, futureWatcher] {
-                    finishRequest(promise, futureWatcher->future().result());
+        m_loadedRooms.insert(watchedRoom.data());
+        auto *futureWatcher = new QFutureWatcher<ChatTimelinePage>{requestContext.data()};
+        connect(futureWatcher, &QFutureWatcher<ChatTimelinePage>::finished, requestContext.data(),
+                [this, promise, requestFinished, requestContext, futureWatcher] {
+                    const auto page = futureWatcher->future().result();
                     futureWatcher->deleteLater();
+                    finishInitialStateRequest(promise, requestFinished, requestContext, page);
                 });
         futureWatcher->setFuture(requestTimelineForRoom(request, watchedRoom.data()));
     });
-    connect(room, &QObject::destroyed, this, [this, promise] {
+    connect(room, &QObject::destroyed, requestContextObject,
+            [this, promise, requestFinished, requestContext] {
         ChatTimelinePage page;
         page.error = tr("Matrix room is no longer available.");
-        finishRequest(promise, std::move(page));
+        finishInitialStateRequest(promise, requestFinished, requestContext, std::move(page));
     });
+    connect(initialStateTimer, &QTimer::timeout, requestContextObject,
+            [this, promise, requestFinished, requestContext] {
+        ChatTimelinePage page;
+        page.error = tr("Timed out while waiting for the Matrix room state.");
+        finishInitialStateRequest(promise, requestFinished, requestContext, std::move(page));
+    });
+    initialStateTimer->start();
     return future;
 }
 
@@ -1883,44 +1908,77 @@ void MatrixTimelineService::handleAttachmentDownloadCompleted(Quotient::Room *ro
 
     const auto temporaryPath = m_attachmentDownloadPaths.take(resourceId);
     const auto localPath = localFile.toLocalFile().isEmpty() ? temporaryPath : localFile.toLocalFile();
-    QImageReader imageReader{localPath};
-    imageReader.setAutoTransform(true);
     const auto requestedSize = m_attachmentRequestedSizes.take(resourceId);
-    const auto originalSize = imageReader.size();
-    if (requestedSize.isValid() && originalSize.isValid())
-        imageReader.setScaledSize(originalSize.scaled(requestedSize, Qt::KeepAspectRatio));
-    const auto image = imageReader.read();
-    QFile::remove(temporaryPath);
-    if (localPath != temporaryPath)
-        QFile::remove(localPath);
+    m_attachmentImageDecodes.insert(resourceId);
+    const QPointer<Quotient::Room> downloadRoom{room};
+    const QPointer<Quotient::Connection> downloadConnection{m_connection};
+    auto *watcher = new QFutureWatcher<DecodedAttachmentImage>{this};
+    connect(watcher, &QFutureWatcher<DecodedAttachmentImage>::finished, this,
+            [this, watcher, downloadRoom, downloadConnection, resourceId, eventId] {
+        const auto decoded = watcher->future().result();
+        watcher->deleteLater();
+        if (downloadConnection != m_connection)
+            return;
+        m_attachmentImageDecodes.remove(resourceId);
+        if (!downloadRoom)
+            return;
 
-    if (image.isNull())
-    {
-        if (resourceId == attachmentResourceId(eventId, true))
+        if (decoded.image.isNull())
         {
-            if (m_attachmentPreviewsUsingOriginal.contains(eventId))
-                m_invalidImageAttachments.insert(eventId);
+            if (resourceId == attachmentResourceId(eventId, true))
+            {
+                if (m_attachmentPreviewsUsingOriginal.contains(eventId))
+                    m_invalidImageAttachments.insert(eventId);
+                else
+                    m_unavailableAttachmentThumbnails.insert(eventId);
+                m_attachmentStates.remove(resourceId);
+                m_attachmentProgress.remove(resourceId);
+                m_attachmentErrors.remove(resourceId);
+            }
             else
-                m_unavailableAttachmentThumbnails.insert(eventId);
-            m_attachmentStates.remove(resourceId);
-            m_attachmentProgress.remove(resourceId);
-            m_attachmentErrors.remove(resourceId);
+            {
+                m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Failed);
+                m_attachmentErrors.insert(resourceId, tr("The downloaded attachment is not a valid image."));
+            }
         }
         else
         {
-            m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Failed);
-            m_attachmentErrors.insert(resourceId, tr("The downloaded attachment is not a valid image."));
+            m_attachmentImages.insert(resourceId, new QImage{decoded.image},
+                                      attachmentImageCacheCost(decoded.image));
+            m_attachmentImageDimensions.insert(
+                eventId, decoded.originalSize.isValid() ? decoded.originalSize : decoded.image.size());
+            m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Available);
+            m_attachmentProgress.insert(resourceId, 1.0);
+            m_attachmentErrors.remove(resourceId);
         }
-    }
-    else
-    {
-        m_attachmentImages.insert(resourceId, new QImage{image});
-        m_attachmentImageDimensions.insert(eventId, originalSize.isValid() ? originalSize : image.size());
-        m_attachmentStates.insert(resourceId, ChatTimelineAttachmentState::Available);
-        m_attachmentProgress.insert(resourceId, 1.0);
-        m_attachmentErrors.remove(resourceId);
-    }
-    updateAttachmentEvent(room, eventId);
+        updateAttachmentEvent(downloadRoom.data(), eventId);
+    });
+    watcher->setFuture(QtConcurrent::run(
+        &MatrixTimelineService::decodeAttachmentImage, localPath, temporaryPath, requestedSize));
+}
+
+MatrixTimelineService::DecodedAttachmentImage MatrixTimelineService::decodeAttachmentImage(
+    const QString &localPath, const QString &temporaryPath, const QSize &requestedSize)
+{
+    QImageReader imageReader{localPath};
+    imageReader.setAutoTransform(true);
+    DecodedAttachmentImage result;
+    result.originalSize = imageReader.size();
+    if (requestedSize.isValid() && result.originalSize.isValid())
+        imageReader.setScaledSize(result.originalSize.scaled(requestedSize, Qt::KeepAspectRatio));
+    result.image = imageReader.read();
+
+    QFile::remove(temporaryPath);
+    if (localPath != temporaryPath)
+        QFile::remove(localPath);
+    return result;
+}
+
+int MatrixTimelineService::attachmentImageCacheCost(const QImage &image)
+{
+    const auto sizeKiB = (image.sizeInBytes() + 1023) / 1024;
+    return static_cast<int>(qBound(
+        qint64{1}, static_cast<qint64>(sizeKiB), static_cast<qint64>(AttachmentImageCacheSizeKiB)));
 }
 
 void MatrixTimelineService::handleAttachmentDownloadFailed(Quotient::Room *room, const QString &resourceId,
@@ -1956,6 +2014,7 @@ void MatrixTimelineService::clearAttachmentDownloads()
     m_attachmentDownloadPaths.clear();
     m_attachmentThumbnailRequests.clear();
     m_attachmentRequestedSizes.clear();
+    m_attachmentImageDecodes.clear();
 }
 
 bool MatrixTimelineService::shouldHideEventFromTimeline(const Quotient::RoomEvent &event)
@@ -2052,4 +2111,17 @@ void MatrixTimelineService::finishRequest(const std::shared_ptr<QPromise<ChatTim
 {
     promise->addResult(std::move(page));
     promise->finish();
+}
+
+void MatrixTimelineService::finishInitialStateRequest(
+    const std::shared_ptr<QPromise<ChatTimelinePage>> &promise, const std::shared_ptr<bool> &finished,
+    const QPointer<QObject> &context, ChatTimelinePage page) const
+{
+    if (*finished)
+        return;
+
+    *finished = true;
+    finishRequest(promise, std::move(page));
+    if (context)
+        context->deleteLater();
 }

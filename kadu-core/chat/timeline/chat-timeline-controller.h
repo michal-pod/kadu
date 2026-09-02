@@ -111,10 +111,15 @@ private:
     QByteArray m_newerCursor;
     QVector<ChatTimelineItem> m_deferredLiveItems;
     QString m_historyError;
+    QByteArray m_failedRequestCursor;
+    QString m_failedRequestAnchor;
     QString m_readMarkerId;
     QFuture<void> m_pageContinuation;
     quint64 m_requestGeneration = 0;
     int m_newEventsBelow = 0;
+    int m_failedRequestLimit = 0;
+    RequestKind m_failedRequestKind = RequestKind::Latest;
+    bool m_hasFailedRequest = false;
     bool m_loadingInitial = false;
     bool m_loadingOlder = false;
     bool m_loadingNewer = false;
@@ -127,13 +132,14 @@ private:
 
     void requestPage(RequestKind requestKind, const QByteArray &cursor, const QString &anchorId, int limit);
     void pageAvailable(RequestKind requestKind, quint64 generation, const QByteArray &requestedCursor,
-                       const QString &requestedAnchor, const ChatTimelinePage &page);
+                       const QString &requestedAnchor, int requestedLimit, const ChatTimelinePage &page);
     void setLoadingInitial(bool loading);
     void setLoadingOlder(bool loading);
     void setLoadingNewer(bool loading);
     void setHasOlder(bool hasOlder);
     void setHasNewer(bool hasNewer);
     void setHistoryError(const QString &error);
+    void clearFailedRequest();
     void setReadMarkerId(const QString &stableId);
     void setNewEventsBelow(int count);
     void markNewestEventVisible();

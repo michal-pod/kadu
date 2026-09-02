@@ -83,6 +83,7 @@ private slots:
     void shouldKeepABoundedWindowWhenLoadingOlderMessages();
     void shouldKeepOlderRequestActiveWhileApplyingItsPage();
     void shouldExposeTheBeginningAfterTheFinalOlderPage();
+    void shouldRetryTheFailedHistoryRequest();
     void shouldLoadContextAroundAnArbitraryMessage();
     void shouldNotInsertLiveEventsIntoAHistoricalWindow();
 
@@ -227,6 +228,40 @@ void ChatTimelineControllerTest::shouldExposeTheBeginningAfterTheFinalOlderPage(
     QTRY_COMPARE(controller.timeline()->rowCount(), 2);
     QVERIFY(!controller.hasOlder());
     QCOMPARE(controller.timeline()->rowForStableId(QStringLiteral("$oldest")), 0);
+}
+
+void ChatTimelineControllerTest::shouldRetryTheFailedHistoryRequest()
+{
+    Account account{new AccountShared{}};
+    const auto chat = Chat::null;
+    TimelineServiceStub timelineService{account};
+    ChatTimelineController controller{chat, &timelineService};
+
+    ChatTimelinePage initialPage;
+    initialPage.items.append(makeItem(QStringLiteral("$newer"), QByteArrayLiteral("002")));
+    initialPage.olderCursor = QByteArrayLiteral("older-cursor");
+    initialPage.hasOlder = true;
+    timelineService.enqueue(initialPage);
+    controller.loadInitial();
+    QTRY_VERIFY(controller.hasOlder());
+
+    ChatTimelinePage failedPage;
+    failedPage.error = QStringLiteral("network error");
+    timelineService.enqueue(failedPage);
+    controller.loadOlder(17);
+    QTRY_COMPARE(controller.historyError(), QStringLiteral("network error"));
+    QVERIFY(!controller.hasOlder());
+
+    ChatTimelinePage retriedPage;
+    retriedPage.items.append(makeItem(QStringLiteral("$older"), QByteArrayLiteral("001")));
+    timelineService.enqueue(retriedPage);
+    controller.retryHistory();
+
+    QCOMPARE(static_cast<int>(timelineService.lastRequest().mode), static_cast<int>(ChatTimelineRequestMode::Older));
+    QCOMPARE(timelineService.lastRequest().cursor, QByteArrayLiteral("older-cursor"));
+    QCOMPARE(timelineService.lastRequest().limit, 17);
+    QTRY_COMPARE(controller.timeline()->rowForStableId(QStringLiteral("$older")), 0);
+    QVERIFY(controller.historyError().isEmpty());
 }
 
 void ChatTimelineControllerTest::shouldLoadContextAroundAnArbitraryMessage()
