@@ -137,6 +137,39 @@ bool MessageManagerImpl::sendMessage(const Chat &chat, NormalizedHtmlString html
     return sent;
 }
 
+bool MessageManagerImpl::sendReply(const Chat &chat, NormalizedHtmlString htmlContent, const QString &targetEventId)
+{
+    return sendTimelineMessage(chat, std::move(htmlContent), targetEventId, false);
+}
+
+bool MessageManagerImpl::editMessage(const Chat &chat, NormalizedHtmlString htmlContent, const QString &targetEventId)
+{
+    return sendTimelineMessage(chat, std::move(htmlContent), targetEventId, true);
+}
+
+bool MessageManagerImpl::sendTimelineMessage(const Chat &chat, NormalizedHtmlString htmlContent,
+                                             const QString &targetEventId, bool replacement)
+{
+    if (targetEventId.isEmpty())
+        return false;
+
+    auto chatService = m_chatServiceRepository->chatService(chat.chatAccount());
+    if (!chatService)
+        return false;
+
+    Message message = createOutgoingMessage(chat, std::move(htmlContent));
+    if (m_messageFilterService && !m_messageFilterService.data()->acceptMessage(message))
+        return false;
+
+    Message transformedMessage =
+        m_messageTransformerService ? m_messageTransformerService.data()->transform(message) : message;
+    const auto sent = replacement ? chatService->editMessage(transformedMessage, targetEventId)
+                                  : chatService->sendReply(transformedMessage, targetEventId);
+    if (sent)
+        emit messageSent(transformedMessage);
+    return sent;
+}
+
 bool MessageManagerImpl::sendRawMessage(const Chat &chat, const QByteArray &content)
 {
     auto chatService = m_chatServiceRepository->chatService(chat.chatAccount());
@@ -144,6 +177,18 @@ bool MessageManagerImpl::sendRawMessage(const Chat &chat, const QByteArray &cont
         return chatService->sendRawMessage(chat, content);
     else
         return false;
+}
+
+bool MessageManagerImpl::sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+{
+    auto chatService = m_chatServiceRepository->chatService(chat.chatAccount());
+    return chatService && chatService->sendAttachment(chat, filePath, description);
+}
+
+bool MessageManagerImpl::sendLocation(const Chat &chat, const QString &geoUri)
+{
+    auto chatService = m_chatServiceRepository->chatService(chat.chatAccount());
+    return chatService && chatService->sendLocation(chat, geoUri);
 }
 
 #include "message-manager-impl.moc"

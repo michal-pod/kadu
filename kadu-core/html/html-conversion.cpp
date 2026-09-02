@@ -20,8 +20,10 @@
 #include "html-conversion.h"
 
 #include "dom/dom-processor.h"
+#include "html/html-sanitizer.h"
 #include "html/html-string.h"
 #include "html/normalized-html-string.h"
+#include "html/sanitized-html-string.h"
 #include "misc/remove-script-dom-visitor.h"
 
 #include <QtCore/QRegularExpression>
@@ -68,4 +70,9 @@ NormalizedHtmlString normalizeHtml(const HtmlString &html)
         // at least it won't break anything in webview
         return NormalizedHtmlString{plainToHtml(fixedHtml).string()};
     }
+}
+
+SanitizedHtmlString sanitizeHtml(const HtmlString &html)
+{
+    return HtmlSanitizer{}.sanitize(html);
 }

@@ -69,8 +69,7 @@ void MatrixDeviceVerificationNotificationService::done()
 void MatrixDeviceVerificationNotificationService::notifyVerificationRequest(
     const Account &account, Quotient::KeyVerificationSession *session)
 {
-    if (!account || !session || session->userVerification() || session->state() != Quotient::KeyVerificationSession::INCOMING
-        || !m_notificationService)
+    if (!account || !session || session->state() != Quotient::KeyVerificationSession::INCOMING || !m_notificationService)
         return;
 
     const auto key = sessionKey(account, session);

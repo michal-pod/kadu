@@ -16,6 +16,7 @@ set (protocols_SRCS
 	services/personal-info-service.cpp
 	services/protocol-history-request.cpp
 	services/protocol-history-service.cpp
+	services/protocol-timeline-service.cpp
 	services/protocol-service.cpp
 	services/search-service.cpp
 	services/subscription-service.cpp

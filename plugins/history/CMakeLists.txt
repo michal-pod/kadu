@@ -17,26 +17,10 @@ kadu_api_directories (plugins/history
 
 set (SOURCES
 	actions/clear-history-action.cpp
-	actions/remote-history-search-action.cpp
-	actions/show-history-action.cpp
-
-	gui/widgets/chat-history-tab.cpp
 	gui/widgets/history-buddy-configuration-widget.cpp
 	gui/widgets/history-buddy-configuration-widget-factory.cpp
 	gui/widgets/history-chat-configuration-widget.cpp
 	gui/widgets/history-chat-configuration-widget-factory.cpp
-	gui/widgets/history-messages-tab.cpp
-	gui/widgets/history-tab.cpp
-	gui/widgets/history-talkable-combo-box.cpp
-	gui/widgets/search-tab.cpp
-	gui/widgets/timeline-chat-messages-view.cpp
-	gui/remote-history-search-dialog.cpp
-
-	gui/windows/history-window-service.cpp
-	gui/windows/history-window.cpp
-
-	model/history-query-results-model.cpp
-	model/history-query-results-proxy-model.cpp
 
 	search/history-search-parameters.cpp
 	storage/history-messages-storage.cpp
@@ -45,8 +29,6 @@ set (SOURCES
 	buddy-history-delete-handler.cpp
 	chats-buddies-splitter.cpp
 	history.cpp
-	history-messages-prepender.cpp
-	protocol-history-page-loader.cpp
 	history-module.cpp
 	history-plugin-modules-factory.cpp
 	history-plugin-object.cpp

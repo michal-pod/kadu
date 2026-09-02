@@ -43,7 +43,11 @@ public:
     virtual ~MessageManagerImpl();
 
     virtual bool sendMessage(const Chat &chat, NormalizedHtmlString content, bool silent = false) override;
+    virtual bool sendReply(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId) override;
+    virtual bool editMessage(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId) override;
     virtual bool sendRawMessage(const Chat &chat, const QByteArray &content) override;
+    virtual bool sendAttachment(const Chat &chat, const QString &filePath, const QString &description) override;
+    virtual bool sendLocation(const Chat &chat, const QString &geoUri) override;
 
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
@@ -57,6 +61,8 @@ private:
      * @param content content of outgoing message
      */
     Message createOutgoingMessage(const Chat &chat, NormalizedHtmlString content);
+    bool sendTimelineMessage(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId,
+                             bool replacement);
 
     void addChatService(ChatService *chatService);
     void removeChatService(ChatService *chatService);

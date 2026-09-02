@@ -48,6 +48,8 @@ set (widgets_SRCS
 	buddy-personal-info-configuration-widget.cpp
 	buddy-options-configuration-widget.cpp
 	buddy-info-panel.cpp
+	info-panel-style-configuration-ui-handler.cpp
+	info-panel-style-manager.cpp
 	categorized-list-view.cpp
 	categorized-list-view-painter.cpp
 	chat-configuration-widget.cpp
@@ -59,7 +61,7 @@ set (widgets_SRCS
 	chat-edit-widget.cpp
 	chat-groups-configuration-widget.cpp
 	chat-room-edit-widget.cpp
-	chat-style-preview.cpp
+	chat-timeline-preview.cpp
 	chat-top-bar-container-widget.cpp
 	chat-top-bar-widget-factory.cpp
 	chat-top-bar-widget-factory-repository.cpp
@@ -78,9 +80,9 @@ set (widgets_SRCS
 	kadu-text-edit.cpp
 	kadu-tree-view.cpp
 	kadu-tree-view-delegate.cpp
-	kadu-web-view.cpp
 	line-edit-clear-button.cpp
 	line-edit-with-clear-button.cpp
+	location-selector-dialog.cpp
 	modal-configuration-widget.cpp
 	paste-acceptor.cpp
 	path-list-edit.cpp
@@ -107,15 +109,6 @@ set (widgets_SRCS
 	tool-tip-manager.cpp
 	tool-tip-widget.cpp
 	wait-overlay.cpp
-	webkit-messages-view/message-limiter.cpp
-	webkit-messages-view/webkit-messages-view.cpp
-	webkit-messages-view/webkit-messages-view-clearing-display.cpp
-	webkit-messages-view/webkit-messages-view-display.cpp
-	webkit-messages-view/webkit-messages-view-display-factory.cpp
-	webkit-messages-view/webkit-messages-view-factory.cpp
-	webkit-messages-view/webkit-messages-view-handler.cpp
-	webkit-messages-view/webkit-messages-view-handler-factory.cpp
-	webkit-messages-view/webkit-messages-view-removing-display.cpp
 
 	configuration/buddy-list-background-colors-widget.cpp
 	configuration/config-action-button.cpp

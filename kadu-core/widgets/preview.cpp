@@ -5,6 +5,7 @@
  * Copyright 2009 Bartłomiej Zimoń (uzi18@o2.pl)
  * Copyright 2010, 2011, 2012, 2013, 2014 Bartosz Brachaczek (b.brachaczek@gmail.com)
  * Copyright 2009, 2010, 2011, 2012, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -24,74 +25,58 @@
 #include "preview.h"
 #include "preview.moc"
 
-#include "buddies/buddy-dummy-factory.h"
-#include "parser/parser.h"
-#include "widgets/kadu-web-view.h"
+#include <QtCore/QUrl>
+#include <QtCore/QVariantMap>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QPalette>
+#include <QtQml/QQmlContext>
+#include <QtQuick/QQuickItem>
+#include <QtQuickWidgets/QQuickWidget>
+#include <QtWidgets/QVBoxLayout>
 
-#include <QtWidgets/QHBoxLayout>
-
-#include "core/injected-factory.h"
-
-#define PREVIEW_DEFAULT_HEIGHT 250
-
-Preview::Preview(QWidget *parent) : QFrame(parent), m_webView{nullptr}, m_layout{nullptr}
+Preview::Preview(QWidget *parent) : QFrame{parent}
 {
     setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
-    setFixedHeight(PREVIEW_DEFAULT_HEIGHT);
-
-    // Expanding rather than Preferred: QWebEngineView derives its size hint from the loaded
-    // contents and reports 0x0 until something is rendered, which left this frame two pixels wide.
-    // QWebView used to answer with the page's preferred size instead, so Preferred was enough.
+    setFixedHeight(190);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    QHBoxLayout *layout = new QHBoxLayout(this);
+    auto *layout = new QVBoxLayout{this};
     layout->setContentsMargins(0, 0, 0, 0);
 
-    m_layout = layout;
+    auto panel = QVariantMap{{QStringLiteral("displayName"), QStringLiteral("Michał Kowalski")},
+                             {QStringLiteral("avatarSource"), QUrl{}},
+                             {QStringLiteral("detailsText"), QStringLiteral("michal@example.org<br>tel.: +48 600 000 000")},
+                             {QStringLiteral("statusText"), QStringLiteral("Dostępny")},
+                             {QStringLiteral("descriptionText"), QStringLiteral("Przykładowy opis kontaktu.")},
+                             {QStringLiteral("style"), QStringLiteral("Classic")},
+                             {QStringLiteral("foregroundColor"), QGuiApplication::palette().text().color().name()},
+                             {QStringLiteral("backgroundColor"), QStringLiteral("transparent")},
+                             {QStringLiteral("fontFamily"), QString{}},
+                             {QStringLiteral("fontPointSize"), 10},
+                             {QStringLiteral("fontBold"), false},
+                             {QStringLiteral("fontItalic"), false},
+                             {QStringLiteral("fontUnderline"), false},
+                             {QStringLiteral("showScrollBar"), true}};
+
+    m_view = new QQuickWidget{this};
+    m_view->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    m_view->setClearColor(Qt::transparent);
+    m_view->setAttribute(Qt::WA_TranslucentBackground);
+    m_view->rootContext()->setContextProperty(QStringLiteral("_infoPanel"), panel);
+    m_view->setSource(QUrl{QStringLiteral("qrc:/Kadu/Chat/widgets/qml/InfoPanel.qml")});
+    layout->addWidget(m_view);
 }
 
-void Preview::setInjectedFactory(InjectedFactory *injectedFactory)
+Preview::~Preview() = default;
+
+void Preview::setStyleSource(const QUrl &source)
 {
-    m_injectedFactory = injectedFactory;
+    if (m_view && m_view->rootObject())
+        m_view->rootObject()->setProperty("styleSource", source);
 }
 
-void Preview::init()
+void Preview::setColorScheme(const QString &scheme)
 {
-    // The view has to come from the injected factory: KaduWebView is given the shared QtWebEngine
-    // profile through injection, and a plain new would leave it without one.
-    m_webView = m_injectedFactory->makeInjected<KaduWebView>(this);
-    m_webView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_layout->addWidget(m_webView);
-
-    // QWebEnginePage has no palette; the transparent page background replaces QPalette::Base.
-    m_webView->page()->setBackgroundColor(Qt::transparent);
-    m_webView->setAttribute(Qt::WA_OpaquePaintEvent, false);
-}
-
-Preview::~Preview()
-{
-}
-
-void Preview::setBuddyDummyFactory(BuddyDummyFactory *buddyDummyFactory)
-{
-    m_buddyDummyFactory = buddyDummyFactory;
-}
-
-void Preview::setParser(Parser *parser)
-{
-    m_parser = parser;
-}
-
-KaduWebView *Preview::webView() const
-{
-    return m_webView;
-}
-
-void Preview::syntaxChanged(const QString &content)
-{
-    QString syntax = content;
-    QString text = m_parser->parse(syntax, Talkable(m_buddyDummyFactory->dummy()), ParserEscape::HtmlEscape);
-    emit needFixup(text);
-
-    m_webView->setHtml(text);
+    if (m_view && m_view->rootObject())
+        m_view->rootObject()->setProperty("colorScheme", scheme);
 }

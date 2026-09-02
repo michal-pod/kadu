@@ -24,8 +24,19 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <QtCore/QFileInfo>
+#include <QtCore/QLocale>
+#include <QtCore/QUrl>
+#include <QtGui/QPixmap>
 #include <QtGui/QResizeEvent>
 #include <QtWidgets/QFileDialog>
+#include <QtWidgets/QFileIconProvider>
+#include <QtWidgets/QFrame>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QToolButton>
+#include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QWidget>
 #include <QtXml/QDomElement>
 
 #include "actions/action.h"
@@ -53,6 +64,7 @@
 #include "widgets/chat-edit-box-size-manager.h"
 #include "widgets/chat-widget/chat-widget.h"
 #include "widgets/custom-input.h"
+#include "widgets/location-selector-dialog.h"
 #include "widgets/talkable-tree-view.h"
 #include "widgets/toolbar.h"
 #include "windows/message-dialog.h"
@@ -135,7 +147,38 @@ void ChatEditBox::init()
     InputBox = injectedFactory()->makeInjected<CustomInput>(CurrentChat, this);
     InputBox->setWordWrapMode(QTextOption::WordWrap);
 
-    setCentralWidget(InputBox);
+    auto *editorContainer = new QWidget(this);
+    auto *editorLayout = new QHBoxLayout(editorContainer);
+    editorLayout->setContentsMargins(0, 0, 0, 0);
+    editorLayout->setSpacing(6);
+    editorLayout->addWidget(InputBox, 1);
+
+    m_attachmentPreview = new QFrame(editorContainer);
+    auto *attachmentLayout = new QVBoxLayout(m_attachmentPreview);
+    attachmentLayout->setContentsMargins(6, 6, 6, 6);
+    attachmentLayout->setSpacing(4);
+
+    auto *attachmentHeader = new QHBoxLayout;
+    m_attachmentIcon = new QLabel(m_attachmentPreview);
+    m_attachmentIcon->setFixedSize(64, 64);
+    m_attachmentIcon->setAlignment(Qt::AlignCenter);
+    attachmentHeader->addWidget(m_attachmentIcon);
+
+    auto *removeButton = new QToolButton(m_attachmentPreview);
+    removeButton->setText(QStringLiteral("×"));
+    removeButton->setToolTip(tr("Remove attachment"));
+    attachmentHeader->addWidget(removeButton, 0, Qt::AlignTop);
+    attachmentLayout->addLayout(attachmentHeader);
+
+    m_attachmentName = new QLabel(m_attachmentPreview);
+    m_attachmentName->setWordWrap(true);
+    m_attachmentName->setMaximumWidth(140);
+    attachmentLayout->addWidget(m_attachmentName);
+    m_attachmentPreview->setFixedWidth(152);
+    m_attachmentPreview->hide();
+    editorLayout->addWidget(m_attachmentPreview);
+
+    setCentralWidget(editorContainer);
 
     bool old_top = loadOldToolBarsFromConfig("chatTopDockArea", Qt::TopToolBarArea);
     bool old_middle = loadOldToolBarsFromConfig("chatMiddleDockArea", Qt::TopToolBarArea);
@@ -145,8 +188,23 @@ void ChatEditBox::init()
 
     if (old_top || old_middle || old_bottom || old_left || old_right)
         writeToolBarsToConfig();   // port old config
-    else
-        loadToolBarsFromConfig();   // load new config
+
+    // Toolbars are persisted independently of their defaults. Migrate existing chat toolbars so the attachment
+    // action is discoverable without resetting the user's other buttons or layout.
+    auto toolbarConfig = findExistingToolbarOnArea(configuration(), QStringLiteral("chat_topDockArea"));
+    if (toolbarConfig.isNull())
+        toolbarConfig = findExistingToolbar(configuration(), QStringLiteral("chat"));
+    addToolButton(configuration(), toolbarConfig, QStringLiteral("attachFileAction"));
+
+    // addToolButton() appends missing entries. The send action is intentionally right-aligned after the spacer,
+    // so move the newly introduced attachment button before that spacer and keep it with editor actions.
+    auto attachmentButton = configuration()->api()->findElementByProperty(
+        toolbarConfig, QStringLiteral("ToolButton"), QStringLiteral("action_name"), QStringLiteral("attachFileAction"));
+    auto spacerButton = configuration()->api()->findElementByProperty(
+        toolbarConfig, QStringLiteral("ToolButton"), QStringLiteral("action_name"), QStringLiteral("__spacer1"));
+    if (!attachmentButton.isNull() && !spacerButton.isNull() && attachmentButton.nextSibling() != spacerButton)
+        toolbarConfig.insertBefore(attachmentButton, spacerButton);
+    loadToolBarsFromConfig();
 
     // 	connect(m_chatWidgetActions->colorSelector(), SIGNAL(actionCreated(Action *)),
     // 			this, SLOT(colorSelectorActionCreated(Action *)));
@@ -155,6 +213,8 @@ void ChatEditBox::init()
         SIGNAL(keyPressed(QKeyEvent *, CustomInput *, bool &)));
     connect(InputBox, SIGNAL(fontChanged(QFont)), this, SLOT(fontChanged(QFont)));
     connect(InputBox, SIGNAL(cursorPositionChanged()), this, SLOT(cursorPositionChanged()));
+    connect(InputBox, SIGNAL(attachmentSelected(QUrl)), this, SLOT(setAttachment(QUrl)));
+    connect(removeButton, &QToolButton::clicked, this, &ChatEditBox::clearAttachment);
 
     connect(m_chatConfigurationHolder, SIGNAL(chatConfigurationUpdated()), this, SLOT(configurationUpdated()));
 
@@ -194,9 +254,93 @@ void ChatEditBox::setAutoSend(bool autoSend)
     InputBox->setAutoSend(autoSend);
 }
 
+void ChatEditBox::setAttachmentsEnabled(bool enabled)
+{
+    if (m_attachmentsEnabled == enabled)
+        return;
+
+    m_attachmentsEnabled = enabled;
+    InputBox->setAttachmentsEnabled(enabled);
+    Context->changeNotifier().notify();
+}
+
 CustomInput *ChatEditBox::inputBox()
 {
     return InputBox;
+}
+
+QString ChatEditBox::attachmentPath() const
+{
+    return m_attachmentPath;
+}
+
+bool ChatEditBox::attachmentsEnabled() const
+{
+    return m_attachmentsEnabled;
+}
+
+void ChatEditBox::clearAttachment()
+{
+    if (InputBox && InputBox->toPlainText() == m_attachmentDescription)
+        InputBox->clear();
+
+    m_attachmentPath.clear();
+    m_attachmentDescription.clear();
+    if (m_attachmentPreview)
+        m_attachmentPreview->hide();
+}
+
+void ChatEditBox::setAttachment(const QUrl &fileUrl)
+{
+    const QFileInfo fileInfo{fileUrl.toLocalFile()};
+    if (!fileInfo.isFile() || !fileInfo.isReadable() || !canAttachFile(fileInfo))
+        return;
+
+    m_attachmentPath = fileInfo.absoluteFilePath();
+    m_attachmentDescription.clear();
+    InputBox->setPlainText(m_attachmentDescription);
+
+    const QPixmap preview{m_attachmentPath};
+    if (!preview.isNull())
+        m_attachmentIcon->setPixmap(preview.scaled(m_attachmentIcon->size(), Qt::KeepAspectRatio,
+                                                   Qt::SmoothTransformation));
+    else
+        m_attachmentIcon->setPixmap(QFileIconProvider{}.icon(fileInfo).pixmap(m_attachmentIcon->size()));
+
+    m_attachmentName->setText(fileInfo.fileName());
+    m_attachmentName->setToolTip(m_attachmentPath);
+    m_attachmentPreview->show();
+}
+
+bool ChatEditBox::canAttachFile(const QFileInfo &fileInfo)
+{
+    if (!m_attachmentsEnabled)
+        return false;
+
+    const auto *protocol = CurrentChat.chatAccount().protocolHandler();
+    if (!protocol || !protocol->isAttachmentsSupported())
+        return false;
+
+    const auto maximumSize = protocol->maximumAttachmentSize();
+    if (maximumSize > 0 && fileInfo.size() > maximumSize)
+    {
+        MessageDialog::show(
+            m_iconsManager->iconByPath(KaduIcon("dialog-error")), tr("Kadu"),
+            tr("The selected file is larger than the protocol attachment limit of %1.")
+                .arg(QLocale{}.formattedDataSize(maximumSize)),
+            QMessageBox::Ok, this);
+        return false;
+    }
+
+    if (fileInfo.size() <= AttachmentWarningSize)
+        return true;
+
+    auto *dialog = MessageDialog::create(
+        m_iconsManager->iconByPath(KaduIcon("dialog-warning")), tr("Kadu"),
+        tr("The selected file is %1. Do you want to attach it?").arg(QLocale{}.formattedDataSize(fileInfo.size())), this);
+    dialog->addButton(QMessageBox::Yes, tr("Attach file"));
+    dialog->addButton(QMessageBox::No, tr("Cancel"));
+    return dialog->ask();
 }
 
 bool ChatEditBox::supportsActionType(ActionDescription::ActionType type)
@@ -247,6 +391,7 @@ void ChatEditBox::createDefaultToolbars(Configuration *configuration, QDomElemen
     addToolButton(configuration, toolbarConfig, "clearChatAction");
     addToolButton(configuration, toolbarConfig, "insertEmoticonAction", Qt::ToolButtonTextBesideIcon);
     addToolButton(configuration, toolbarConfig, "insertImageAction");
+    addToolButton(configuration, toolbarConfig, "attachFileAction");
     addToolButton(configuration, toolbarConfig, "showHistoryAction");
     addToolButton(configuration, toolbarConfig, "remoteHistorySearchAction");
     addToolButton(configuration, toolbarConfig, "encryptionAction");
@@ -355,6 +500,45 @@ void ChatEditBox::openInsertImageDialog()
 
         InputBox->insertHtml(QString("<img src='%1' />").arg(selectedFile));
     }
+}
+
+void ChatEditBox::openAttachFileDialog()
+{
+    if (!m_attachmentsEnabled)
+        return;
+
+    const auto *protocol = CurrentChat.chatAccount().protocolHandler();
+    if (!protocol || !protocol->isAttachmentsSupported())
+        return;
+
+    const auto selectedFile = QFileDialog::getOpenFileName(
+        this, tr("Attach file"), configuration()->deprecatedApi()->readEntry("Chat", "LastAttachmentPath"),
+        tr("All files (*)"));
+    if (selectedFile.isEmpty())
+        return;
+
+    const QFileInfo fileInfo{selectedFile};
+    if (!fileInfo.isReadable())
+    {
+        MessageDialog::show(
+            m_iconsManager->iconByPath(KaduIcon("dialog-warning")), tr("Kadu"), tr("This file is not readable"),
+            QMessageBox::Ok, this);
+        return;
+    }
+
+    configuration()->deprecatedApi()->writeEntry("Chat", "LastAttachmentPath", fileInfo.absolutePath());
+    setAttachment(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+}
+
+void ChatEditBox::openLocationDialog()
+{
+    const auto *protocol = CurrentChat.chatAccount().protocolHandler();
+    if (!protocol || !protocol->isLocationSendingSupported())
+        return;
+
+    auto *dialog = new LocationSelectorDialog{this};
+    connect(dialog, &LocationSelectorDialog::locationSelected, this, &ChatEditBox::locationSelected);
+    dialog->open();
 }
 
 void ChatEditBox::changeColor(const QColor &newColor)

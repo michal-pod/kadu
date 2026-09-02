@@ -14,6 +14,8 @@ set (actions_SRCS
 	chat-widget/auto-send-action.cpp
 	chat-widget/open-chat-action.cpp
 	chat-widget/insert-image-action.cpp
+	chat-widget/attach-file-action.cpp
+	chat-widget/send-location-action.cpp
 
 	main/open-forum-action.cpp
 	main/change-status-action.cpp

@@ -20,6 +20,7 @@
 #include "actions-module.h"
 
 #include "actions/chat-widget/auto-send-action.h"
+#include "actions/chat-widget/attach-file-action.h"
 #include "actions/chat-widget/block-user-action.h"
 #include "actions/chat-widget/bold-action.h"
 #include "actions/chat-widget/clear-chat-action.h"
@@ -29,6 +30,7 @@
 #include "actions/chat-widget/open-chat-action.h"
 #include "actions/chat-widget/open-chat-with-action.h"
 #include "actions/chat-widget/send-action.h"
+#include "actions/chat-widget/send-location-action.h"
 #include "actions/chat-widget/underline-action.h"
 #include "actions/chat/add-conference-action.h"
 #include "actions/chat/add-room-chat-action.h"
@@ -85,6 +87,7 @@ ActionsModule::ActionsModule()
 
     // chat-widget
     add_type<AutoSendAction>();
+    add_type<AttachFileAction>();
     add_type<BlockUserAction>();
     add_type<BoldAction>();
     add_type<ClearChatAction>();
@@ -94,6 +97,7 @@ ActionsModule::ActionsModule()
     add_type<OpenChatAction>();
     add_type<OpenChatWithAction>();
     add_type<SendAction>();
+    add_type<SendLocationAction>();
     add_type<UnderlineAction>();
 
     // main

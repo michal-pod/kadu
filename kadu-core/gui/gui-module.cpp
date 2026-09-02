@@ -25,10 +25,9 @@
 #include "widgets/chat-edit-box-size-manager.h"
 #include "widgets/chat-widget/actions/chat-widget-actions.h"
 #include "widgets/custom-input-menu-manager.h"
+#include "widgets/info-panel-style-configuration-ui-handler.h"
+#include "widgets/info-panel-style-manager.h"
 #include "widgets/tool-tip-manager.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-display-factory.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-factory.h"
-#include "widgets/webkit-messages-view/webkit-messages-view-handler-factory.h"
 #include "windows/buddy-data-window-repository.h"
 #include "windows/chat-data-window-repository.h"
 #include "windows/kadu-window-actions.h"
@@ -50,6 +49,8 @@ GuiModule::GuiModule()
     add_type<ChatEditBoxSizeManager>();
     add_type<ChatWidgetActions>();
     add_type<CustomInputMenuManager>();
+    add_type<InfoPanelStyleConfigurationUiHandler>();
+    add_type<InfoPanelStyleManager>();
     add_type<KaduWindowActions>();
     add_type<KaduWindowService>();
     add_type<MainConfigurationWindowService>();
@@ -59,9 +60,6 @@ GuiModule::GuiModule()
     add_type<OpenChatWithService>();
     add_type<ProxyEditWindowService>();
     add_type<ToolTipManager>();
-    add_type<WebkitMessagesViewDisplayFactory>();
-    add_type<WebkitMessagesViewFactory>();
-    add_type<WebkitMessagesViewHandlerFactory>();
     add_type<WindowManager>();
     add_type<YourAccountsWindowService>();
 }

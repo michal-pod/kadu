@@ -23,8 +23,10 @@
 
 class HtmlString;
 class NormalizedHtmlString;
+class SanitizedHtmlString;
 
 KADUAPI QString htmlToPlain(const HtmlString &html);
 KADUAPI QString htmlToPlain(const NormalizedHtmlString &html);
 KADUAPI HtmlString plainToHtml(const QString &plain);
 KADUAPI NormalizedHtmlString normalizeHtml(const HtmlString &html);
+KADUAPI SanitizedHtmlString sanitizeHtml(const HtmlString &html);

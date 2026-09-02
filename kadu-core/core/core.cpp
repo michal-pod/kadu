@@ -47,11 +47,8 @@
 #include "execution-arguments/execution-arguments.h"
 #include "file-transfer/file-transfer-handler-manager.h"
 #include "file-transfer/file-transfer-manager.h"
-#include "gui/configuration/chat-configuration-holder.h"
 #include "icons/icons-manager.h"
 #include "injeqt-type-roles.h"
-#include "message/message-html-renderer-service.h"
-#include "message/message-render-info.h"
 #include "misc/change-notifier-lock.h"
 #include "misc/date-time-parser-tags.h"
 #include "misc/paths-provider.h"
@@ -77,6 +74,7 @@
 #include "widgets/chat-widget/chat-widget-message-handler-configurator.h"
 #include "widgets/chat-widget/chat-widget-message-handler.h"
 #include "widgets/chat-widget/chat-widget-repository.h"
+#include "widgets/info-panel-style-configuration-ui-handler.h"
 #include "windows/chat-window/chat-window-manager.h"
 #include "windows/chat-window/chat-window-storage-configurator.h"
 #include "windows/chat-window/chat-window-storage.h"
@@ -252,22 +250,17 @@ void Core::createDefaultConfiguration()
     m_injector.get<Configuration>()->deprecatedApi()->addVariable(
         "Look", "DescriptionColor", w.palette().text().color());
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "DisplayGroupTabs", true);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "HeaderSeparatorHeight", 1);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelCustomColors", false);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable(
         "Look", "InfoPanelFgColor", w.palette().text().color());
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelBgFilled", false);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable(
         "Look", "InfoPanelBgColor", w.palette().base().color());
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelSyntaxFile", "ultr");
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelStyle", "Classic");
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "InfoPanelStyleVariant", "System");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NiceDateFormat", true);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoHeaderInterval", 30);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoHeaderRepeat", true);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoServerTime", true);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "NoServerTimeDiff", 60);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "PanelFont", qApp->font());
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "PanelVerticalScrollbar", false);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ParagraphSeparator", 4);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ShowAvatars", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable(
         "Look", "IconTheme", IconThemeManager::defaultTheme());
@@ -279,6 +272,7 @@ void Core::createDefaultConfiguration()
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ShowMultilineDesc", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ShowStatusButton", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "Style", "kadu");
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ChatStyleVariant", "System");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "UserboxBackgroundDisplayStyle", "Stretched");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "UserboxTransparency", false);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "UserboxAlpha", 0);
@@ -346,10 +340,6 @@ void Core::createAllDefaultToolbars()
 
 void Core::init()
 {
-    MessageRenderInfo::registerParserTags(
-        m_injector.get<Parser>(), m_injector.get<ChatConfigurationHolder>(),
-        m_injector.get<MessageHtmlRendererService>());
-
     runServices();
 
     // protocol modules should be loaded before gui
@@ -526,6 +516,8 @@ void Core::runServices()
 
     m_injector.get<ConfigurationUiHandlerRepository>()->addConfigurationUiHandler(
         m_injector.get<ChatStyleConfigurationUiHandler>());
+    m_injector.get<ConfigurationUiHandlerRepository>()->addConfigurationUiHandler(
+        m_injector.get<InfoPanelStyleConfigurationUiHandler>());
 
     m_injector.instantiate_all_with_type_role(LISTENER);
 }
@@ -540,6 +532,8 @@ void Core::stopServices()
 {
     m_injector.get<ConfigurationUiHandlerRepository>()->removeConfigurationUiHandler(
         m_injector.get<ChatStyleConfigurationUiHandler>());
+    m_injector.get<ConfigurationUiHandlerRepository>()->removeConfigurationUiHandler(
+        m_injector.get<InfoPanelStyleConfigurationUiHandler>());
 
     auto chatWidgetRepository = m_injector.get<ChatWidgetRepository>();
     while (begin(chatWidgetRepository) != end(chatWidgetRepository))

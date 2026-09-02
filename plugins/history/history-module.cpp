@@ -20,12 +20,9 @@
 #include "history-module.h"
 
 #include "actions/clear-history-action.h"
-#include "actions/remote-history-search-action.h"
-#include "actions/show-history-action.h"
 #include "buddy-history-delete-handler.h"
 #include "gui/widgets/history-buddy-configuration-widget-factory.h"
 #include "gui/widgets/history-chat-configuration-widget-factory.h"
-#include "gui/windows/history-window-service.h"
 #include "history-plugin-object.h"
 #include "history.h"
 
@@ -33,13 +30,10 @@ HistoryModule::HistoryModule()
 {
     add_type<BuddyHistoryDeleteHandler>();
     add_type<ClearHistoryAction>();
-    add_type<RemoteHistorySearchAction>();
     add_type<HistoryBuddyConfigurationWidgetFactory>();
     add_type<HistoryChatConfigurationWidgetFactory>();
     add_type<HistoryPluginObject>();
-    add_type<HistoryWindowService>();
     add_type<History>();
-    add_type<ShowHistoryAction>();
 }
 
 HistoryModule::~HistoryModule()

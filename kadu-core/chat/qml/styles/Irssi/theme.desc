@@ -1,0 +1,10 @@
+[Theme]
+DisplayName=Irssi
+DisplayName[pl]=Irssi
+Author=Kadu Team
+Type=chat
+Version=core
+MainComponent=IrssiChatStyle.qml
+
+[Colors]
+Irssi=Irssi

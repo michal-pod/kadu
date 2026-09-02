@@ -21,7 +21,9 @@
 
 #include "protocols/protocol.h"
 
+#include <QtCore/QHash>
 #include <QtCore/QPointer>
+#include <QtCore/QSet>
 #include <QtCore/QStringList>
 #include <injeqt/injeqt.h>
 
@@ -33,16 +35,19 @@ class MatrixChatStateService;
 class MatrixContactAvatarService;
 class MatrixDeviceVerificationNotificationService;
 class MatrixHistoryService;
+class MatrixTimelineService;
 class MatrixRoomInvitationNotificationService;
 class PluginInjectedFactory;
 class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
 class ProtocolHistoryService;
+class ProtocolTimelineService;
 
 namespace Quotient
 {
 class Connection;
 class KeyVerificationSession;
+class Room;
 }
 
 class MatrixProtocol final : public Protocol
@@ -65,11 +70,24 @@ public:
     {
         return true;
     }
+    virtual bool isAttachmentsSupported() const override
+    {
+        return true;
+    }
+    virtual qint64 maximumAttachmentSize() const override
+    {
+        return m_maximumAttachmentSize;
+    }
+    virtual bool isLocationSendingSupported() const override
+    {
+        return true;
+    }
     virtual RemoteHistorySearchCapabilities isRemoteSearchSupported() const override
     {
         return RemoteHistorySearchCapability::Messages;
     }
     virtual ProtocolHistoryService *historyService() override;
+    virtual ProtocolTimelineService *timelineService() override;
     virtual QString statusPixmapPath() override
     {
         return "xmpp";
@@ -92,16 +110,23 @@ private:
     MatrixChatService *m_chatService = nullptr;
     MatrixChatStateService *m_chatStateService = nullptr;
     MatrixHistoryService *m_historyService = nullptr;
+    MatrixTimelineService *m_timelineService = nullptr;
     MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;
+    qint64 m_maximumAttachmentSize = 0;
     bool m_recoveryKeyRestorePrompted = false;
     bool m_applicationQuitting = false;
+    QHash<QString, QPointer<Quotient::KeyVerificationSession>> m_inRoomVerificationSessions;
+    QHash<QString, QSet<QString>> m_handledInRoomVerificationEvents;
+    QSet<Quotient::Room *> m_inRoomVerificationRooms;
 
     void createConnection();
     void handleConnectionError(const QString &message, const QString &details = {});
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
     void showDeviceVerificationDialog(Quotient::KeyVerificationSession *session);
+    void registerInRoomVerificationSession(Quotient::KeyVerificationSession *session);
+    void handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex);
 
 private slots:
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);

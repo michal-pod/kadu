@@ -31,6 +31,7 @@
 #include "protocols/services/account-service.h"
 
 #include <QtCore/QPointer>
+#include <QtCore/QString>
 #include <injeqt/injeqt.h>
 
 class FormattedString;
@@ -85,6 +86,28 @@ public slots:
     virtual bool sendMessage(const Message &message) = 0;
 
     /**
+     * @short Send a reply to a native protocol event.
+     *
+     * The default keeps timeline relations opt-in for individual protocols.
+     */
+    virtual bool sendReply(const Message &message, const QString &targetEventId)
+    {
+        Q_UNUSED(message)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
+     * @short Send a replacement for a native protocol event.
+     */
+    virtual bool editMessage(const Message &message, const QString &targetEventId)
+    {
+        Q_UNUSED(message)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
      * @short Send raw message to given chat.
      * @param chat chat for the message
      * @param message message to be sent
@@ -95,6 +118,34 @@ public slots:
      * This message won't be altered by RawMessageTransformerService.
      */
     virtual bool sendRawMessage(const Chat &chat, const QByteArray &rawMessage) = 0;
+
+    /**
+     * @short Send a file attachment with a plain-text description.
+     *
+     * The default keeps attachments opt-in for individual protocols. Unlike sendMessage(), this does not create a
+     * legacy Message because the protocol owns both the upload and the resulting timeline event.
+     */
+    virtual bool sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(filePath)
+        Q_UNUSED(description)
+        return false;
+    }
+
+    /**
+     * @short Send a geographical location represented by an RFC 5870 geo: URI.
+     *
+     * Location sending is opt-in, just like attachment sending. A protocol that
+     * does not expose the capability rejects the request without creating a
+     * legacy Message.
+     */
+    virtual bool sendLocation(const Chat &chat, const QString &geoUri)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(geoUri)
+        return false;
+    }
 
     /**
      * @short Leave @p chat.

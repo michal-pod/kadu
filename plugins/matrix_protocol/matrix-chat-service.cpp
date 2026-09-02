@@ -41,13 +41,32 @@
 
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
+#include <Quotient/events/encryptedevent.h>
+#include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
 #include <QtCore/QDateTime>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QMimeDatabase>
+#include <QtCore/QObject>
+#include <QtCore/QSize>
+#include <QtCore/QTemporaryFile>
+#include <QtCore/QUrl>
+#include <QtGui/QImage>
+#include <QtGui/QImageReader>
 #include <QtGui/QPixmap>
+
+#include <memory>
+#include <optional>
+#include <iostream>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
@@ -131,7 +150,8 @@ QString MatrixChatService::roomId(const Chat &chat) const
     return details ? details->room() : QString{};
 }
 
-bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message message)
+bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message message,
+                                 const std::optional<Quotient::EventRelation> &relation)
 {
     if (!m_connection || !m_connection->isLoggedIn())
         return false;
@@ -146,7 +166,7 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
         if (!isSupportedRoom(room))
             return false;
 
-        postText(room, text, transactionId);
+        postText(room, text, transactionId, relation);
         return true;
     }
 
@@ -155,28 +175,292 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
         return false;
 
     m_connection->getDirectChat(recipientId).then(
-        this, [this, text, transactionId](Quotient::Room *room) {
+        this, [this, text, transactionId, relation](Quotient::Room *room) {
             if (!room)
                 return;
 
-            postText(room, text, transactionId);
+            postText(room, text, transactionId, relation);
         });
     return true;
 }
 
 void MatrixChatService::postText(Quotient::Room *room, const QString &text,
-                                 const QString &transactionId)
+                                 const QString &transactionId, const std::optional<Quotient::EventRelation> &relation)
 {
     if (!room)
         return;
 
     m_localTransactionIds.insert(transactionId);
-    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(text);
+    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(text, Quotient::RoomMessageEvent::MsgType::Text,
+                                                                  nullptr, relation);
     event->setTransactionId(transactionId);
+    room->post(std::move(event));
+
+    // Temporary Matrix timeline diagnostic. Enable only while investigating a protocol issue.
+    // if (text == QStringLiteral("dump"))
+    //     dumpTimeline(room);
+}
+
+void MatrixChatService::dumpTimeline(Quotient::Room *room)
+{
+    if (!room)
+        return;
+
+    QJsonArray events;
+    auto count = 0;
+    for (auto it = room->messageEvents().crbegin(); it != room->messageEvents().crend() && count < 20; ++it, ++count)
+    {
+        const auto &timelineItem = *it;
+        const auto *rawEvent = timelineItem.event();
+        const auto rawJson = rawEvent && !rawEvent->encryptedJson().isEmpty() ? rawEvent->encryptedJson()
+                                                                               : rawEvent ? rawEvent->fullJson()
+                                                                                          : QJsonObject{};
+        QJsonObject record{{QStringLiteral("timelineIndex"), QString::number(static_cast<qint64>(timelineItem.index()))},
+                           {QStringLiteral("eventId"), timelineItem->id()},
+                           {QStringLiteral("raw"), rawJson}};
+
+        if (!rawEvent)
+            record.insert(QStringLiteral("decryption"), QStringLiteral("event unavailable"));
+        else if (rawEvent->isRedacted())
+            record.insert(QStringLiteral("decryption"), QStringLiteral("skipped: event is redacted"));
+        else if (rawEvent->originalEvent())
+        {
+            record.insert(QStringLiteral("decryption"), QStringLiteral("succeeded"));
+            record.insert(QStringLiteral("decrypted"), rawEvent->fullJson());
+        }
+        else if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+        {
+            if (const auto decryptedEvent = room->decryptMessage(*encryptedEvent))
+            {
+                record.insert(QStringLiteral("decryption"), QStringLiteral("succeeded"));
+                record.insert(QStringLiteral("decrypted"), decryptedEvent->fullJson());
+            }
+            else
+                record.insert(QStringLiteral("decryption"), QStringLiteral("unavailable"));
+        }
+        else
+        {
+            record.insert(QStringLiteral("decryption"), QStringLiteral("not encrypted"));
+            record.insert(QStringLiteral("decrypted"), rawEvent->fullJson());
+        }
+        events.append(record);
+    }
+
+    const QJsonObject dump{{QStringLiteral("roomId"), room->id()},
+                           {QStringLiteral("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+                           {QStringLiteral("order"), QStringLiteral("newest-first")},
+                           {QStringLiteral("events"), events}};
+    const auto fileName = QStringLiteral("matrix-timeline-%1.json").arg(
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz")));
+    const auto path = QDir::current().absoluteFilePath(fileName);
+    QFile file{path};
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        std::cout << "Matrix timeline dump failed: " << path.toStdString() << std::endl;
+        return;
+    }
+
+    const auto json = QJsonDocument{dump}.toJson(QJsonDocument::Indented);
+    if (file.write(json) != json.size())
+    {
+        std::cout << "Matrix timeline dump failed: " << path.toStdString() << std::endl;
+        return;
+    }
+
+    std::cout << "Matrix timeline dump saved: " << path.toStdString() << std::endl;
+}
+
+bool MatrixChatService::sendAttachmentToRoom(const Chat &chat, const QString &filePath, const QString &description)
+{
+    if (!m_connection || !m_connection->isLoggedIn() || !QFileInfo{filePath}.isFile())
+        return false;
+
+    if (const auto id = roomId(chat); !id.isEmpty())
+    {
+        auto *room = m_connection->room(id, Quotient::JoinState::Join);
+        if (!isSupportedRoom(room))
+            return false;
+
+        postAttachment(room, filePath, description);
+        return true;
+    }
+
+    const auto recipientId = directChatId(chat);
+    if (recipientId.isEmpty())
+        return false;
+
+    m_connection->getDirectChat(recipientId).then(
+        this, [this, filePath, description](Quotient::Room *room) { postAttachment(room, filePath, description); });
+    return true;
+}
+
+void MatrixChatService::postAttachment(Quotient::Room *room, const QString &filePath, const QString &description)
+{
+    const QFileInfo fileInfo{filePath};
+    if (!room || !m_connection || !fileInfo.isFile())
+        return;
+
+    const auto plainText = description.isEmpty() ? fileInfo.fileName() : description;
+    const auto mimeType = QMimeDatabase{}.mimeTypeForFile(fileInfo);
+    QImageReader imageReader{fileInfo.absoluteFilePath()};
+    imageReader.setAutoTransform(true);
+    const auto imageAttachment = mimeType.name().startsWith(QStringLiteral("image/")) && imageReader.canRead();
+    const auto imageSize = imageAttachment ? imageReader.size() : QSize{};
+    const auto messageType = imageAttachment
+                                 ? QStringLiteral("m.image")
+                                 : (mimeType.name().startsWith(QStringLiteral("image/"))
+                                        ? QStringLiteral("m.file")
+                                        : Quotient::RoomMessageEvent::rawMsgTypeForFile(fileInfo));
+    auto thumbnailFile = std::shared_ptr<QTemporaryFile>{};
+    QSize thumbnailSize;
+    qint64 thumbnailPayloadSize = 0;
+    if (room->usesEncryption() && imageSize.isValid())
+    {
+        QImageReader thumbnailReader{fileInfo.absoluteFilePath()};
+        thumbnailReader.setAutoTransform(true);
+        thumbnailReader.setScaledSize(imageSize.scaled(QSize{320, 240}, Qt::KeepAspectRatio));
+        const auto thumbnail = thumbnailReader.read();
+        auto candidate = std::make_shared<QTemporaryFile>();
+        if (!thumbnail.isNull() && candidate->open() && thumbnail.save(candidate.get(), "PNG"))
+        {
+            candidate->flush();
+            thumbnailPayloadSize = candidate->size();
+            thumbnailSize = thumbnail.size();
+            candidate->close();
+            thumbnailFile = std::move(candidate);
+        }
+    }
+
+    const auto uploadId = m_connection->generateTxnId();
+    const auto thumbnailUploadId = thumbnailFile ? m_connection->generateTxnId() : QString{};
+    const QPointer<Quotient::Room> uploadRoom{room};
+    auto *uploadContext = new QObject{room};
+    const auto uploadedFileMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
+    const auto uploadedThumbnailMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
+    const auto postEvent = [uploadRoom, plainText, fileInfo, mimeType, imageAttachment, imageSize, messageType,
+                            thumbnailFile, thumbnailSize,
+                            thumbnailPayloadSize, uploadedFileMetadata, uploadedThumbnailMetadata, uploadContext] {
+        if (!uploadRoom || !uploadedFileMetadata->has_value() ||
+            (thumbnailFile && !uploadedThumbnailMetadata->has_value()))
+            return;
+
+        std::unique_ptr<Quotient::EventContent::FileContentBase> content;
+        if (imageAttachment)
+        {
+            auto imageContent = std::make_unique<Quotient::EventContent::ImageContent>(
+                **uploadedFileMetadata, fileInfo.size(), mimeType, imageSize, fileInfo.fileName());
+            if (uploadedThumbnailMetadata->has_value())
+            {
+                const auto thumbnailMimeType = QMimeDatabase{}.mimeTypeForName(QStringLiteral("image/png"));
+                imageContent->thumbnail = Quotient::EventContent::Thumbnail{
+                    **uploadedThumbnailMetadata, thumbnailPayloadSize, thumbnailMimeType, thumbnailSize};
+            }
+            content = std::move(imageContent);
+        }
+        else
+        {
+            content = std::make_unique<Quotient::EventContent::FileContent>(
+                **uploadedFileMetadata, fileInfo.size(), mimeType, fileInfo.fileName());
+        }
+
+        auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(
+            plainText, messageType, std::move(content));
+        uploadRoom->post(std::move(event));
+        uploadContext->deleteLater();
+    };
+
+    // Room::postFile() creates a pending event with the local file URL and replaces it after uploading. In the
+    // libQuotient version used by Kadu, the replacement leaves that local URL next to encrypted `file` metadata.
+    // Upload first and construct the event from FileSourceInfo so only the server media URL is serialised.
+    connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
+            [uploadId, uploadedFileMetadata, postEvent](
+                const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
+                if (completedId != uploadId)
+                    return;
+
+                *uploadedFileMetadata = fileMetadata;
+                postEvent();
+            });
+    connect(room, &Quotient::Room::fileTransferFailed, uploadContext,
+            [uploadId, thumbnailUploadId, uploadContext](const QString &failedId, const QString &) {
+                if (failedId == uploadId || failedId == thumbnailUploadId)
+                    uploadContext->deleteLater();
+            });
+
+    if (thumbnailFile)
+    {
+        connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
+                [thumbnailUploadId, uploadedThumbnailMetadata, postEvent](
+                    const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
+                    if (completedId != thumbnailUploadId)
+                        return;
+
+                    *uploadedThumbnailMetadata = fileMetadata;
+                    postEvent();
+                });
+    }
+
+    // In the libQuotient version used by Kadu, Connection::uploadContent() opens the QFile only when the
+    // override content type is empty. Keep the MIME type above for Matrix event metadata, but let the upload
+    // path determine it and open its source file itself.
+    room->uploadFile(uploadId, QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    if (thumbnailFile)
+        room->uploadFile(thumbnailUploadId, QUrl::fromLocalFile(thumbnailFile->fileName()));
+}
+
+bool MatrixChatService::sendLocationToRoom(const Chat &chat, const QString &geoUri)
+{
+    if (!m_connection || !m_connection->isLoggedIn() || !QUrl{geoUri}.isValid() || !geoUri.startsWith(QStringLiteral("geo:")))
+        return false;
+
+    if (const auto id = roomId(chat); !id.isEmpty())
+    {
+        auto *room = m_connection->room(id, Quotient::JoinState::Join);
+        if (!isSupportedRoom(room))
+            return false;
+
+        postLocation(room, geoUri);
+        return true;
+    }
+
+    const auto recipientId = directChatId(chat);
+    if (recipientId.isEmpty())
+        return false;
+
+    m_connection->getDirectChat(recipientId).then(
+        this, [this, geoUri](Quotient::Room *room) { postLocation(room, geoUri); });
+    return true;
+}
+
+void MatrixChatService::postLocation(Quotient::Room *room, const QString &geoUri)
+{
+    if (!room)
+        return;
+
+    auto content = std::make_unique<Quotient::EventContent::LocationContent>(geoUri);
+    auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(geoUri, QStringLiteral("m.location"), std::move(content));
     room->post(std::move(event));
 }
 
 bool MatrixChatService::sendMessage(const Message &message)
+{
+    return sendMessageWithRelation(message, std::nullopt);
+}
+
+bool MatrixChatService::sendReply(const Message &message, const QString &targetEventId)
+{
+    return targetEventId.isEmpty() ? false
+                                   : sendMessageWithRelation(message, Quotient::EventRelation::replyTo(targetEventId));
+}
+
+bool MatrixChatService::editMessage(const Message &message, const QString &targetEventId)
+{
+    return targetEventId.isEmpty() ? false
+                                   : sendMessageWithRelation(message, Quotient::EventRelation::replace(targetEventId));
+}
+
+bool MatrixChatService::sendMessageWithRelation(const Message &message,
+                                                 const std::optional<Quotient::EventRelation> &relation)
 {
     if (!m_formattedStringFactory)
         return false;
@@ -190,12 +474,22 @@ bool MatrixChatService::sendMessage(const Message &message)
         plainText = QString::fromUtf8(
             rawMessageTransformerService()->transform(plainText.toUtf8(), message).rawContent());
 
-    return sendText(message.messageChat(), plainText, message);
+    return sendText(message.messageChat(), plainText, message, relation);
 }
 
 bool MatrixChatService::sendRawMessage(const Chat &chat, const QByteArray &rawMessage)
 {
     return sendText(chat, QString::fromUtf8(rawMessage));
+}
+
+bool MatrixChatService::sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+{
+    return sendAttachmentToRoom(chat, filePath, description);
+}
+
+bool MatrixChatService::sendLocation(const Chat &chat, const QString &geoUri)
+{
+    return sendLocationToRoom(chat, geoUri);
 }
 
 void MatrixChatService::leaveChat(const Chat &chat)
@@ -359,7 +653,7 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
             continue;
         if (!event->transactionId().isEmpty() && m_localTransactionIds.remove(event->transactionId()))
             continue;
-        if (event->isRedacted() || event->msgtype() != Quotient::RoomMessageEvent::MsgType::Text)
+        if (event->isRedacted() || event->rawMsgtype() != QStringLiteral("m.text"))
             continue;
 
         // The decrypted RoomMessageEvent is a view of the timeline event. Keep the ID

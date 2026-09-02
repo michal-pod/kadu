@@ -65,6 +65,7 @@ set (kadu_SUBDIRS
 	contacts
 	core
 	dom
+	emoji
 	execution-arguments
 	file-system
 	file-transfer
@@ -94,7 +95,6 @@ set (kadu_SUBDIRS
 	task
 	themes
 	url-handlers
-	web
 	widgets
 	windows
 )
@@ -161,7 +161,11 @@ macro (kadu_subdirectory SUBDIR SRCS)
 	else ()
 		set (tmp "")
 		foreach (SRC ${SRCS})
-			list (APPEND tmp "${SUBDIR}/${SRC}")
+			if (IS_ABSOLUTE "${SRC}")
+				list (APPEND tmp "${SRC}")
+			else ()
+				list (APPEND tmp "${SUBDIR}/${SRC}")
+			endif ()
 		endforeach ()
 
 		set (${SUBDIR}_SRCS "${tmp}" PARENT_SCOPE)
@@ -181,6 +185,48 @@ add_library (libkadu SHARED ${kadu_SRCS} ${kadu_MOC_SRCS} ${kadu_SUBDIRS_SRCS})
 kadu_set_flags (libkadu)
 set_property (TARGET libkadu PROPERTY PREFIX "")
 
+find_package (Qt6 6.2 REQUIRED COMPONENTS QuickControls2)
+
+qt_add_qml_module (libkadu
+	URI Kadu.Chat
+	VERSION 1.0
+	NO_PLUGIN
+	IMPORTS QtLocation QtPositioning QtQuick.Controls QtQuick.Effects
+	QML_FILES
+		chat/qml/EmojiPicker.qml
+		chat/qml/ChatPage.qml
+		chat/qml/TimelineActionsBar.qml
+		chat/qml/TimelineReactionsBar.qml
+		chat/qml/ReactionEmojiPickerPopup.qml
+
+		chat/qml/TimelineMessagePopup.qml
+		chat/qml/ChatFileAttachment.qml
+		chat/qml/ChatImageAttachment.qml
+		chat/qml/ImageViewerDialog.qml
+		chat/qml/KaduImage.qml
+		chat/qml/ChatLocation.qml
+		chat/qml/LocationViewerDialog.qml
+		chat/qml/styles/Bubbles/BubblesComposerContext.qml
+		chat/qml/styles/Bubbles/BubblesComposerOverlay.qml
+		chat/qml/styles/Bubbles/BubblesChatStyle.qml
+		chat/qml/styles/Bubbles/BubblesPinnedMessages.qml
+		chat/qml/styles/Bubbles/BubblesTimelineItem.qml
+		chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml
+		chat/qml/styles/KaduClassic/KaduClassicComposerContext.qml
+		chat/qml/styles/KaduClassic/KaduClassicComposerOverlay.qml
+		chat/qml/styles/KaduClassic/KaduClassicPinnedMessages.qml
+		chat/qml/styles/KaduClassic/KaduClassicTimelineItem.qml
+		chat/qml/styles/Irssi/IrssiChatStyle.qml
+		chat/qml/styles/Irssi/IrssiComposerOverlay.qml
+		chat/qml/styles/Irssi/IrssiPinnedMessages.qml
+		chat/qml/styles/Irssi/IrssiStatusBar.qml
+		chat/qml/styles/Irssi/IrssiTimelineItem.qml
+		widgets/qml/LocationSelector.qml
+		widgets/qml/InfoPanel.qml
+		widgets/qml/info-panel-styles/Classic/ClassicBuddyInfoStyle.qml
+		widgets/qml/info-panel-styles/Compact/CompactBuddyInfoStyle.qml
+)
+
 if (FAST_LINKING)
 	if (APPLE)
 		target_link_libraries (libkadu LINK_PRIVATE -Wl,-all_load ${kadu_SUBDIRS})
@@ -191,7 +237,7 @@ endif ()
 
 target_link_libraries (libkadu LINK_PRIVATE
 		Qt6::Core Qt6::StateMachine Qt6::Gui Qt6::Network
-		Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::WebEngineWidgets Qt6::Widgets Qt6::Xml
+		Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickWidgets Qt6::Widgets Qt6::Xml
 )
 if (UNIX AND NOT APPLE)
 	# X11Extras is gone in Qt6 -- absorbed into QtGui.
@@ -239,7 +285,7 @@ if (WIN32)
 
 	install (TARGETS kadu_c DESTINATION ${KADU_INSTALL_BIN_DIR})
 
-	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt-plugins\nTranslations = translations\n")
+	file (WRITE "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "[Paths]\nPrefix = .\nPlugins = qt/plugins\nQml2Imports = qt/qml\nTranslations = translations\n")
 	install (FILES "${CMAKE_CURRENT_BINARY_DIR}/qt.conf" "kadu.ico" DESTINATION "${KADU_INSTALL_BIN_DIR}")
 endif ()
 
@@ -258,8 +304,6 @@ if (UNIX AND NOT APPLE)
 	install (FILES hi128-app-kadu.png DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps" RENAME kadu.png)
 	install (FILES hi256-app-kadu.png DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps" RENAME kadu.png)
 endif ()
-
-install (FILES "chat-style/engine/chat-scripts.js" DESTINATION "${KADU_INSTALL_DATA_DIR}/scripts")
 
 # install api headers
 # how to get list: find . -name '*.h' -exec dirname {} +|sort|uniq|sed -e 's|\./||' -e 's|^|\t|'
@@ -281,9 +325,7 @@ kadu_api_directories (kadu-core
 	buddies/model
 	chat
 	chat/model
-	chat-style/engine/chat-engine-adium
-	chat-style/engine/chat-engine-kadu
-	chat-style/engine
+	chat/timeline
 	chat/type
 	compression
 	configuration
@@ -348,7 +390,6 @@ kadu_api_directories (kadu-core
 	widgets/dialog
 	widgets/chat-widget
 	widgets/group-tab-bar
-	widgets/webkit-messages-view
 	windows
 	windows/open-chat-with
 )

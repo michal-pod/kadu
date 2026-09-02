@@ -34,12 +34,17 @@
 #include "matrix-contact-avatar-service.h"
 #include "matrix-device-verification-notification-service.h"
 #include "matrix-history-service.h"
+#include "matrix-timeline-service.h"
 #include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/csapi/authed-content-repo.h>
 #include <Quotient/database.h>
+#include <Quotient/events/encryptedevent.h>
+#include <Quotient/events/keyverificationevent.h>
+#include <Quotient/events/roommessageevent.h>
 #include <Quotient/keyverificationsession.h>
 #include <Quotient/room.h>
 
@@ -47,6 +52,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QJsonObject>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QUrl>
 
@@ -121,6 +127,8 @@ void MatrixProtocol::init()
     m_chatStateService->setConnection(m_connection);
     m_historyService = m_pluginInjectedFactory->makeInjected<MatrixHistoryService>(account(), this);
     m_historyService->setConnection(m_connection);
+    m_timelineService = m_pluginInjectedFactory->makeInjected<MatrixTimelineService>(account(), this);
+    m_timelineService->setConnection(m_connection);
     m_aggregatedAccountAvatarService->add(m_accountAvatarService);
     m_aggregatedContactAvatarService->add(m_contactAvatarService);
     m_chatServiceRepository->addChatService(m_chatService);
@@ -130,6 +138,11 @@ void MatrixProtocol::init()
 ProtocolHistoryService *MatrixProtocol::historyService()
 {
     return m_historyService;
+}
+
+ProtocolTimelineService *MatrixProtocol::timelineService()
+{
+    return m_timelineService;
 }
 
 void MatrixProtocol::createConnection()
@@ -149,12 +162,19 @@ void MatrixProtocol::createConnection()
         m_contactAvatarService->setConnection(m_connection);
     if (m_historyService)
         m_historyService->setConnection(m_connection);
+    if (m_timelineService)
+        m_timelineService->setConnection(m_connection);
 
     connect(m_connection, &Quotient::Connection::connected, this, [this] {
         if (!m_connection)
             return;
 
         MatrixAccountData{account()}.setDeviceId(m_connection->deviceId());
+        m_connection->callApi<Quotient::GetConfigAuthedJob>(Quotient::BackgroundRequest)
+            .then(this, [this](Quotient::GetConfigAuthedJob *job) {
+                if (job)
+                    m_maximumAttachmentSize = job->uploadSize().value_or(0);
+            });
         if (m_contactAvatarService)
             m_contactAvatarService->observeContact(m_connection->userId());
         m_connection->syncLoop();
@@ -163,6 +183,7 @@ void MatrixProtocol::createConnection()
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
     connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
             [this](Quotient::KeyVerificationSession *session) {
+                registerInRoomVerificationSession(session);
                 if (m_deviceVerificationNotificationService)
                     m_deviceVerificationNotificationService->notifyVerificationRequest(account(), session);
             });
@@ -182,6 +203,8 @@ void MatrixProtocol::createConnection()
             m_contactAvatarService->setConnection(nullptr);
         if (m_historyService)
             m_historyService->setConnection(nullptr);
+        if (m_timelineService)
+            m_timelineService->setConnection(nullptr);
         m_recoveryKeyRestorePrompted = false;
         loggedOut();
     });
@@ -196,15 +219,20 @@ void MatrixProtocol::createConnection()
 void MatrixProtocol::promptForRecoveryKeyRestore()
 {
     if (!m_connection || m_recoveryKeyRestorePrompted || !m_connection->encryptionEnabled()
-        || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key")))
+        || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key"))
+        || !m_connection->hasAccountData(QStringLiteral("m.megolm_backup.v1")))
         return;
 
     auto *database = m_connection->database();
-    if (!database || !database->loadEncrypted(QStringLiteral("m.cross_signing.master")).isEmpty())
+    if (!database || !database->loadEncrypted(QStringLiteral("m.megolm_backup.v1")).isEmpty())
         return;
 
     m_recoveryKeyRestorePrompted = true;
     auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection};
+    connect(dialog, &QDialog::accepted, this, [this] {
+        if (m_timelineService)
+            m_timelineService->refreshEncryptedEvents();
+    });
     dialog->show();
 }
 
@@ -231,6 +259,8 @@ void MatrixProtocol::login()
             m_contactAvatarService->setConnection(m_connection);
         if (m_historyService)
             m_historyService->setConnection(m_connection);
+        if (m_timelineService)
+            m_timelineService->setConnection(m_connection);
     }
 
     const auto accountData = MatrixAccountData{account()};
@@ -323,6 +353,89 @@ void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSessi
     dialog->show();
 }
 
+void MatrixProtocol::registerInRoomVerificationSession(Quotient::KeyVerificationSession *session)
+{
+    if (!m_connection || !session || !session->userVerification())
+        return;
+
+    for (auto *room : m_connection->allRooms())
+    {
+        if (!room)
+            continue;
+
+        const Quotient::TimelineItem *matchingRequest = nullptr;
+        for (const auto &item : room->messageEvents())
+        {
+            const auto *request = item.viewAs<Quotient::RoomMessageEvent>();
+            if (!request || request->senderId() != m_connection->userId()
+                || request->rawMsgtype() != QStringLiteral("m.key.verification.request")
+                || request->contentPart<QString>(QStringLiteral("from_device"))
+                       != session->remoteDeviceId())
+                continue;
+
+            if (!matchingRequest || item.index() > matchingRequest->index())
+                matchingRequest = &item;
+        }
+
+        if (!matchingRequest)
+            continue;
+
+        const auto requestEventId = matchingRequest->event()->id();
+        m_inRoomVerificationSessions.insert(requestEventId, session);
+        connect(session, &QObject::destroyed, this, [this, requestEventId, session] {
+            if (m_inRoomVerificationSessions.value(requestEventId).data() == session)
+            {
+                m_inRoomVerificationSessions.remove(requestEventId);
+                m_handledInRoomVerificationEvents.remove(requestEventId);
+            }
+        });
+
+        if (!m_inRoomVerificationRooms.contains(room))
+        {
+            m_inRoomVerificationRooms.insert(room);
+            connect(room, &QObject::destroyed, this, [this, room] {
+                m_inRoomVerificationRooms.remove(room);
+            });
+            connect(room, &Quotient::Room::addedMessages, this,
+                    [this, room](int fromIndex, int toIndex) {
+                        handleInRoomVerificationEvents(room, fromIndex, toIndex);
+                    });
+        }
+
+        handleInRoomVerificationEvents(room, room->minTimelineIndex(), room->maxTimelineIndex());
+        return;
+    }
+}
+
+void MatrixProtocol::handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex)
+{
+    if (!m_connection || !room)
+        return;
+
+    for (const auto &item : room->messageEvents())
+    {
+        if (item.index() < fromIndex || item.index() > toIndex)
+            continue;
+
+        const auto *event = item.viewAs<Quotient::KeyVerificationEvent>();
+        if (!event || event->senderId() != m_connection->userId()
+            || !event->originalEvent()
+            || event->originalEvent()->deviceId() == m_connection->deviceId())
+            continue;
+
+        const auto requestEventId = event->contentPart<QJsonObject>(QStringLiteral("m.relates_to"))
+                                        .value(QStringLiteral("event_id"))
+                                        .toString();
+        const auto session = m_inRoomVerificationSessions.value(requestEventId);
+        const auto eventId = item.event()->id();
+        if (!session || m_handledInRoomVerificationEvents[requestEventId].contains(eventId))
+            continue;
+
+        m_handledInRoomVerificationEvents[requestEventId].insert(eventId);
+        session->handleEvent(*event);
+    }
+}
+
 void MatrixProtocol::logout()
 {
     if (m_applicationQuitting)
@@ -352,6 +465,8 @@ void MatrixProtocol::logout()
             m_contactAvatarService->setConnection(nullptr);
         if (m_historyService)
             m_historyService->setConnection(nullptr);
+        if (m_timelineService)
+            m_timelineService->setConnection(nullptr);
         m_connection->deleteLater();
         m_connection = nullptr;
     }

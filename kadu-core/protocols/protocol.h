@@ -62,6 +62,7 @@ class MultilogonService;
 class PersonalInfoService;
 class PluginInjectedFactory;
 class ProtocolHistoryService;
+class ProtocolTimelineService;
 class ProtocolFactory;
 class ProtocolStateMachine;
 class RosterService;
@@ -97,6 +98,36 @@ public:
     {
         return 0;
     }
+    /**
+     * @short Return whether chat attachments can be sent through this protocol.
+     *
+     * Attachments are independent Matrix-style file events. They are not the legacy inline images exposed by
+     * ChatImageService.
+     */
+    virtual bool isAttachmentsSupported() const
+    {
+        return false;
+    }
+    /**
+     * @short Return the hard attachment upload limit in bytes.
+     *
+     * A non-positive value means that the protocol does not currently know a limit. The editor uses this value only
+     * after isAttachmentsSupported() returned true.
+     */
+    virtual qint64 maximumAttachmentSize() const
+    {
+        return 0;
+    }
+    /**
+     * @short Return whether this protocol can send a geographical location.
+     *
+     * Locations are passed to chat services as RFC 5870 geo: URIs. The
+     * protocol decides how that interoperable value is represented on wire.
+     */
+    virtual bool isLocationSendingSupported() const
+    {
+        return false;
+    }
     virtual ContactPersonalInfoService *contactPersonalInfoService()
     {
         return 0;
@@ -123,6 +154,10 @@ public:
         return 0;
     }
     virtual ProtocolHistoryService *historyService()
+    {
+        return nullptr;
+    }
+    virtual ProtocolTimelineService *timelineService()
     {
         return nullptr;
     }

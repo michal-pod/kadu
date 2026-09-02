@@ -23,11 +23,13 @@
 #include "contacts/contact-manager.h"
 #include "html/html-conversion.h"
 #include "html/html-string.h"
+#include "html/sanitized-html-string.h"
 #include "message/message-storage.h"
 
 #include <Quotient/connection.h>
 #include <Quotient/csapi/search.h>
 #include <Quotient/events/encryptedevent.h>
+#include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
 #include <Quotient/room.h>
@@ -394,7 +396,15 @@ Message MatrixHistoryService::messageForEvent(const Chat &chat, const Quotient::
     message.setType(sentByCurrentAccount ? MessageTypeSent : MessageTypeReceived);
     message.setSendDate(event.originTimestamp().toLocalTime());
     message.setReceiveDate(event.originTimestamp().toLocalTime());
-    message.setContent(normalizeHtml(plainToHtml(event.plainBody())));
+    if (const auto textContent = event.get<Quotient::EventContent::TextContent>();
+        textContent && textContent->mimeType.inherits(QStringLiteral("text/html")))
+    {
+        message.setContent(normalizeHtml(HtmlString{sanitizeHtml(HtmlString{textContent->body}).string()}));
+    }
+    else
+    {
+        message.setContent(normalizeHtml(plainToHtml(event.plainBody())));
+    }
     return message;
 }
 

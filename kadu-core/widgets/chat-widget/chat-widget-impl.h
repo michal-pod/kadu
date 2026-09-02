@@ -26,6 +26,7 @@
 #include "configuration/configuration-aware-object.h"
 #include "exports.h"
 #include "message/message.h"
+#include "message/sorted-messages.h"
 #include "misc/memory.h"
 #include "protocols/services/chat-state-service.h"
 
@@ -37,7 +38,6 @@
 #include <injeqt/injeqt.h>
 
 class QSplitter;
-class QLabel;
 class QWidget;
 
 class Actions;
@@ -46,6 +46,8 @@ class ChatConfigurationHolder;
 class ChatEditBoxSizeManager;
 class ChatEditBox;
 class ChatStateServiceRepository;
+class ChatStyleManager;
+class ChatViewModel;
 class ChatTopBarContainerWidget;
 class ChatTopBarWidgetFactoryRepository;
 class ChatTypeManager;
@@ -64,8 +66,8 @@ class Protocol;
 class SortedMessages;
 class TalkableProxyModel;
 class UnderlineAction;
-class WebkitMessagesViewFactory;
-class WebkitMessagesView;
+class UrlHandlerManager;
+class QQuickWidget;
 
 class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObject
 {
@@ -78,6 +80,7 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
     QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
     QPointer<ChatEditBoxSizeManager> m_chatEditBoxSizeManager;
     QPointer<ChatStateServiceRepository> m_chatStateServiceRepository;
+    QPointer<ChatStyleManager> m_chatStyleManager;
     QPointer<ChatTopBarWidgetFactoryRepository> m_chatTopBarWidgetFactoryRepository;
     QPointer<ChatTypeManager> m_chatTypeManager;
     QPointer<ChatWidgetActions> m_chatWidgetActions;
@@ -89,18 +92,16 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
     QPointer<MessageManager> m_messageManager;
     QPointer<MessageStorage> m_messageStorage;
     QPointer<UnderlineAction> m_underlineAction;
-    QPointer<WebkitMessagesViewFactory> m_webkitMessagesViewFactory;
+    QPointer<UrlHandlerManager> m_urlHandlerManager;
 
     Chat CurrentChat;
     ChatTopBarContainerWidget *TopBarContainer;
-    owned_qptr<WebkitMessagesView> MessagesView;
+    QQuickWidget *TimelineView = nullptr;
+    ChatViewModel *m_chatViewModel = nullptr;
+    SortedMessages m_legacyMessages;
     FilteredTreeView *BuddiesWidget;
     TalkableProxyModel *ProxyModel;
     ChatEditBox *InputBox;
-    QWidget *RoomDetailsWidget;
-    QLabel *RoomAvatarLabel;
-    QLabel *RoomDescriptionLabel;
-
     QSplitter *VerticalSplitter;
     QSplitter *HorizontalSplitter;
 
@@ -116,8 +117,6 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
 
     void createGui();
     void createContactsList();
-    void updateRoomDetails();
-
     void resetEditBox();
 
     bool decodeLocalFiles(QDropEvent *event, QStringList &files);
@@ -130,6 +129,7 @@ private slots:
     INJEQT_SET void setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder);
     INJEQT_SET void setChatEditBoxSizeManager(ChatEditBoxSizeManager *chatEditBoxSizeManager);
     INJEQT_SET void setChatStateServiceRepository(ChatStateServiceRepository *chatStateServiceRepository);
+    INJEQT_SET void setChatStyleManager(ChatStyleManager *chatStyleManager);
     INJEQT_SET void setChatTypeManager(ChatTypeManager *chatTypeManager);
     INJEQT_SET void setChatWidgetActions(ChatWidgetActions *chatWidgetActions);
     INJEQT_SET void setConfiguration(Configuration *configuration);
@@ -139,8 +139,8 @@ private slots:
     INJEQT_SET void setKaduWindowService(KaduWindowService *kaduWindowService);
     INJEQT_SET void setMessageManager(MessageManager *messageManager);
     INJEQT_SET void setMessageStorage(MessageStorage *messageStorage);
-    INJEQT_SET void setWebkitMessagesViewFactory(WebkitMessagesViewFactory *webkitMessagesViewFactory);
     INJEQT_SET void setUnderlineAction(UnderlineAction *underlineAction);
+    INJEQT_SET void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
     INJEQT_INIT void init();
 
     virtual void configurationUpdated() override;
@@ -179,10 +179,6 @@ public:
     {
         return InputBox;
     }
-    virtual WebkitMessagesView *chatMessagesView() const override
-    {
-        return MessagesView.get();
-    }
 
     virtual void dragEnterEvent(QDragEnterEvent *e) override;
     virtual void dropEvent(QDropEvent *e) override;
@@ -203,12 +199,13 @@ public:
     virtual void addMessages(const SortedMessages &messages) override;
     virtual void addMessage(const Message &message) override;
     virtual SortedMessages messages() const override;
-    int countMessages() const;
+    int countMessages() const override;
 
     virtual ChatState chatState() const override;
 
 public slots:
     virtual void sendMessage() override;
+    void sendLocation(const QString &geoUri);
     virtual void colorSelectorAboutToClose() override;
     virtual void clearChatWindow() override;
 

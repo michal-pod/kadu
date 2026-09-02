@@ -23,6 +23,7 @@
 #include "message/message.h"
 
 #include <QtCore/QObject>
+#include <QtCore/QString>
 
 class FormattedString;
 class NormalizedHtmlString;
@@ -63,6 +64,30 @@ public:
     virtual bool sendMessage(const Chat &chat, NormalizedHtmlString content, bool silent = false) = 0;
 
     /**
+     * @short Send a reply associated with a protocol event.
+     *
+     * A protocol that has no native timeline can keep the default rejection.
+     */
+    virtual bool sendReply(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(content)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
+     * @short Send a replacement for a protocol event.
+     */
+    virtual bool editMessage(const Chat &chat, NormalizedHtmlString content, const QString &targetEventId)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(content)
+        Q_UNUSED(targetEventId)
+        return false;
+    }
+
+    /**
      * @short Send new raw message to given chat.
      * @param chat chat to send message to
      * @param content raw content to be sent
@@ -72,6 +97,33 @@ public:
      * Raw messages will not invoke messageSent signals.
      */
     virtual bool sendRawMessage(const Chat &chat, const QByteArray &content) = 0;
+
+    /**
+     * @short Hand a local file attachment to the chat protocol.
+     *
+     * Attachments are represented by protocol timeline events, not by the legacy Message storage model.
+     */
+    virtual bool sendAttachment(const Chat &chat, const QString &filePath, const QString &description)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(filePath)
+        Q_UNUSED(description)
+        return false;
+    }
+
+    /**
+     * @short Send a geographical location through the active chat protocol.
+     *
+     * @p geoUri is an RFC 5870 geo: URI. The location is represented by a
+     * protocol timeline event and is therefore not inserted into legacy local
+     * message storage.
+     */
+    virtual bool sendLocation(const Chat &chat, const QString &geoUri)
+    {
+        Q_UNUSED(chat)
+        Q_UNUSED(geoUri)
+        return false;
+    }
 
 signals:
     /**

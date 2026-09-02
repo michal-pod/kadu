@@ -22,7 +22,6 @@ class KaduWindowService;
 class LanguagesManager;
 class PathsProvider;
 class PluginListWidget;
-class Preview;
 class SyntaxEditorWindow;
 
 class MainConfigurationWindow;
@@ -40,8 +39,6 @@ class KADUAPI MainConfigurationWindow : public ConfigurationWindow, CompositingA
     QPointer<KaduWindowService> m_kaduWindowService;
     QPointer<LanguagesManager> m_languagesManager;
     QPointer<PathsProvider> m_pathsProvider;
-
-    QPointer<ConfigurationWindow> lookChatAdvanced;
 
     QCheckBox *onStartupSetLastDescription;
     QLineEdit *onStartupSetDescription;
@@ -71,7 +68,6 @@ private slots:
     void onChangeStartupStatus(int index);
     void onChangeStartupDescription(int index);
     void onChangeShutdownStatus(int index);
-    void showLookChatAdvanced();
     void installIconTheme();
     void setIconThemes();
     void applied();

@@ -1,0 +1,13 @@
+[Theme]
+DisplayName=Compact
+DisplayName[pl]=Kompaktowy
+Author=Kadu Team
+Type=info-panel
+Version=core
+MainComponent=CompactBuddyInfoStyle.qml
+
+[Colors]
+Light=Light
+Light[pl]=Jasny
+Dark=Dark
+Dark[pl]=Ciemny

@@ -1,0 +1,13 @@
+[Theme]
+DisplayName=Classic Kadu
+DisplayName[pl]=Klasyczne Kadu
+Author=Kadu Team
+Type=chat
+Version=core
+MainComponent=KaduClassicChatStyle.qml
+
+[Colors]
+Light=Light
+Light[pl]=Jasny
+Dark=Dark
+Dark[pl]=Ciemny

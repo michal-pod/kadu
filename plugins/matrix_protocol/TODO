@@ -1,0 +1,83 @@
+# Matrix protocol — TODO
+
+Ta lista obejmuje wyłącznie pracę specyficzną dla `matrix_protocol`. Wspólny
+plan rendereru QML, stylów i testera jest w
+[`docs/TODO-qml-chats.md`](../../docs/TODO-qml-chats.md).
+
+## Priorytet: doprowadzenie obecnego klienta do używalności
+
+### Stabilność synchronizacji i timeline'u
+
+- [ ] Przejść regresję live, local echo i syncu w DM, pokoju oraz pokoju E2EE.
+  Szczególnie sprawdzić emote, event pochodzący z innego urządzenia tego samego
+  konta, redakcję, edycję, reakcję, członkostwo i event bez klucza.
+- [ ] Zweryfikować zachowanie na długim pokoju E2EE: doczytywanie nie może
+  zatrzymać synchronizacji, dublować eventów ani przesuwać aktualnie czytanego
+  miejsca.
+- [ ] Dopilnować, aby `Room::replacedEvent` po odszyfrowaniu aktualizował
+  istniejący wpis o tym samym ID, a nie tworzył drugi albo pusty wpis.
+- [ ] Zweryfikować źródło eventu: „Show source” pokazuje zaszyfrowaną postać i
+  odszyfrowaną postać, gdy obie istnieją.
+
+### E2EE i konto
+
+- [ ] Dokończyć realne testy odzyskania klucza po ponownym uruchomieniu oraz
+  weryfikacji urządzeń na dwóch klientach; komunikaty muszą prowadzić
+  użytkownika do zakończenia operacji.
+- [ ] Usunąć zauważalne opóźnienie między otrzymaniem prośby o weryfikację
+  urządzenia w pokoju a pokazaniem dialogu. Sprawdzić, czy oczekiwanie wynika
+  z następnego przebiegu synchronizacji libQuotient, i nie blokować przy tym
+  poprawnego powiązania eventów z sesją.
+- [ ] Dodać listę sesji urządzeń konta, podobną do obsługi sesji GG: pokazywać
+  urządzenie, jego stan weryfikacji i umożliwiać weryfikację wybranej sesji
+  oraz jej zdalne wylogowanie.
+- [ ] Usunąć chwilowe blokowanie interfejsu przy pobieraniu kluczy podczas
+  startu.
+- [ ] Jasno pokazywać stan pokoju E2EE, brak klucza i błąd odszyfrowania.
+- [ ] Zweryfikować bezpieczne wznawianie uploadu E2EE oraz fallback, gdy nie da
+  się utworzyć zaszyfrowanej miniatury obrazu.
+
+### Pokoje, powiadomienia i interakcje
+
+- [ ] Zweryfikować aktualizację nazwy, avatara, tematu i listy członków bez
+  oczekiwania na kolejną wiadomość.
+- [ ] Zweryfikować powiadomienia o wiadomości, zaproszeniu do pokoju i prośbie
+  o weryfikację po zamknięciu i uruchomieniu Kadu.
+- [x] Dodać akcje użytkownika dla reakcji i redakcji po ustaleniu wspólnego UI
+  timeline'u.
+- [ ] Zaprojektować komendy `/me`, `/invite`, `/kick`, `/ban`, `/topic`,
+  `/join` i `/leave`, razem z podpowiadaniem uczestników. To wymaga najpierw
+  wspólnego kontraktu edytora, więc nie jest pracą ad hoc w samym pluginie.
+- [ ] Dodać synchronizację `m.direct`, tagów pokojów i wyciszeń dopiero po
+  ustaleniu, jak mają się mapować na listę kontaktów Kadu.
+- [ ] Czy teraz używamy okien o certach itp. z Kadu
+
+## Świadomie odroczone: trwała historia i wyszukiwanie
+
+Zdalna nawigacja historii Matrixa działa przez ograniczone okno timeline'u,
+paginację w obu kierunkach oraz pobieranie kontekstu wskazanego eventu. Nadal
+odroczone są trwała historia lokalna i wyszukiwanie. Aktualne notatki pozostają
+w `docs/history-architecture.md` i `docs/matrix-history-workplan.md`.
+
+Powrót do nich powinien objąć jako całość:
+
+- politykę lokalnej historii per protokół/konto, bez odszyfrowanej historii
+  E2EE w niezaszyfrowanym SQL-u;
+- zdalne wyszukiwanie tylko dla możliwości zadeklarowanych przez protokół;
+- UI wyników wykorzystujący gotowe przejście do `stableId`.
+
+## Zrobione — skrót
+
+- [x] Logowanie, synchronizacja oraz wiadomości DM i pokojowe przez
+  libQuotient, również E2EE.
+- [x] Tworzenie, dołączanie i opuszczanie pokojów, lista członków, opisy i
+  avatary pokojów.
+- [x] Wskaźniki pisania, avatary kont i kontaktów, powiadomienia o zaproszeniu
+  oraz weryfikacji urządzenia.
+- [x] Odzyskiwanie klucza i podstawowa weryfikacja urządzeń.
+- [x] Timeline Matrixa: eventy pokojowe, nieznane eventy, E2EE, odpowiedzi,
+  edycje, redakcje, reakcje, przypięcia i pokazanie źródła. Ograniczone okno
+  paginuje w obu kierunkach, ładuje kontekst dowolnego eventu i obsługuje
+  przejście z odpowiedzi lub przypięcia oraz powrót do najnowszych wiadomości.
+- [x] Załączniki, obrazy, miniatury E2EE, pobieranie/zapis, lokalizacja i
+  odpowiednie dane dla rendereru QML.

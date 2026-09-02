@@ -257,6 +257,11 @@ void CustomInput::setAutoSend(bool on)
     autosend_enabled = on;
 }
 
+void CustomInput::setAttachmentsEnabled(bool enabled)
+{
+    m_attachmentsEnabled = enabled;
+}
+
 void CustomInput::cursorPositionChangedSlot()
 {
     emit fontChanged(currentFont());
@@ -275,6 +280,18 @@ void CustomInput::pasteAndSend()
 
 bool CustomInput::canInsertFromMimeData(const QMimeData *source) const
 {
+    if (!m_attachmentsEnabled && source->hasUrls())
+    {
+        for (const auto &url : source->urls())
+        {
+            if (url.isLocalFile())
+                return false;
+        }
+    }
+
+    if (supportsAttachments() && source->hasUrls())
+        return true;
+
     if (CurrentChat.chatAccount().protocolHandler() && CurrentChat.chatAccount().protocolHandler()->chatImageService())
     {
         if (source->hasUrls())
@@ -285,21 +302,37 @@ bool CustomInput::canInsertFromMimeData(const QMimeData *source) const
     return QTextEdit::canInsertFromMimeData(source);
 }
 
+bool CustomInput::supportsAttachments() const
+{
+    const auto *protocol = CurrentChat.chatAccount().protocolHandler();
+    return m_attachmentsEnabled && protocol && protocol->isAttachmentsSupported();
+}
+
 void CustomInput::acceptPlainText(QString plainText)
 {
     insertPlainText(plainText.replace("\t", "    "));
 }
 
-void CustomInput::acceptFileUrl(QUrl imageUrl)
+void CustomInput::acceptFileUrl(QUrl fileUrl)
 {
+    if (!m_attachmentsEnabled)
+        return;
+
+    if (supportsAttachments())
+    {
+        if (fileUrl.isLocalFile())
+            emit attachmentSelected(fileUrl);
+        return;
+    }
+
     if (!CurrentChat.chatAccount().protocolHandler() ||
         !CurrentChat.chatAccount().protocolHandler()->chatImageService())
         return;
 
-    imageUrl = m_imageStorageService->toFileUrl(imageUrl);
-    if (!imageUrl.toString().isEmpty() && imageUrl.scheme() == "file")
+    fileUrl = m_imageStorageService->toFileUrl(fileUrl);
+    if (!fileUrl.toString().isEmpty() && fileUrl.scheme() == "file")
     {
-        auto path = QDir::cleanPath(imageUrl.path());
+        auto path = QDir::cleanPath(fileUrl.path());
         if (QImage(path).isNull())
             return;
         insertHtml(QString{"<img src='%1' />"}.arg(path));
@@ -332,5 +365,22 @@ void CustomInput::acceptImageData(QByteArray imageData)
 
 void CustomInput::insertFromMimeData(const QMimeData *source)
 {
+    if (!m_attachmentsEnabled && source->hasUrls())
+    {
+        for (const auto &url : source->urls())
+        {
+            if (url.isLocalFile())
+                return;
+        }
+    }
+
+    if (supportsAttachments() && source->hasUrls())
+    {
+        const auto fileUrl = source->urls().value(0);
+        if (fileUrl.isLocalFile())
+            emit attachmentSelected(fileUrl);
+        return;
+    }
+
     acceptPasteData(source, this);
 }

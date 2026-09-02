@@ -30,6 +30,7 @@
 enum class ChatWidgetTitleComposingStatePosition;
 
 class Configuration;
+class ChatStyleManager;
 
 class KADUAPI ChatConfigurationHolder : public ConfigurationHolder
 {
@@ -48,6 +49,10 @@ public:
     bool niceDateFormat() const
     {
         return NiceDateFormat;
+    }
+    bool customColors() const
+    {
+        return CustomColors;
     }
     bool chatTextCustomColors() const
     {
@@ -125,9 +130,11 @@ signals:
 
 private:
     QPointer<Configuration> m_configuration;
+    QPointer<ChatStyleManager> m_chatStyleManager;
 
     bool AutoSend;
     bool NiceDateFormat;
+    bool CustomColors;
     bool ChatTextCustomColors;
     QColor ChatTextBgColor;
     QColor ChatTextFontColor;
@@ -149,5 +156,6 @@ private:
 
 private slots:
     INJEQT_SET void setConfiguration(Configuration *configuration);
+    INJEQT_SET void setChatStyleManager(ChatStyleManager *chatStyleManager);
     INJEQT_INIT void init();
 };

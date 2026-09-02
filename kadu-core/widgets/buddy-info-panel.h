@@ -3,6 +3,10 @@
  * Copyright 2010, 2011 Piotr Galiszewski (piotr.galiszewski@kadu.im)
  * Copyright 2010, 2012 Bartosz Brachaczek (b.brachaczek@gmail.com)
  * Copyright 2009, 2010, 2011, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2010, 2011 Piotr Galiszewski (piotr.galiszewski@kadu.im)
+ * Copyright 2010, 2012 Bartosz Brachaczek (b.brachaczek@gmail.com)
+ * Copyright 2009, 2010, 2011, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw@kadu.im)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -21,65 +25,121 @@
 
 #pragma once
 
-#include "kadu-web-view.h"
-
 #include "configuration/configuration-aware-object.h"
-#include "contacts/contact.h"
 #include "talkable/talkable.h"
 
+#include <QtCore/QPointer>
+#include <QtCore/QString>
+#include <QtCore/QUrl>
+#include <QtWidgets/QFrame>
 #include <injeqt/injeqt.h>
 
 class Avatars;
+class Buddy;
 class BuddyPreferredManager;
-class DomProcessorService;
+class Configuration;
+class InfoPanelStyleManager;
 class Parser;
-class PathsProvider;
+class QQuickWidget;
 class TalkableConverter;
 struct AvatarId;
 
-class BuddyInfoPanel : public KaduWebView, private ConfigurationAwareObject
+class BuddyInfoPanel : public QFrame, private ConfigurationAwareObject
 {
     Q_OBJECT
 
-    QPointer<Avatars> m_avatars;
-    QPointer<BuddyPreferredManager> m_buddyPreferredManager;
-    QPointer<DomProcessorService> m_domProcessorService;
-    QPointer<Parser> m_parser;
-    QPointer<PathsProvider> m_pathsProvider;
-    QPointer<TalkableConverter> m_talkableConverter;
-
-    Talkable Item;
-    QString Template;
-    QString Syntax;
-    QString BackgroundColor;
-
-    void avatarUpdated(const AvatarId &id);
-
-    void connectItem();
-    void disconnectItem();
-
-private slots:
-    INJEQT_SET void setAvatars(Avatars *avatars);
-    INJEQT_SET void setBuddyPreferredManager(BuddyPreferredManager *buddyPreferredManager);
-    INJEQT_SET void setDomProcessorService(DomProcessorService *domProcessorService);
-    INJEQT_SET void setParser(Parser *parser);
-    INJEQT_SET void setPathsProvider(PathsProvider *pathsProvider);
-    INJEQT_SET void setTalkableConverter(TalkableConverter *talkableConverter);
-    INJEQT_INIT void init();
-
-    void buddyUpdated(const Buddy &buddy);
-
-protected:
-    virtual void configurationUpdated();
+    Q_PROPERTY(QString displayName READ displayName NOTIFY panelChanged)
+    Q_PROPERTY(QUrl avatarSource READ avatarSource NOTIFY panelChanged)
+    Q_PROPERTY(QString detailsText READ detailsText NOTIFY panelChanged)
+    Q_PROPERTY(QString statusText READ statusText NOTIFY panelChanged)
+    Q_PROPERTY(QString descriptionText READ descriptionText NOTIFY panelChanged)
+    Q_PROPERTY(QString style READ style NOTIFY panelChanged)
+    Q_PROPERTY(QUrl styleSource READ styleSource NOTIFY panelChanged)
+    Q_PROPERTY(QString colorScheme READ colorScheme NOTIFY panelChanged)
+    Q_PROPERTY(bool useCustomColors READ useCustomColors NOTIFY panelChanged)
+    Q_PROPERTY(QString foregroundColor READ foregroundColor NOTIFY panelChanged)
+    Q_PROPERTY(QString backgroundColor READ backgroundColor NOTIFY panelChanged)
+    Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY panelChanged)
+    Q_PROPERTY(int fontPointSize READ fontPointSize NOTIFY panelChanged)
+    Q_PROPERTY(bool fontBold READ fontBold NOTIFY panelChanged)
+    Q_PROPERTY(bool fontItalic READ fontItalic NOTIFY panelChanged)
+    Q_PROPERTY(bool fontUnderline READ fontUnderline NOTIFY panelChanged)
+    Q_PROPERTY(bool showScrollBar READ showScrollBar NOTIFY panelChanged)
 
 public:
     explicit BuddyInfoPanel(QWidget *parent = nullptr);
-    virtual ~BuddyInfoPanel();
+    ~BuddyInfoPanel() override;
 
-    virtual void setVisible(bool visible);
+    QString displayName() const;
+    QUrl avatarSource() const;
+    QString detailsText() const;
+    QString statusText() const;
+    QString descriptionText() const;
+    QString style() const;
+    QUrl styleSource() const;
+    QString colorScheme() const;
+    bool useCustomColors() const;
+    QString foregroundColor() const;
+    QString backgroundColor() const;
+    QString fontFamily() const;
+    int fontPointSize() const;
+    bool fontBold() const;
+    bool fontItalic() const;
+    bool fontUnderline() const;
+    bool showScrollBar() const;
+    QString selectedText() const;
+
+    void setVisible(bool visible) override;
 
 public slots:
     void displayItem(Talkable item);
     void update();
-    void styleFixup(QString &syntax);
+    void copySelection();
+
+signals:
+    void panelChanged();
+
+private:
+    QPointer<Avatars> m_avatars;
+    QPointer<BuddyPreferredManager> m_buddyPreferredManager;
+    QPointer<Configuration> m_configuration;
+    QPointer<InfoPanelStyleManager> m_infoPanelStyleManager;
+    QPointer<Parser> m_parser;
+    QPointer<TalkableConverter> m_talkableConverter;
+    Talkable m_item;
+    QQuickWidget *m_view = nullptr;
+    QString m_displayName;
+    QUrl m_avatarSource;
+    QString m_detailsText;
+    QString m_statusText;
+    QString m_descriptionText;
+    QString m_style;
+    QUrl m_styleSource;
+    QString m_colorScheme = QStringLiteral("System");
+    bool m_useCustomColors = false;
+    QString m_foregroundColor;
+    QString m_backgroundColor;
+    QString m_fontFamily;
+    int m_fontPointSize = 10;
+    bool m_fontBold = false;
+    bool m_fontItalic = false;
+    bool m_fontUnderline = false;
+    bool m_showScrollBar = false;
+
+    void avatarUpdated(const AvatarId &id);
+    void connectItem();
+    void disconnectItem();
+
+protected:
+    void configurationUpdated() override;
+
+private slots:
+    INJEQT_SET void setAvatars(Avatars *avatars);
+    INJEQT_SET void setBuddyPreferredManager(BuddyPreferredManager *buddyPreferredManager);
+    INJEQT_SET void setConfiguration(Configuration *configuration);
+    INJEQT_SET void setInfoPanelStyleManager(InfoPanelStyleManager *infoPanelStyleManager);
+    INJEQT_SET void setParser(Parser *parser);
+    INJEQT_SET void setTalkableConverter(TalkableConverter *talkableConverter);
+    INJEQT_INIT void init();
+    void buddyUpdated(const Buddy &buddy);
 };

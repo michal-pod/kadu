@@ -31,7 +31,6 @@
 #include <QtCore/QPair>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QFileDialog>
-#include <QtWidgets/QLabel>
 #include <QtWidgets/QStyleFactory>
 
 #include "configuration/config-file-data-manager.h"
@@ -62,7 +61,6 @@
 #include "widgets/configuration/config-list-widget.h"
 #include "widgets/configuration/config-path-list-edit.h"
 #include "widgets/configuration/config-preview.h"
-#include "widgets/configuration/config-syntax-editor.h"
 #include "widgets/configuration/configuration-widget.h"
 #include "widgets/proxy-combo-box.h"
 #include "windows/kadu-window-service.h"
@@ -182,20 +180,9 @@ void MainConfigurationWindow::init()
     connect(onStartupSetLastDescription, SIGNAL(activated(int)), this, SLOT(onChangeStartupDescription(int)));
 
     connect(widget()->widgetById("startupStatus"), SIGNAL(activated(int)), this, SLOT(onChangeStartupStatus(int)));
-    connect(widget()->widgetById("lookChatAdvanced"), SIGNAL(clicked()), this, SLOT(showLookChatAdvanced()));
     connect(widget()->widgetById("installIconTheme"), SIGNAL(clicked()), this, SLOT(installIconTheme()));
 
-    Preview *infoPanelSyntaxPreview = static_cast<Preview *>(widget()->widgetById("infoPanelSyntaxPreview"));
-    connect(
-        infoPanelSyntaxPreview, SIGNAL(needFixup(QString &)), m_kaduWindowService->kaduWindow()->infoPanel(),
-        SLOT(styleFixup(QString &)));
-    connect(
-        widget()->widgetById("infoPanelSyntax"), SIGNAL(syntaxChanged(const QString &)), infoPanelSyntaxPreview,
-        SLOT(syntaxChanged(const QString &)));
-
     widget()->widgetById("parseStatus")->setToolTip(QCoreApplication::translate("@default", SyntaxText));
-    (static_cast<ConfigSyntaxEditor *>(widget()->widgetById("infoPanelSyntax")))
-        ->setSyntaxHint(QCoreApplication::translate("@default", SyntaxText));
 
     userboxTransparency = static_cast<QCheckBox *>(widget()->widgetById("userboxTransparency"));
     userboxAlpha = static_cast<QSlider *>(widget()->widgetById("userboxAlpha"));
@@ -355,17 +342,4 @@ void MainConfigurationWindow::setIconThemes()
 
     iconThemes->setIconSize(QSize(iconPaths.count() * 36, 36));
     iconThemes->setIcons(icons);
-}
-
-void MainConfigurationWindow::showLookChatAdvanced()
-{
-    if (!lookChatAdvanced)
-    {
-        lookChatAdvanced = injectedFactory()->makeInjected<ConfigurationWindow>(
-            "LookChatAdvanced", tr("Advanced chat's look configuration"), "General", dataManager());
-        lookChatAdvanced.data()->widget()->appendUiFile(
-            m_pathsProvider->dataPath() + QStringLiteral("configuration/dialog-look-chat-advanced.ui"));
-    }
-
-    lookChatAdvanced.data()->show();
 }

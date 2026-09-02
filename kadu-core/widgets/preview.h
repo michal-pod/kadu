@@ -3,7 +3,8 @@
  * Copyright 2009, 2010, 2011 Piotr Galiszewski (piotr.galiszewski@kadu.im)
  * Copyright 2011 Piotr Dąbrowski (ultr@ultr.pl)
  * Copyright 2010, 2011, 2014 Bartosz Brachaczek (b.brachaczek@gmail.com)
- * Copyright 2009, 2010, 2011, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2008, 2009, 2010, 2011, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -22,16 +23,11 @@
 
 #pragma once
 
-#include <QtCore/QPointer>
+#include <QtCore/QString>
+#include <QtCore/QUrl>
 #include <QtWidgets/QFrame>
-#include <injeqt/injeqt.h>
 
-class BuddyDummyFactory;
-class QHBoxLayout;
-
-class InjectedFactory;
-class KaduWebView;
-class Parser;
+class QQuickWidget;
 
 class Preview : public QFrame
 {
@@ -39,27 +35,12 @@ class Preview : public QFrame
 
 public:
     explicit Preview(QWidget *parent = nullptr);
-    virtual ~Preview();
-
-    KaduWebView *webView() const;
+    ~Preview() override;
 
 public slots:
-    void syntaxChanged(const QString &content);
-
-signals:
-    void needFixup(QString &syntax);
+    void setStyleSource(const QUrl &source);
+    void setColorScheme(const QString &scheme);
 
 private:
-    QPointer<BuddyDummyFactory> m_buddyDummyFactory;
-    QPointer<InjectedFactory> m_injectedFactory;
-    QPointer<Parser> m_parser;
-
-    KaduWebView *m_webView;
-    QHBoxLayout *m_layout;
-
-private slots:
-    INJEQT_SET void setBuddyDummyFactory(BuddyDummyFactory *buddyDummyFactory);
-    INJEQT_SET void setInjectedFactory(InjectedFactory *injectedFactory);
-    INJEQT_SET void setParser(Parser *parser);
-    INJEQT_INIT void init();
+    QQuickWidget *m_view = nullptr;
 };

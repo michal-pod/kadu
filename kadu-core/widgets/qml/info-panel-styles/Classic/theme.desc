@@ -1,0 +1,13 @@
+[Theme]
+DisplayName=Classic
+DisplayName[pl]=Klasyczny
+Author=Kadu Team
+Type=info-panel
+Version=core
+MainComponent=ClassicBuddyInfoStyle.qml
+
+[Colors]
+Light=Light
+Light[pl]=Jasny
+Dark=Dark
+Dark[pl]=Ciemny

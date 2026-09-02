@@ -18,6 +18,8 @@ set (SOURCES
     matrix-contact-avatar-service.cpp
     matrix-device-verification-notification-service.cpp
     matrix-history-service.cpp
+    matrix-megolm-session-recovery.cpp
+    matrix-timeline-service.cpp
     matrix-id-validator.cpp
     matrix-join-room-action.cpp
     matrix-module.cpp
@@ -32,6 +34,7 @@ set (SOURCES
 kadu_plugin (matrix_protocol
 	PLUGIN_SOURCES ${SOURCES}
 	PLUGIN_LIBRARIES QuotientQt6
+	PLUGIN_ADDITIONAL_QT_MODULES Concurrent
 )
 
 # LibQuotient public headers use C++23 facilities (for example std::to_underlying).

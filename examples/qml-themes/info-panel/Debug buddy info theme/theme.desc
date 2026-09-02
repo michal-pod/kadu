@@ -1,0 +1,14 @@
+[Theme]
+DisplayName=Debug buddy info theme
+DisplayName[pl]=Diagnostyczny styl informacji o kontakcie
+Author=Kadu Team
+Type=info-panel
+Version=example
+
+[Colors]
+Light=Light
+Light[pl]=Jasny
+Dark=Dark
+Dark[pl]=Ciemny
+HighContrast=High contrast
+HighContrast[pl]=Wysoki kontrast

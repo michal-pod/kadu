@@ -14,6 +14,11 @@ set (chat_SRCS
 	chat-shared.cpp
 	chat-state-service-repository.cpp
 	chat-storage.cpp
+	timeline/chat-timeline-controller.cpp
+	timeline/chat-timeline-model.cpp
+	timeline/chat-view-model.cpp
+	timeline/timeline-image-provider.cpp
+	timeline/legacy-message-timeline-adapter.cpp
 	open-chat-repository.cpp
 	open-chat-service.cpp
 	recent-chat-repository.cpp
@@ -35,5 +40,8 @@ kadu_add_test (open-chat-repository)
 kadu_add_test (open-chat-service)
 kadu_add_test (recent-chat-repository)
 kadu_add_test (recent-chat-service)
+kadu_add_test (timeline/chat-timeline-model)
+kadu_add_test (timeline/chat-timeline-controller)
+kadu_add_test (timeline/legacy-message-timeline-adapter)
 
 kadu_subdirectory (chat "${chat_SRCS}")

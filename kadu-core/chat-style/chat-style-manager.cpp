@@ -1,85 +1,31 @@
 /*
  * %kadu copyright begin%
- * Copyright 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "chat-style-manager.h"
 #include "chat-style-manager.moc"
 
-#include "chat-style/chat-style-configuration-ui-handler.h"
-#include "chat-style/engine/adium/adium-style-engine.h"
-#include "chat-style/engine/configured-chat-style-renderer-factory-provider.h"
-#include "chat-style/engine/kadu/kadu-style-engine.h"
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
-#include "gui/configuration/chat-configuration-holder.h"
-#include "misc/algorithm.h"
-#include "misc/memory.h"
 #include "misc/paths-provider.h"
-#include "widgets/chat-style-preview.h"
-#include "widgets/configuration/config-group-box.h"
-#include "widgets/configuration/configuration-widget.h"
-#include "windows/main-configuration-window.h"
 
-#include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
-#include <QtGui/QPalette>
-#include <QtWidgets/QCheckBox>
-#include <QtWidgets/QComboBox>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QPushButton>
+#include <QtCore/QFileInfo>
+#include <QtCore/QLocale>
 
-ChatStyleManager::ChatStyleManager(QObject *parent)
-        : QObject{parent}, CurrentEngine{}, CfgNoHeaderRepeat{}, CfgHeaderSeparatorHeight{}, CfgNoHeaderInterval{},
-          ParagraphSeparator{}, Prune{}, NoServerTime{}, NoServerTimeDiff{}
-{
-}
-
-ChatStyleManager::~ChatStyleManager()
-{
-    unregisterChatStyleEngine("Kadu");
-    unregisterChatStyleEngine("Adium");
-}
-
-void ChatStyleManager::setAdiumStyleEngine(AdiumStyleEngine *adiumStyleEngine)
-{
-    m_adiumStyleEngine = adiumStyleEngine;
-}
-
-void ChatStyleManager::setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder)
-{
-    m_chatConfigurationHolder = chatConfigurationHolder;
-}
+ChatStyleManager::ChatStyleManager(QObject *parent) : QObject{parent} {}
+ChatStyleManager::~ChatStyleManager() = default;
 
 void ChatStyleManager::setConfiguration(Configuration *configuration)
 {
     m_configuration = configuration;
-}
-
-void ChatStyleManager::setConfiguredChatStyleRendererFactoryProvider(
-    ConfiguredChatStyleRendererFactoryProvider *configuredChatStyleRendererFactoryProvider)
-{
-    m_configuredChatStyleRendererFactoryProvider = configuredChatStyleRendererFactoryProvider;
-}
-
-void ChatStyleManager::setKaduStyleEngine(KaduStyleEngine *kaduStyleEngine)
-{
-    m_kaduStyleEngine = kaduStyleEngine;
 }
 
 void ChatStyleManager::setPathsProvider(PathsProvider *pathsProvider)
@@ -89,215 +35,128 @@ void ChatStyleManager::setPathsProvider(PathsProvider *pathsProvider)
 
 void ChatStyleManager::init()
 {
-    registerChatStyleEngine("Kadu", m_kaduStyleEngine);
-    registerChatStyleEngine("Adium", m_adiumStyleEngine);
-
     loadStyles();
     configurationUpdated();
 }
 
-void ChatStyleManager::registerChatStyleEngine(const QString &name, ChatStyleEngine *engine)
+void ChatStyleManager::loadStyles()
 {
-    m_engines.insert(std::make_pair(name, engine));
+    m_availableStyles.clear();
+
+    const QList<QmlThemeColorScheme> bundledSchemes = {
+        {QStringLiteral("Light"), tr("Light")},
+        {QStringLiteral("Dark"), tr("Dark")},
+    };
+    const QList<QmlThemeColorScheme> irssiSchemes = {
+        {QStringLiteral("Irssi"), tr("Irssi")},
+    };
+    m_availableStyles = {
+        {QStringLiteral("KaduClassic"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("KaduClassic"), tr("Classic Kadu"),
+                                             QStringLiteral("Kadu Team"), QStringLiteral("chat"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/KaduClassic/KaduClassicChatStyle.qml")},
+                                             bundledSchemes)},
+        {QStringLiteral("Bubbles"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("Bubbles"), tr("Bubbles"), QStringLiteral("Kadu Team"),
+                                             QStringLiteral("chat"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/Bubbles/BubblesChatStyle.qml")},
+                                             bundledSchemes)},
+        {QStringLiteral("Irssi"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("Irssi"), tr("Irssi"), QStringLiteral("Kadu Team"),
+                                             QStringLiteral("chat"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/Irssi/IrssiChatStyle.qml")},
+                                             irssiSchemes, false)},
+    };
+
+    if (!m_pathsProvider)
+        return;
+
+    loadExternalStyles(m_pathsProvider->dataPath() + QStringLiteral("chat-styles"));
+    loadExternalStyles(m_pathsProvider->profilePath() + QStringLiteral("chat-styles"));
 }
 
-void ChatStyleManager::unregisterChatStyleEngine(const QString &name)
+QString ChatStyleManager::normalizedStyleName(const QString &styleName) const
 {
-    m_engines.erase(name);
+    if (m_availableStyles.contains(styleName))
+        return styleName;
+
+    // Legacy Adium styles are deliberately migrated to the native default.
+    return QStringLiteral("KaduClassic");
 }
 
 void ChatStyleManager::configurationUpdated()
 {
-    if (m_configuration->deprecatedApi()->readBoolEntry("Chat", "ChatPrune", true))
-        Prune = m_configuration->deprecatedApi()->readNumEntry("Chat", "ChatPruneLen");
-    else
-    {
-        m_configuration->deprecatedApi()->writeEntry("Chat", "ChatPrune", true);
-        m_configuration->deprecatedApi()->writeEntry("Chat", "ChatPruneLen", 0);
-        Prune = 0;
-    }
+    if (m_availableStyles.isEmpty())
+        loadStyles();
 
-    ParagraphSeparator = m_configuration->deprecatedApi()->readNumEntry("Look", "ParagraphSeparator");
+    const auto configuredStyle = m_configuration
+                                     ? m_configuration->deprecatedApi()->readEntry("Look", "Style", "KaduClassic")
+                                     : QStringLiteral("KaduClassic");
+    const auto styleName = normalizedStyleName(configuredStyle);
+    const auto configuredScheme = m_configuration
+                                      ? m_configuration->deprecatedApi()->readEntry("Look", "ChatStyleVariant", "System")
+                                      : QStringLiteral("System");
+    const ChatStyle nextStyle{styleName, normalizedColorScheme(styleName, configuredScheme)};
+    if (nextStyle == m_currentChatStyle)
+        return;
 
-    QFont font = m_configuration->deprecatedApi()->readFontEntry("Look", "ChatFont");
-
-    QString fontFamily = font.family();
-    QString fontSize;
-    if (font.pointSize() > 0)
-        fontSize = QString::number(font.pointSize()) + "pt";
-    else
-        fontSize = QString::number(font.pixelSize()) + "px";
-    QString fontStyle = font.italic() ? "italic" : "normal";
-    QString fontWeight = font.bold() ? "bold" : "normal";
-    QString textDecoration = font.underline() ? "underline" : "none";
-    QString backgroundColor = "transparent";
-    if (m_chatConfigurationHolder->chatBgFilled())
-        backgroundColor = m_chatConfigurationHolder->chatBgColor().name();
-
-    MainStyle = QString(
-                    "html {"
-                    "	font: %1 %2 %3 %4;"
-                    "	text-decoration: %5;"
-                    "	word-wrap: break-word;"
-                    "}"
-                    "a {"
-                    "	text-decoration: underline;"
-                    "}"
-                    "body {"
-                    "	margin: %6;"
-                    "	padding: 0;"
-                    "	background-color: %7;"
-                    "}"
-                    "p {"
-                    "	margin: 0;"
-                    "	padding: 3px;"
-                    "}")
-                    .arg(
-                        fontStyle, fontWeight, fontSize, fontFamily, textDecoration,
-                        QString::number(ParagraphSeparator), backgroundColor);
-
-    CfgNoHeaderRepeat = m_configuration->deprecatedApi()->readBoolEntry("Look", "NoHeaderRepeat", true);
-
-    // headers removal stuff
-    if (CfgNoHeaderRepeat)
-    {
-        CfgHeaderSeparatorHeight = m_configuration->deprecatedApi()->readNumEntry("Look", "HeaderSeparatorHeight");
-        CfgNoHeaderInterval = m_configuration->deprecatedApi()->readNumEntry("Look", "NoHeaderInterval");
-    }
-    else
-    {
-        CfgHeaderSeparatorHeight = 0;
-        CfgNoHeaderInterval = 0;
-    }
-
-    NoServerTime = m_configuration->deprecatedApi()->readBoolEntry("Look", "NoServerTime");
-    NoServerTimeDiff = m_configuration->deprecatedApi()->readNumEntry("Look", "NoServerTimeDiff");
-
-    auto newChatStyle = ChatStyle{m_configuration->deprecatedApi()->readEntry("Look", "Style"),
-                                  m_configuration->deprecatedApi()->readEntry("Look", "ChatStyleVariant")};
-
-    // if Style was changed, load new Style
-    if (!CurrentEngine || newChatStyle != m_currentChatStyle)
-    {
-        auto newStyleName = fixedStyleName(newChatStyle.name());
-        auto *newEngine = AvailableStyles.value(newStyleName).engine;
-
-        // No style was found at all -- an uninstalled tree or a broken data directory, which
-        // fixedStyleName() answers with an empty name. Everything below reaches through the engine
-        // that name would have picked, so going on regardless only moves the crash one line down:
-        // fixedVariantName() asks the engine for its variants before anything checks it.
-        if (newEngine)
-        {
-            CurrentEngine = newEngine;
-            auto newVariantName = fixedVariantName(newStyleName, newChatStyle.variant());
-            m_currentChatStyle = {newStyleName, newVariantName};
-
-            if (m_configuredChatStyleRendererFactoryProvider)
-                m_configuredChatStyleRendererFactoryProvider->setChatStyleRendererFactory(
-                    CurrentEngine->createRendererFactory(m_currentChatStyle));
-        }
-    }
-
+    m_currentChatStyle = nextStyle;
     emit chatStyleConfigurationUpdated();
-}
-
-QString ChatStyleManager::fixedStyleName(QString styleName)
-{
-    if (!AvailableStyles.contains(styleName))
-    {
-        styleName = "kadu";
-        if (!AvailableStyles.contains(styleName))
-        {
-            styleName = "Satin";
-            if (!AvailableStyles.contains(styleName))
-            {
-                // Falling back to the first available style dereferenced begin() without
-                // checking for emptiness, which crashes when no style was found at all
-                // (an uninstalled tree, or a broken data directory).
-                if (AvailableStyles.isEmpty())
-                    return QString{};
-                styleName = AvailableStyles.firstKey();
-            }
-        }
-    }
-
-    return styleName;
-}
-
-QString ChatStyleManager::fixedVariantName(const QString &styleName, QString variantName)
-{
-    if (!CurrentEngine->styleVariants(styleName).contains(variantName))
-        return CurrentEngine->defaultVariant(styleName);
-
-    return variantName;
-}
-
-// any better ideas?
-void ChatStyleManager::loadStyles()
-{
-    QDir dir;
-    QString path, StyleName;
-    QFileInfo fi;
-    QStringList files;
-
-    path = m_pathsProvider->profilePath() + QStringLiteral("syntax/chat/");
-    dir.setPath(path);
-
-    files = dir.entryList();
-
-    AvailableStyles.clear();   // allow reloading of styles
-
-    for (auto const &file : files)
-    {
-        fi.setFile(path + file);
-        if (fi.isReadable() && !AvailableStyles.contains(file))
-        {
-            for (auto &&engine : m_engines)
-            {
-                StyleName = engine.second->isStyleValid(path + file);
-                if (!StyleName.isNull())
-                {
-                    AvailableStyles[StyleName].engine = engine.second;
-                    AvailableStyles[StyleName].global = false;
-                    break;
-                }
-            }
-        }
-    }
-
-    path = m_pathsProvider->dataPath() + QStringLiteral("syntax/chat/");
-    dir.setPath(path);
-
-    files = dir.entryList();
-
-    for (auto &file : files)
-    {
-        fi.setFile(path + file);
-        if (fi.isReadable() && !AvailableStyles.contains(file))
-        {
-            for (auto &&engine : m_engines)
-            {
-                StyleName = engine.second->isStyleValid(path + file);
-                if (!StyleName.isNull())
-                {
-                    AvailableStyles[StyleName].engine = engine.second;
-                    AvailableStyles[StyleName].global = true;
-                    break;
-                }
-            }
-        }
-    }
 }
 
 bool ChatStyleManager::isChatStyleValid(const QString &name) const
 {
-    return AvailableStyles.contains(name) && AvailableStyles.value(name).engine;
+    return m_availableStyles.contains(name);
 }
 
-StyleInfo ChatStyleManager::chatStyleInfo(const QString &name) const
+bool ChatStyleManager::isBuiltIn(const QString &name) const
 {
-    if (AvailableStyles.contains(name))
-        return AvailableStyles.value(name);
-    else
-        return StyleInfo();
+    return m_availableStyles.value(normalizedStyleName(name)).source.scheme() == QStringLiteral("qrc");
+}
+
+ChatStyleInfo ChatStyleManager::chatStyleInfo(const QString &name) const
+{
+    return m_availableStyles.value(name);
+}
+
+QList<QmlThemeColorScheme> ChatStyleManager::colorSchemes(const QString &name) const
+{
+    return m_availableStyles.value(normalizedStyleName(name)).colorSchemes;
+}
+
+QString ChatStyleManager::normalizedColorScheme(const QString &styleName, const QString &scheme) const
+{
+    return m_availableStyles.value(normalizedStyleName(styleName)).normalizedColorScheme(scheme);
+}
+
+QUrl ChatStyleManager::styleSource(const QString &name) const
+{
+    return m_availableStyles.value(normalizedStyleName(name)).source;
+}
+
+void ChatStyleManager::loadExternalStyles(const QString &directory)
+{
+    const QDir stylesDirectory{directory};
+    const auto language = m_configuration
+                              ? m_configuration->deprecatedApi()->readEntry("General", "Language")
+                              : QLocale::system().name().left(2);
+    for (const auto &entry : stylesDirectory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+    {
+        const auto descriptor = QFileInfo{entry.filePath() + QStringLiteral("/theme.desc")};
+        if (!descriptor.isFile())
+            continue;
+
+        const auto componentFileName =
+            QmlThemeDescriptionLoader::mainComponentFileName(descriptor.absoluteFilePath(), QStringLiteral("ChatStyle.qml"));
+        const auto source = QFileInfo{entry.filePath() + QLatin1Char{'/'} + componentFileName};
+        if (componentFileName.isEmpty() || !source.isFile())
+            continue;
+
+        const auto id = entry.fileName();
+        const auto style = QmlThemeDescriptionLoader::load(descriptor.absoluteFilePath(), id,
+                                                           QUrl::fromLocalFile(source.absoluteFilePath()),
+                                                           QStringLiteral("chat"), language);
+        if (style.isValid())
+            m_availableStyles.insert(id, style);
+    }
 }
