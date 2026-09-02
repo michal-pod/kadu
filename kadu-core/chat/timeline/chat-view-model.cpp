@@ -20,12 +20,14 @@
 #include "chat-view-model.h"
 #include "chat-view-model.moc"
 
+#include "accounts/account.h"
 #include "chat-style/chat-style-manager.h"
 #include "chat/chat-details-room.h"
 #include "chat/timeline/chat-timeline-controller.h"
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
 #include "gui/configuration/chat-configuration-holder.h"
+#include "identities/identity.h"
 #include "message/message.h"
 #include "message/sorted-messages.h"
 #include "protocols/protocol.h"
@@ -100,6 +102,11 @@ ChatViewModel::ChatViewModel(
                     if (chat == m_chat)
                         refreshChatHeader();
                 });
+        connect(protocolTimelineService, &ProtocolTimelineService::roomInfoChanged, this,
+                [this](const Chat &chat) {
+                    if (chat == m_chat)
+                        emit roomInfoChanged();
+                });
     }
     else
         m_timeline = new ChatTimelineModel{this};
@@ -139,6 +146,20 @@ ChatTimelineModel *ChatViewModel::timeline() const
 QString ChatViewModel::title() const
 {
     return ::title(m_chat);
+}
+
+QString ChatViewModel::ownDisplayName() const
+{
+    const auto account = m_chat.chatAccount();
+    const auto identity = account ? account.accountIdentity() : Identity{};
+    return identity ? identity.name() : QString{};
+}
+
+QVariantMap ChatViewModel::roomInfo() const
+{
+    if (auto *service = timelineService(nullptr))
+        return service->roomInfo(m_chat);
+    return {};
 }
 
 bool ChatViewModel::usesProtocolTimeline() const

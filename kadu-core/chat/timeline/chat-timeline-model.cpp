@@ -117,6 +117,7 @@ QVariantMap ChatTimelineModel::itemData(const ChatTimelineItem &item, bool showS
             {QStringLiteral("kind"), static_cast<int>(item.kind)},
             {QStringLiteral("timestamp"), item.timestamp},
             {QStringLiteral("ownEvent"), item.sender.own},
+            {QStringLiteral("senderId"), item.sender.id},
             {QStringLiteral("senderDisplayName"), item.sender.displayName},
             {QStringLiteral("senderAvatarSource"), item.sender.avatarSource},
             {QStringLiteral("senderColor"), item.sender.color.isValid() ? item.sender.color : QColor{Qt::transparent}},

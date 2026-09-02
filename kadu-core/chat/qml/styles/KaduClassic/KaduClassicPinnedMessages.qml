@@ -55,6 +55,11 @@ Item {
     implicitHeight: showTrigger && visible ? pinButton.implicitHeight + 8 : 0
     visible: entries.length > 0
 
+    onEntriesChanged: {
+        if (entries.length === 0)
+            pinnedMessagesPopup.close()
+    }
+
     function actionsFor(stableId) {
         return timelineActions ? timelineActions(stableId) : []
     }

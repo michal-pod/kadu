@@ -193,6 +193,23 @@ Item {
             item.jumpToTimelineItem = root.jumpToTimelineItem
     }
 
+    function bindStatusBar(item) {
+        item.width = Qt.binding(function() { return statusBarContainer.width })
+        item.height = Qt.binding(function() { return item.implicitHeight })
+        if (item.colorScheme !== undefined)
+            item.colorScheme = Qt.binding(function() { return root.activeThemeColorScheme })
+        if (item.chatTitle !== undefined)
+            item.chatTitle = Qt.binding(function() { return root.chatViewModel ? root.chatViewModel.title : "" })
+        if (item.ownDisplayName !== undefined)
+            item.ownDisplayName = Qt.binding(function() { return root.chatViewModel ? root.chatViewModel.ownDisplayName : "" })
+        if (item.roomInfo !== undefined)
+            item.roomInfo = Qt.binding(function() { return root.chatViewModel ? root.chatViewModel.roomInfo : ({}) })
+        if (item.pinnedMessages !== undefined)
+            item.pinnedMessages = Qt.binding(function() { return root.chatViewModel ? root.chatViewModel.pinnedMessages : [] })
+        if (item.showPinnedMessages !== undefined)
+            item.showPinnedMessages = root.togglePinnedMessages
+    }
+
     function defaultComposerContext() {
         if (!defaultComposerContextComponent)
             defaultComposerContextComponent = Qt.createComponent(
@@ -250,6 +267,8 @@ Item {
         item.kind = Qt.binding(function() { return delegate.kind })
         item.timestamp = Qt.binding(function() { return delegate.timestamp })
         item.ownEvent = Qt.binding(function() { return delegate.ownEvent })
+        if (item.senderId !== undefined)
+            item.senderId = Qt.binding(function() { return delegate.senderId })
         item.senderDisplayName = Qt.binding(function() { return delegate.senderDisplayName })
         if (item.senderAvatarSource !== undefined)
             item.senderAvatarSource = Qt.binding(function() { return delegate.senderAvatarSource })
@@ -418,6 +437,8 @@ Item {
                 item.customColors = root.activeCustomColors
             if (item.chatFont !== undefined)
                 item.chatFont = root.activeChatFont
+            if (item.roomInfo !== undefined)
+                item.roomInfo = Qt.binding(function() { return root.chatViewModel ? root.chatViewModel.roomInfo : ({}) })
             if (item.openUrl !== undefined)
                 item.openUrl = root.openUrl
             if (item.timelineActions !== undefined)
@@ -463,8 +484,11 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: visible ? Math.max(48, roomHeaderContent.implicitHeight + 16) : 0
-        visible: root.chatViewModel && root.chatViewModel.chatHeaderVisible
+        height: visible ? Math.max(root.themeValue("roomHeaderMinimumHeight", 48),
+                                   roomHeaderContent.implicitHeight + root.themeValue("roomHeaderVerticalPadding", 16)) : 0
+        visible: root.chatViewModel && root.chatViewModel.chatHeaderVisible &&
+                 (!root.themeValue("roomHeaderRequiresDescription", false) ||
+                  root.chatViewModel.chatHeaderDescription.length > 0)
         color: root.themeValue("roomHeaderBackgroundColor", root.darkSurface ? "#2d323a" : "#f4f6f8")
         border.width: 1
         border.color: root.themeValue("separatorColor", root.fallbackSeparatorColor)
@@ -472,14 +496,14 @@ Item {
 
         Item {
             id: roomHeaderContent
-            x: 8
-            y: 8
-            width: parent.width - 16
+            x: root.themeValue("roomHeaderHorizontalPadding", 8)
+            y: root.themeValue("roomHeaderVerticalPadding", 16) / 2
+            width: parent.width - 2 * root.themeValue("roomHeaderHorizontalPadding", 8)
             implicitHeight: Math.max(roomAvatar.height, headerDetails.implicitHeight)
 
             Item {
                 id: roomAvatar
-                width: roomAvatarImage.status === Image.Ready ? 40 : 0
+                width: root.themeValue("roomHeaderShowAvatar", true) && roomAvatarImage.status === Image.Ready ? 40 : 0
                 height: width
 
                 Image {
@@ -498,16 +522,18 @@ Item {
                 anchors.left: roomAvatar.right
                 anchors.leftMargin: roomAvatar.width > 0 ? 10 : 0
                 anchors.right: headerActions.left
-                anchors.rightMargin: headerActions.width > 0 ? 8 : 0
+                anchors.rightMargin: headerActions.visible && headerActions.width > 0 ? 8 : 0
                 spacing: 2
 
                 Text {
                     width: parent.width
+                    visible: !root.themeValue("roomHeaderDescriptionOnly", false)
                     text: root.chatViewModel ? root.chatViewModel.chatHeaderTitle : ""
                     color: root.themeValue("textColor", root.fallbackTextColor)
                     elide: Text.ElideRight
                     font.bold: true
-                    font.pixelSize: 14
+                    font.family: root.themeValue("roomHeaderFontFamily", "")
+                    font.pixelSize: root.themeValue("roomHeaderTitleFontPixelSize", 14)
                 }
 
                 Text {
@@ -519,12 +545,14 @@ Item {
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
-                    font.pixelSize: 12
+                    font.family: root.themeValue("roomHeaderFontFamily", "")
+                    font.pixelSize: root.themeValue("roomHeaderDescriptionFontPixelSize", 12)
                 }
             }
 
             Row {
                 id: headerActions
+                visible: root.themeValue("roomHeaderShowActions", true)
                 anchors.top: parent.top
                 anchors.right: parent.right
                 spacing: 2
@@ -617,12 +645,50 @@ Item {
         }
     }
 
+    Item {
+        id: statusBarContainer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        z: 4
+
+        property var rendererItem: null
+        height: rendererItem ? rendererItem.implicitHeight : 0
+
+        function createRenderer() {
+            if (rendererItem) {
+                rendererItem.destroy()
+                rendererItem = null
+            }
+            const component = root.activeTheme && root.activeTheme.statusBar ? root.activeTheme.statusBar : null
+            if (!component || component.status !== Component.Ready)
+                return
+            rendererItem = component.createObject(statusBarContainer)
+            if (rendererItem)
+                root.bindStatusBar(rendererItem)
+        }
+
+        Component.onCompleted: createRenderer()
+        Component.onDestruction: {
+            if (rendererItem)
+                rendererItem.destroy()
+        }
+
+        Connections {
+            target: root
+
+            function onActiveThemeChanged() {
+                statusBarContainer.createRenderer()
+            }
+        }
+    }
+
     ListView {
         id: timeline
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: pinnedMessagesContainer.bottom
-        anchors.bottom: parent.bottom
+        anchors.bottom: statusBarContainer.top
         anchors.margins: root.themeValue("timelineMargin", 16)
         clip: true
         interactive: !root.composerActive
@@ -726,6 +792,7 @@ Item {
             required property int kind
             required property var timestamp
             required property bool ownEvent
+            required property string senderId
             required property string senderDisplayName
             required property url senderAvatarSource
             required property color senderColor

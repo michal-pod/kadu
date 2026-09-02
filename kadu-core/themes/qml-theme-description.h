@@ -50,15 +50,16 @@ struct QmlThemeDescription
  *
  * A descriptor contains [Theme] metadata, an optional MainComponent file name
  * and optional [Colors] entries.
- * The System colour scheme is injected for every valid descriptor and is
- * therefore always available even when a style declares no fixed variants.
+ * The System colour scheme is injected for external descriptors. Built-in
+ * styles may opt out when their design intentionally has one fixed palette.
  */
 class KADUAPI QmlThemeDescriptionLoader
 {
 public:
     static QmlThemeDescription builtIn(const QString &id, const QString &displayName, const QString &author,
                                        const QString &type, const QUrl &source,
-                                       const QList<QmlThemeColorScheme> &colorSchemes = {});
+                                       const QList<QmlThemeColorScheme> &colorSchemes = {},
+                                       bool includeSystemColorScheme = true);
     // Returns the optional relative MainComponent value, or the caller's
     // conventional entry-point name when the descriptor omits it.
     static QString mainComponentFileName(const QString &descriptorPath, const QString &fallbackFileName);

@@ -214,6 +214,11 @@ qt_add_qml_module (libkadu
 		chat/qml/styles/KaduClassic/KaduClassicComposerOverlay.qml
 		chat/qml/styles/KaduClassic/KaduClassicPinnedMessages.qml
 		chat/qml/styles/KaduClassic/KaduClassicTimelineItem.qml
+		chat/qml/styles/Irssi/IrssiChatStyle.qml
+		chat/qml/styles/Irssi/IrssiComposerOverlay.qml
+		chat/qml/styles/Irssi/IrssiPinnedMessages.qml
+		chat/qml/styles/Irssi/IrssiStatusBar.qml
+		chat/qml/styles/Irssi/IrssiTimelineItem.qml
 		widgets/qml/LocationSelector.qml
 		widgets/qml/InfoPanel.qml
 		widgets/qml/info-panel-styles/Classic/ClassicBuddyInfoStyle.qml

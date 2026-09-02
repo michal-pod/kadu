@@ -44,12 +44,13 @@ QString QmlThemeDescription::normalizedColorScheme(const QString &scheme) const
         if (availableScheme.id == scheme)
             return scheme;
 
-    return QStringLiteral("System");
+    return colorSchemes.isEmpty() ? QStringLiteral("System") : colorSchemes.constFirst().id;
 }
 
 QmlThemeDescription QmlThemeDescriptionLoader::builtIn(const QString &id, const QString &displayName,
                                                         const QString &author, const QString &type, const QUrl &source,
-                                                        const QList<QmlThemeColorScheme> &colorSchemes)
+                                                        const QList<QmlThemeColorScheme> &colorSchemes,
+                                                        bool includeSystemColorScheme)
 {
     QmlThemeDescription result;
     result.id = id;
@@ -58,8 +59,9 @@ QmlThemeDescription QmlThemeDescriptionLoader::builtIn(const QString &id, const 
     result.type = type;
     result.version = QStringLiteral("core");
     result.source = source;
-    result.colorSchemes.append(
-        {QStringLiteral("System"), QCoreApplication::translate("@default", "System")});
+    if (includeSystemColorScheme)
+        result.colorSchemes.append(
+            {QStringLiteral("System"), QCoreApplication::translate("@default", "System")});
     result.colorSchemes.append(colorSchemes);
     return result;
 }

@@ -59,7 +59,9 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFutureWatcher>
+#include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QTimer>
@@ -80,6 +82,19 @@
 #include <limits>
 #include <utility>
 #include <variant>
+
+namespace
+{
+QString matrixJoinRuleName(const QJsonObject &joinRules)
+{
+    const auto joinRule = joinRules.value(QStringLiteral("join_rule")).toString();
+    if (joinRule == QStringLiteral("knock") || joinRule == QStringLiteral("invite") ||
+        joinRule == QStringLiteral("private") || joinRule == QStringLiteral("restricted") ||
+        joinRule == QStringLiteral("knock_restricted"))
+        return joinRule;
+    return QStringLiteral("public");
+}
+}
 
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
         : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
@@ -438,6 +453,151 @@ QVariantList MatrixTimelineService::pinnedMessages(const Chat &chat) const
         result.append(record);
     }
     return result;
+}
+
+QVariantMap MatrixTimelineService::roomInfo(const Chat &chat) const
+{
+    const auto *room = roomForChat(chat);
+    if (!room)
+        return {};
+
+    const auto state = room->currentState();
+    const auto powerLevels = state.contentJson(QStringLiteral("m.room.power_levels"));
+    const auto ownPowerLevel = room->memberEffectivePowerLevel();
+    const auto usersDefault = powerLevels.value(QStringLiteral("users_default")).toInt(0);
+    const auto messagePowerLevel = room->powerLevelFor(QStringLiteral("m.room.message"));
+    const auto topicPowerLevel = room->powerLevelFor(QStringLiteral("m.room.topic"), true);
+    const auto invitePowerLevel = powerLevels.value(QStringLiteral("invite")).toInt(0);
+    const auto kickPowerLevel = powerLevels.value(QStringLiteral("kick")).toInt(50);
+    const auto banPowerLevel = powerLevels.value(QStringLiteral("ban")).toInt(50);
+    const auto redactPowerLevel = powerLevels.value(QStringLiteral("redact")).toInt(50);
+    const auto pinnedPowerLevel = room->powerLevelFor(QStringLiteral("m.room.pinned_events"), true);
+    const auto joinRulesPowerLevel = room->powerLevelFor(QStringLiteral("m.room.join_rules"), true);
+    const auto powerLevelsPowerLevel = room->powerLevelFor(QStringLiteral("m.room.power_levels"), true);
+    const auto namePowerLevel = room->powerLevelFor(QStringLiteral("m.room.name"), true);
+    const auto historyVisibility =
+        state.contentJson(QStringLiteral("m.room.history_visibility")).value(QStringLiteral("history_visibility")).toString(
+            QStringLiteral("shared"));
+    const auto guestAccess =
+        state.contentJson(QStringLiteral("m.room.guest_access")).value(QStringLiteral("guest_access")).toString(
+            QStringLiteral("forbidden"));
+    const auto create = state.contentJson(QStringLiteral("m.room.create"));
+    const auto federated = !create.contains(QStringLiteral("m.federate")) ||
+                           create.value(QStringLiteral("m.federate")).toBool(true);
+    const auto joinRules = state.contentJson(QStringLiteral("m.room.join_rules"));
+    const auto joinRule = matrixJoinRuleName(joinRules);
+
+    const auto canSendMessages = ownPowerLevel >= messagePowerLevel;
+    const auto canSetTopic = ownPowerLevel >= topicPowerLevel;
+    const auto canInvite = ownPowerLevel >= invitePowerLevel;
+    const auto canKick = ownPowerLevel >= kickPowerLevel;
+    const auto canBan = ownPowerLevel >= banPowerLevel;
+    const auto canRedactOthers = ownPowerLevel >= redactPowerLevel;
+    const auto canManagePins = ownPowerLevel >= pinnedPowerLevel;
+    const auto canManageState = ownPowerLevel >= namePowerLevel || ownPowerLevel >= joinRulesPowerLevel;
+    const auto canManagePermissions = ownPowerLevel >= powerLevelsPowerLevel;
+
+    QStringList flags{QStringLiteral("group"), QStringLiteral("noExternalMessages")};
+    QStringList ircModes{QStringLiteral("n")};
+    const auto addIrcMode = [&ircModes](const QString &mode) {
+        if (!ircModes.contains(mode))
+            ircModes.append(mode);
+    };
+    const auto addFlag = [&flags](const QString &flag) {
+        if (!flags.contains(flag))
+            flags.append(flag);
+    };
+
+    if (joinRule == QStringLiteral("invite") || joinRule == QStringLiteral("private"))
+    {
+        addFlag(QStringLiteral("inviteOnly"));
+        addIrcMode(QStringLiteral("i"));
+    }
+    else if (joinRule == QStringLiteral("restricted"))
+    {
+        addFlag(QStringLiteral("restrictedAccess"));
+    }
+    else if (joinRule == QStringLiteral("knock"))
+    {
+        addFlag(QStringLiteral("knockAllowed"));
+    }
+    else if (joinRule == QStringLiteral("knock_restricted"))
+    {
+        addFlag(QStringLiteral("restrictedAccess"));
+        addFlag(QStringLiteral("knockAllowed"));
+    }
+    if (messagePowerLevel > usersDefault)
+    {
+        addFlag(QStringLiteral("moderated"));
+        addIrcMode(QStringLiteral("m"));
+    }
+    if (topicPowerLevel > usersDefault)
+    {
+        addFlag(QStringLiteral("topicProtected"));
+        addIrcMode(QStringLiteral("t"));
+    }
+    if (room->usesEncryption())
+    {
+        addFlag(QStringLiteral("encrypted"));
+        addIrcMode(QStringLiteral("E")); // Kadu extension: Matrix E2EE has no IRC mode equivalent.
+    }
+    if (guestAccess == QStringLiteral("can_join"))
+        addFlag(QStringLiteral("guestsCanJoin"));
+    if (!federated)
+        addFlag(QStringLiteral("nonFederated"));
+
+    QString memberPrefix;
+    QString memberRole = QStringLiteral("member");
+    if (canManagePermissions)
+    {
+        memberPrefix = QStringLiteral("&");
+        memberRole = QStringLiteral("administrator");
+    }
+    else if (canKick || canBan || canRedactOthers)
+    {
+        memberPrefix = QStringLiteral("@");
+        memberRole = QStringLiteral("moderator");
+    }
+    else if (messagePowerLevel > usersDefault && canSendMessages)
+    {
+        memberPrefix = QStringLiteral("+");
+        memberRole = QStringLiteral("participant");
+    }
+
+    QVariantList allowedRooms;
+    for (const auto &allowedRoom : joinRules.value(QStringLiteral("allow")).toArray())
+    {
+        const auto roomId = allowedRoom.toObject().value(QStringLiteral("room_id")).toString();
+        if (!roomId.isEmpty())
+            allowedRooms.append(roomId);
+    }
+
+    return {{QStringLiteral("group"), true},
+            {QStringLiteral("ircModes"), QStringLiteral("+") + ircModes.join(QString{})},
+            {QStringLiteral("flags"), flags},
+            {QStringLiteral("historyVisibility"), historyVisibility},
+            {QStringLiteral("memberPrefix"), memberPrefix},
+            {QStringLiteral("memberRole"), memberRole},
+            {QStringLiteral("permissions"),
+             QVariantMap{{QStringLiteral("sendMessages"), canSendMessages},
+                         {QStringLiteral("setTopic"), canSetTopic},
+                         {QStringLiteral("invite"), canInvite},
+                         {QStringLiteral("kick"), canKick},
+                         {QStringLiteral("ban"), canBan},
+                         {QStringLiteral("redactOthers"), canRedactOthers},
+                         {QStringLiteral("managePins"), canManagePins},
+                         {QStringLiteral("manageState"), canManageState},
+                         {QStringLiteral("managePermissions"), canManagePermissions}}},
+            {QStringLiteral("native"),
+             QVariantMap{{QStringLiteral("protocol"), QStringLiteral("matrix")},
+                         {QStringLiteral("joinRule"), joinRule},
+                         {QStringLiteral("allowedRooms"), allowedRooms},
+                         {QStringLiteral("guestAccess"), guestAccess},
+                         {QStringLiteral("federated"), federated},
+                         {QStringLiteral("ownPowerLevel"), ownPowerLevel},
+                         {QStringLiteral("usersDefault"), usersDefault},
+                         {QStringLiteral("messagePowerLevel"), messagePowerLevel},
+                         {QStringLiteral("topicPowerLevel"), topicPowerLevel}}}};
 }
 
 QString MatrixTimelineService::chatHeaderTitle(const Chat &chat) const
@@ -982,6 +1142,7 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
         {
             emit availableActionsChanged(chat);
             emit chatHeaderChanged(chat);
+            emit roomInfoChanged(chat);
         }
     });
     connect(room, &Quotient::Room::updatedEvent, this,

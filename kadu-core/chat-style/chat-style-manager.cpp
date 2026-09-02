@@ -47,6 +47,9 @@ void ChatStyleManager::loadStyles()
         {QStringLiteral("Light"), tr("Light")},
         {QStringLiteral("Dark"), tr("Dark")},
     };
+    const QList<QmlThemeColorScheme> irssiSchemes = {
+        {QStringLiteral("Irssi"), tr("Irssi")},
+    };
     m_availableStyles = {
         {QStringLiteral("KaduClassic"),
          QmlThemeDescriptionLoader::builtIn(QStringLiteral("KaduClassic"), tr("Classic Kadu"),
@@ -58,6 +61,11 @@ void ChatStyleManager::loadStyles()
                                              QStringLiteral("chat"),
                                              QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/Bubbles/BubblesChatStyle.qml")},
                                              bundledSchemes)},
+        {QStringLiteral("Irssi"),
+         QmlThemeDescriptionLoader::builtIn(QStringLiteral("Irssi"), tr("Irssi"), QStringLiteral("Kadu Team"),
+                                             QStringLiteral("chat"),
+                                             QUrl{QStringLiteral("qrc:/Kadu/Chat/chat/qml/styles/Irssi/IrssiChatStyle.qml")},
+                                             irssiSchemes, false)},
     };
 
     if (!m_pathsProvider)

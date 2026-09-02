@@ -52,6 +52,7 @@ class KADUAPI ChatViewModel : public QObject
 
     Q_PROPERTY(ChatTimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
+    Q_PROPERTY(QString ownDisplayName READ ownDisplayName NOTIFY titleChanged)
     Q_PROPERTY(QUrl themeSource READ themeSource NOTIFY themeSourceChanged)
     Q_PROPERTY(QString themeColorScheme READ themeColorScheme NOTIFY themeSourceChanged)
     Q_PROPERTY(QVariantMap customColors READ customColors NOTIFY customColorsChanged)
@@ -61,6 +62,7 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(QString chatHeaderTitle READ chatHeaderTitle NOTIFY chatHeaderChanged)
     Q_PROPERTY(QString chatHeaderDescription READ chatHeaderDescription NOTIFY chatHeaderChanged)
     Q_PROPERTY(QVariantList chatHeaderActions READ chatHeaderActions NOTIFY chatHeaderActionsChanged)
+    Q_PROPERTY(QVariantMap roomInfo READ roomInfo NOTIFY roomInfoChanged)
     Q_PROPERTY(bool usesProtocolTimeline READ usesProtocolTimeline CONSTANT)
     Q_PROPERTY(bool loadingInitial READ loadingInitial NOTIFY timelineStateChanged)
     Q_PROPERTY(bool loadingOlder READ loadingOlder NOTIFY timelineStateChanged)
@@ -94,6 +96,7 @@ public:
     Chat chat() const;
     ChatTimelineModel *timeline() const;
     QString title() const;
+    QString ownDisplayName() const;
     QUrl themeSource() const;
     QString themeColorScheme() const;
     QVariantMap customColors() const;
@@ -103,6 +106,7 @@ public:
     QString chatHeaderTitle() const;
     QString chatHeaderDescription() const;
     QVariantList chatHeaderActions() const;
+    QVariantMap roomInfo() const;
     bool usesProtocolTimeline() const;
     bool loadingInitial() const;
     bool loadingOlder() const;
@@ -152,6 +156,7 @@ signals:
     void chatFontChanged();
     void chatHeaderChanged();
     void chatHeaderActionsChanged();
+    void roomInfoChanged();
     void timelineStateChanged();
     void timelineActionsChanged();
     void composerContextChanged();

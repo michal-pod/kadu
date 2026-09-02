@@ -26,10 +26,17 @@ Item {
     visible: false
     property string colorScheme: "System"
     property var customColors: ({ "enabled": false })
+    property var chatFont: ({ "family": "", "pointSize": 10, "bold": false, "italic": false,
+                              "underline": false, "forced": false })
     property var openUrl: null
+    property var openImage: null
+    property var openLocation: null
     property var timelineActions: null
     property var executeTimelineAction: null
     property var copyText: null
+    property var removeOwnReaction: null
+    property var addReaction: null
+    property var requestFullReactionSelector: null
 
     SystemPalette {
         id: systemPalette
@@ -91,9 +98,15 @@ Item {
             property var customColors: root.customColors
             property var openUrl: root.openUrl
             property var openImage: null
+            property var openLocation: null
             property var timelineActions: root.timelineActions
             property var executeTimelineAction: root.executeTimelineAction
             property var copyText: root.copyText
+            property var removeOwnReaction: null
+            property var addReaction: null
+            property var requestFullReactionSelector: null
+            property var jumpToTimelineItem: null
+            property var chatFont: root.chatFont
 
             implicitHeight: card.implicitHeight
 
@@ -105,18 +118,43 @@ Item {
                 const values = []
                 for (let index = 0; index < attachments.length; ++index) {
                     const attachment = attachments[index]
-                    values.push(attachment.fileName + " (" + attachment.mimeType + ", " + attachment.size + " B)")
+                    values.push("kind=" + attachment.kind +
+                                " | fileName=" + attachment.fileName +
+                                " | mimeType=" + attachment.mimeType +
+                                " | size=" + attachment.size +
+                                " | dimensions=" + attachment.dimensions +
+                                " | duration=" + attachment.duration +
+                                " | sourceUri=" + attachment.sourceUri +
+                                " | thumbnailUri=" + attachment.thumbnailUri +
+                                " | state=" + attachment.state +
+                                " | progress=" + attachment.progress +
+                                " | localResourceId=" + attachment.localResourceId +
+                                " | errorText=" + attachment.errorText +
+                                " | iconSource=" + attachment.iconSource)
                 }
-                return values.join("; ")
+                return values.join("\n")
             }
 
             function reactionsSummary() {
                 const values = []
                 for (let index = 0; index < reactions.length; ++index) {
                     const reaction = reactions[index]
-                    values.push(reaction.key + " from " + reaction.senderDisplayNames.join(", "))
+                    values.push("key=" + reaction.key +
+                                " | senderIds=" + reaction.senderIds.join(", ") +
+                                " | senderDisplayNames=" + reaction.senderDisplayNames.join(", ") +
+                                " | own=" + reaction.own)
                 }
-                return values.join("; ")
+                return values.join("\n")
+            }
+
+            function replySummary() {
+                if (!reply || !reply.id)
+                    return ""
+                return "id=" + reply.id +
+                       " | found=" + reply.found +
+                       " | senderDisplayName=" + (reply.senderDisplayName || "") +
+                       " | plainText=" + (reply.plainText || "") +
+                       " | formattedText=" + (reply.formattedText || "")
             }
 
             Rectangle {
@@ -182,7 +220,7 @@ Item {
                         wrapMode: Text.Wrap
                         text: item.valueLabel("plainText", item.plainText) + "\n" +
                               item.valueLabel("replyToId", item.replyToId) + " | " +
-                              item.valueLabel("reply", item.reply && item.reply.found ? item.reply.plainText : "") + "\n" +
+                              item.valueLabel("reply", item.replySummary()) + "\n" +
                               item.valueLabel("attachments", item.attachmentSummary()) + "\n" +
                               item.valueLabel("locationUri", item.locationUri) + " | " +
                               item.valueLabel("reactions", item.reactionsSummary()) + "\n" +
@@ -194,7 +232,45 @@ Item {
                               item.valueLabel("encrypted", item.encrypted) + " | " +
                               item.valueLabel("decryptionState", item.decryptionState) + "\n" +
                               item.valueLabel("errorText", item.errorText) + " | " +
-                              item.valueLabel("colorScheme", item.colorScheme)
+                              item.valueLabel("colorScheme", item.colorScheme) + " | " +
+                              item.valueLabel("chatFont", JSON.stringify(item.chatFont))
+                    }
+
+                    Flow {
+                        width: parent.width
+                        spacing: 5
+
+                        Repeater {
+                            model: item.timelineActions ? item.timelineActions(item.stableId) : []
+
+                            delegate: Button {
+                                required property var modelData
+                                text: modelData.text || modelData.key || "action"
+                                onClicked: {
+                                    if (item.executeTimelineAction)
+                                        item.executeTimelineAction(item.stableId, modelData.id)
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: qsTr("Remove own reaction")
+                            visible: item.reactions.some(function(reaction) { return reaction.own })
+                            onClicked: {
+                                const reaction = item.reactions.find(function(candidate) { return candidate.own })
+                                if (reaction && item.removeOwnReaction)
+                                    item.removeOwnReaction(item.stableId, reaction.key)
+                            }
+                        }
+
+                        Button {
+                            text: qsTr("Jump to replied message")
+                            visible: item.reply && item.reply.found
+                            onClicked: {
+                                if (item.jumpToTimelineItem)
+                                    item.jumpToTimelineItem(item.reply.id)
+                            }
+                        }
                     }
                 }
             }
@@ -274,12 +350,24 @@ Item {
             id: panel
 
             property var pinnedMessages: []
+            property var openUrl: null
+            property var openImage: null
+            property var openLocation: null
             property var timelineActions: null
             property var executeTimelineAction: null
+            property var copyText: null
+            property var removeOwnReaction: null
+            property var addReaction: null
+            property var requestFullReactionSelector: null
             readonly property var entries: pinnedMessages || []
 
             visible: entries.length > 0
             implicitHeight: visible ? summary.implicitHeight + 12 : 0
+
+            onEntriesChanged: {
+                if (entries.length === 0)
+                    pinnedMessagesPopup.close()
+            }
 
             Rectangle {
                 anchors.fill: parent
@@ -301,7 +389,12 @@ Item {
                                  " | available=" + (entry.available || false) +
                                  " | senderDisplayName=" + (entry.senderDisplayName || "") +
                                  " | plainText=" + (entry.plainText || "") +
-                                 " | protocolEventType=" + (entry.protocolEventType || "")
+                                 " | formattedText=" + (entry.formattedText || "") +
+                                 " | protocolEventType=" + (entry.protocolEventType || "") +
+                                 " | timestamp=" + (entry.timestamp || "") +
+                                 " | encrypted=" + (entry.encrypted || false) +
+                                 " | decryptionState=" + (entry.decryptionState || 0) +
+                                 " | redacted=" + (entry.redacted || false)
                       }).join("\n")
 
                 MouseArea {
@@ -345,7 +438,11 @@ Item {
                                   " | senderDisplayName=" + (entry.senderDisplayName || "") +
                                   " | plainText=" + (entry.plainText || "") +
                                   " | formattedText=" + (entry.formattedText || "") +
-                                  " | protocolEventType=" + (entry.protocolEventType || "")
+                                  " | protocolEventType=" + (entry.protocolEventType || "") +
+                                  " | timestamp=" + (entry.timestamp || "") +
+                                  " | encrypted=" + (entry.encrypted || false) +
+                                  " | decryptionState=" + (entry.decryptionState || 0) +
+                                  " | redacted=" + (entry.redacted || false)
                         }
 
                         Row {

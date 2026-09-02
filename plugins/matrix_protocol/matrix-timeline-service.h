@@ -66,6 +66,7 @@ public:
     bool removeOwnReaction(const Chat &chat, const QString &stableId, const QString &key) override;
     bool addReaction(const Chat &chat, const QString &stableId, const QString &key) override;
     QVariantList pinnedMessages(const Chat &chat) const override;
+    QVariantMap roomInfo(const Chat &chat) const override;
     QString chatHeaderTitle(const Chat &chat) const override;
     void markTimelineItemRead(const Chat &chat, const QString &stableId) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
