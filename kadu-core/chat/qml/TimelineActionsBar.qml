@@ -86,7 +86,7 @@ Item {
             spacing: 2
 
             Repeater {
-                model: root.actions
+                model: actionPopup.visible ? root.actions : []
 
                 delegate: ToolButton {
                     id: actionButton

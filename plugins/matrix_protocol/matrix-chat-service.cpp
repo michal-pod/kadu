@@ -41,6 +41,7 @@
 
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
+#include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
@@ -48,7 +49,12 @@
 #include <Quotient/roommember.h>
 
 #include <QtCore/QDateTime>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 #include <QtCore/QMimeDatabase>
 #include <QtCore/QObject>
 #include <QtCore/QSize>
@@ -60,6 +66,7 @@
 
 #include <memory>
 #include <optional>
+#include <iostream>
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
@@ -188,6 +195,79 @@ void MatrixChatService::postText(Quotient::Room *room, const QString &text,
                                                                   nullptr, relation);
     event->setTransactionId(transactionId);
     room->post(std::move(event));
+
+    // Temporary Matrix timeline diagnostic. Enable only while investigating a protocol issue.
+    // if (text == QStringLiteral("dump"))
+    //     dumpTimeline(room);
+}
+
+void MatrixChatService::dumpTimeline(Quotient::Room *room)
+{
+    if (!room)
+        return;
+
+    QJsonArray events;
+    auto count = 0;
+    for (auto it = room->messageEvents().crbegin(); it != room->messageEvents().crend() && count < 20; ++it, ++count)
+    {
+        const auto &timelineItem = *it;
+        const auto *rawEvent = timelineItem.event();
+        const auto rawJson = rawEvent && !rawEvent->encryptedJson().isEmpty() ? rawEvent->encryptedJson()
+                                                                               : rawEvent ? rawEvent->fullJson()
+                                                                                          : QJsonObject{};
+        QJsonObject record{{QStringLiteral("timelineIndex"), QString::number(static_cast<qint64>(timelineItem.index()))},
+                           {QStringLiteral("eventId"), timelineItem->id()},
+                           {QStringLiteral("raw"), rawJson}};
+
+        if (!rawEvent)
+            record.insert(QStringLiteral("decryption"), QStringLiteral("event unavailable"));
+        else if (rawEvent->isRedacted())
+            record.insert(QStringLiteral("decryption"), QStringLiteral("skipped: event is redacted"));
+        else if (rawEvent->originalEvent())
+        {
+            record.insert(QStringLiteral("decryption"), QStringLiteral("succeeded"));
+            record.insert(QStringLiteral("decrypted"), rawEvent->fullJson());
+        }
+        else if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>())
+        {
+            if (const auto decryptedEvent = room->decryptMessage(*encryptedEvent))
+            {
+                record.insert(QStringLiteral("decryption"), QStringLiteral("succeeded"));
+                record.insert(QStringLiteral("decrypted"), decryptedEvent->fullJson());
+            }
+            else
+                record.insert(QStringLiteral("decryption"), QStringLiteral("unavailable"));
+        }
+        else
+        {
+            record.insert(QStringLiteral("decryption"), QStringLiteral("not encrypted"));
+            record.insert(QStringLiteral("decrypted"), rawEvent->fullJson());
+        }
+        events.append(record);
+    }
+
+    const QJsonObject dump{{QStringLiteral("roomId"), room->id()},
+                           {QStringLiteral("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+                           {QStringLiteral("order"), QStringLiteral("newest-first")},
+                           {QStringLiteral("events"), events}};
+    const auto fileName = QStringLiteral("matrix-timeline-%1.json").arg(
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz")));
+    const auto path = QDir::current().absoluteFilePath(fileName);
+    QFile file{path};
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        std::cout << "Matrix timeline dump failed: " << path.toStdString() << std::endl;
+        return;
+    }
+
+    const auto json = QJsonDocument{dump}.toJson(QJsonDocument::Indented);
+    if (file.write(json) != json.size())
+    {
+        std::cout << "Matrix timeline dump failed: " << path.toStdString() << std::endl;
+        return;
+    }
+
+    std::cout << "Matrix timeline dump saved: " << path.toStdString() << std::endl;
 }
 
 bool MatrixChatService::sendAttachmentToRoom(const Chat &chat, const QString &filePath, const QString &description)

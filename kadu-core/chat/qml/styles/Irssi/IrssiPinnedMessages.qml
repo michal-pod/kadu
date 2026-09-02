@@ -15,6 +15,7 @@ Item {
     property var executeTimelineAction: null
     property var jumpToTimelineItem: null
     property string terminalFont: "monospace"
+    property int actionsRevision: 0
     readonly property var entries: pinnedMessages || []
 
     visible: entries.length > 0
@@ -97,11 +98,28 @@ Item {
                 model: root.entries
 
                 delegate: Column {
+                    id: pinnedMessageDelegate
+
                     required property var modelData
                     readonly property var entry: modelData
+                    property var entryActions: []
 
                     width: pinnedMessagesList.width
                     spacing: 1
+
+                    function refreshActions() {
+                        entryActions = root.actionsFor(entry.stableId)
+                    }
+
+                    Component.onCompleted: refreshActions()
+
+                    Connections {
+                        target: root
+
+                        function onActionsRevisionChanged() {
+                            pinnedMessageDelegate.refreshActions()
+                        }
+                    }
 
                     Text {
                         width: parent.width
@@ -116,7 +134,7 @@ Item {
                     }
 
                     Row {
-                        visible: (entry.stableId || "").length > 0 || root.actionsFor(entry.stableId).length > 0
+                        visible: (entry.stableId || "").length > 0 || pinnedMessageDelegate.entryActions.length > 0
                         spacing: 7
 
                         Item {
@@ -150,7 +168,7 @@ Item {
                         }
 
                         Repeater {
-                            model: root.actionsFor(entry.stableId)
+                            model: pinnedMessageDelegate.entryActions
 
                             delegate: Item {
                                 required property var modelData

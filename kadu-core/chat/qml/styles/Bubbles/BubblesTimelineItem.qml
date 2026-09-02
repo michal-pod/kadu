@@ -210,9 +210,12 @@ Item {
 
     Menu {
         id: eventMenu
+        property var entries: []
+        onAboutToShow: entries = root.availableActions()
+        onClosed: entries = []
 
         Repeater {
-            model: root.availableActions()
+            model: eventMenu.entries
 
             delegate: MenuItem {
                 required property var modelData
@@ -269,7 +272,7 @@ Item {
                 Image {
                     id: systemSenderAvatarImage
                     anchors.fill: parent
-                    source: root.senderAvatarSource
+                    source: systemSenderAvatar.visible ? root.senderAvatarSource : ""
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -366,7 +369,7 @@ Item {
                 Image {
                     id: senderAvatarImage
                     anchors.fill: parent
-                    source: root.senderAvatarSource
+                    source: senderAvatar.visible ? root.senderAvatarSource : ""
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -564,12 +567,21 @@ Item {
                             }
                         }
 
-                        KaduChat.ChatLocation {
-                            visible: root.locationUri.length > 0
-                            geoUri: root.locationUri
-                            textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
-                            markerColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
-                            openLocation: root.openLocation
+                        Loader {
+                            id: locationLoader
+                            width: parent.width
+                            active: root.locationUri.length > 0
+                            visible: active
+
+                            sourceComponent: Component {
+                                KaduChat.ChatLocation {
+                                    availableWidth: locationLoader.width
+                                    geoUri: root.locationUri
+                                    textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
+                                    markerColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
+                                    openLocation: root.openLocation
+                                }
+                            }
                         }
 
                         Repeater {
@@ -606,12 +618,8 @@ Item {
                     reactions: root.reactions
                     removeOwnReaction: root.removeOwnReaction
                     stableId: root.stableId
-                    removeReactionIconSource: "image://kaduicon/edit-delete"
-                    removeReactionHoverColor: root.darkSurface ? "#344b60" : "#d4e7f5"
-                    removeReactionHoverTextColor: root.darkSurface ? "#ffffff" : "#202020"
                     textColor: root.ownEvent ? root.outgoingTextColor : root.textColor
                     accentColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
-                    backgroundColor: root.ownEvent ? root.outgoingBubbleColor : root.incomingBubbleColor
                 }
 
                 Text {

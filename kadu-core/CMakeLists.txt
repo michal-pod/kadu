@@ -198,6 +198,8 @@ qt_add_qml_module (libkadu
 		chat/qml/TimelineActionsBar.qml
 		chat/qml/TimelineReactionsBar.qml
 		chat/qml/ReactionEmojiPickerPopup.qml
+
+		chat/qml/TimelineMessagePopup.qml
 		chat/qml/ChatFileAttachment.qml
 		chat/qml/ChatImageAttachment.qml
 		chat/qml/ImageViewerDialog.qml

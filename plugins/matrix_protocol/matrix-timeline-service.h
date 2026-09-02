@@ -31,6 +31,7 @@
 #include <QtCore/QPromise>
 #include <QtCore/QSet>
 #include <QtCore/QSize>
+#include <QtCore/QUrl>
 #include <QtGui/QImage>
 #include <injeqt/injeqt.h>
 
@@ -93,12 +94,17 @@ private:
     mutable QHash<QString, Quotient::FileSourceInfo> m_attachmentSources;
     mutable QHash<QString, QString> m_attachmentFileNames;
     mutable QHash<QString, ChatTimelineAttachmentKind> m_attachmentKinds;
+    mutable QHash<QString, QHash<QString, QUrl>> m_memberAvatarSources;
     mutable QHash<QString, QJsonObject> m_decryptedEventSources;
     QHash<QString, QString> m_eventTransactionIds;
+    mutable QHash<QString, QString> m_reactionEventTargets;
     MatrixMegolmSessionRecovery *m_sessionRecovery;
 
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;
+    QUrl memberAvatarSource(Quotient::Room *room, const QString &memberId) const;
+    void rememberReactionEvent(const QString &reactionEventId, const QString &targetEventId) const;
+    QString reactionTargetForEvent(const QString &eventId) const;
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handlePendingEventAdded(Quotient::Room *room, const Quotient::RoomEvent *event);
@@ -135,6 +141,7 @@ private:
     static QString attachmentResourceId(const QString &eventId, bool thumbnail);
     static QString localEchoId(const QString &transactionId);
     static QString transactionIdForLocalEcho(const QString &stableId);
+    static QString joinRuleName(const QJsonObject &joinRules);
     QByteArray sourceOrderForEvent(const Quotient::RoomEvent &event, const QString &eventId,
                                    qint64 timelineIndex) const;
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const;

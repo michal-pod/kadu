@@ -31,6 +31,9 @@ private slots:
     void shouldMergeLocalEchoWhenServerEventArrivesThroughUpsert();
     void shouldIgnoreAnOlderRevision();
     void shouldEmitDataChangedOnlyForUpdatedItem();
+    void shouldEmitOnlyChangedRoles();
+    void shouldInsertTimelinePagesInSingleBatches();
+    void shouldKeepNewestRevisionWhenResetting();
     void shouldRedactExistingItem();
     void shouldExposeLocationUri();
 
@@ -122,6 +125,70 @@ void ChatTimelineModelTest::shouldEmitDataChangedOnlyForUpdatedItem()
     const auto arguments = changes.takeFirst();
     QCOMPARE(arguments.at(0).value<QModelIndex>().row(), 0);
     QCOMPARE(arguments.at(1).value<QModelIndex>().row(), 0);
+}
+
+void ChatTimelineModelTest::shouldEmitOnlyChangedRoles()
+{
+    ChatTimelineModel model;
+    model.upsert(makeItem(QStringLiteral("$event"), QByteArrayLiteral("001"), 1));
+    QSignalSpy changes{&model, &QAbstractItemModel::dataChanged};
+
+    auto replacement = makeItem(QStringLiteral("ignored"), QByteArray{}, 2);
+    ChatTimelineReaction reaction;
+    reaction.key = QStringLiteral("👍");
+    reaction.own = true;
+    replacement.content.reactions.append(reaction);
+    model.update(QStringLiteral("$event"), replacement);
+
+    QCOMPARE(changes.size(), 1);
+    QCOMPARE(changes.constFirst().at(2).value<QList<int>>(), QList<int>{ChatTimelineModel::ReactionsRole});
+}
+
+void ChatTimelineModelTest::shouldInsertTimelinePagesInSingleBatches()
+{
+    ChatTimelineModel model;
+    model.upsert(makeItem(QStringLiteral("middle"), QByteArrayLiteral("003")));
+
+    ChatTimelinePage older;
+    older.items = {makeItem(QStringLiteral("first"), QByteArrayLiteral("001")),
+                   makeItem(QStringLiteral("second"), QByteArrayLiteral("002"))};
+    QSignalSpy insertions{&model, &QAbstractItemModel::rowsInserted};
+    model.prepend(older);
+
+    QCOMPARE(insertions.size(), 1);
+    QCOMPARE(insertions.constFirst().at(1).toInt(), 0);
+    QCOMPARE(insertions.constFirst().at(2).toInt(), 1);
+
+    ChatTimelinePage newer;
+    newer.items = {makeItem(QStringLiteral("fourth"), QByteArrayLiteral("004")),
+                   makeItem(QStringLiteral("fifth"), QByteArrayLiteral("005"))};
+    model.append(newer);
+
+    QCOMPARE(insertions.size(), 2);
+    QCOMPARE(insertions.constLast().at(1).toInt(), 3);
+    QCOMPARE(insertions.constLast().at(2).toInt(), 4);
+    QCOMPARE(model.rowCount(), 5);
+
+    ChatTimelinePage latest;
+    latest.items = {makeItem(QStringLiteral("sixth"), QByteArrayLiteral("006")),
+                    makeItem(QStringLiteral("seventh"), QByteArrayLiteral("007"))};
+    QVERIFY(model.append(latest, 5));
+    QCOMPARE(model.rowCount(), 5);
+    QCOMPARE(model.rowForStableId(QStringLiteral("first")), -1);
+    QCOMPARE(model.rowForStableId(QStringLiteral("middle")), 0);
+}
+
+void ChatTimelineModelTest::shouldKeepNewestRevisionWhenResetting()
+{
+    ChatTimelineModel model;
+    auto oldItem = makeItem(QStringLiteral("event"), QByteArrayLiteral("001"), 1);
+    auto newItem = makeItem(QStringLiteral("event"), QByteArrayLiteral("001"), 2);
+    newItem.content.plainText = QStringLiteral("newest");
+
+    model.reset({newItem, oldItem});
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0, 0), ChatTimelineModel::PlainTextRole).toString(), QStringLiteral("newest"));
 }
 
 void ChatTimelineModelTest::shouldRedactExistingItem()

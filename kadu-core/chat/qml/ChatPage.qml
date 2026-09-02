@@ -44,6 +44,7 @@ Item {
     readonly property bool composerActive: chatViewModel && chatViewModel.composerActive
     property bool initialPositioned: false
     property bool followingTail: true
+    property int tailScrollPassesRemaining: 0
     property bool scrollBarVisible: false
     property int attachmentImageRevision: 0
     property string olderAnchorId: ""
@@ -52,6 +53,7 @@ Item {
     property var defaultComposerContextComponent: null
     property var defaultComposerOverlayComponent: null
     property var defaultPinnedMessagesPanelComponent: null
+    property var timelineActionsCache: ({})
     readonly property int newEventsBelow: chatViewModel ? chatViewModel.newEventsBelow : 0
     readonly property int latestMessagesHidden: {
         if (!timeline || timeline.count === 0)
@@ -65,6 +67,10 @@ Item {
         return bottomIndex < 0 ? 0 : Math.max(0, timeline.count - bottomIndex - 1)
     }
     readonly property bool jumpToLatestVisible: (chatViewModel && chatViewModel.hasNewer) || latestMessagesHidden >= 3
+
+    onChatViewModelChanged: {
+        timelineActionsCache = ({})
+    }
 
     // These values also make the fallback renderer readable when a selected
     // external style cannot be loaded.
@@ -88,12 +94,47 @@ Item {
     function timelineActions(stableId) {
         // Make action models reactive to protocol permission/state changes.
         const revision = chatViewModel ? chatViewModel.timelineActionsRevision : 0
-        return chatViewModel ? chatViewModel.timelineActions(stableId) : []
+        const cacheKey = String(revision) + ":" + String(stableId)
+        if (Object.prototype.hasOwnProperty.call(timelineActionsCache, cacheKey))
+            return timelineActionsCache[cacheKey]
+        const actions = chatViewModel ? chatViewModel.timelineActions(stableId) : []
+        timelineActionsCache[cacheKey] = actions
+        return actions
     }
 
     function executeTimelineAction(stableId, action) {
-        if (chatViewModel)
-            chatViewModel.executeTimelineAction(stableId, action)
+        if (!chatViewModel)
+            return
+
+        const actions = timelineActions(stableId)
+        const selectedAction = actions.find(function(candidate) { return candidate.id === action })
+        if (selectedAction && selectedAction.confirmationText) {
+            timelineMessagePopup.openFor(
+                stableId, selectedAction.text, selectedAction.confirmationText, true,
+                selectedAction.confirmationActionText,
+                function() {
+                    if (root.chatViewModel)
+                        root.chatViewModel.executeTimelineAction(stableId, action)
+                })
+            return
+        }
+
+        chatViewModel.executeTimelineAction(stableId, action)
+    }
+
+    function timelineMessagePopupPosition(stableId, popupWidth, popupHeight) {
+        const index = chatViewModel ? chatViewModel.timeline.rowForStableId(stableId) : -1
+        const item = index >= 0 ? timeline.itemAtIndex(index) : null
+        if (!item)
+            return { "x": Math.max(0, (width - popupWidth) / 2),
+                     "y": Math.max(0, (height - popupHeight) / 2) }
+
+        const point = item.mapToItem(root, item.width / 2, 0)
+        const x = Math.max(0, Math.min(point.x - popupWidth / 2, width - popupWidth))
+        const below = point.y + item.height + 6
+        const y = below + popupHeight <= height
+                  ? below : Math.max(0, point.y - popupHeight - 6)
+        return { "x": x, "y": y }
     }
 
     function copyText(text) {
@@ -179,6 +220,10 @@ Item {
             })
         if (item.timelineActions !== undefined)
             item.timelineActions = root.timelineActions
+        if (item.actionsRevision !== undefined)
+            item.actionsRevision = Qt.binding(function() {
+                return root.chatViewModel ? root.chatViewModel.timelineActionsRevision : 0
+            })
         if (item.executeTimelineAction !== undefined)
             item.executeTimelineAction = root.executeTimelineAction
         if (item.copyText !== undefined)
@@ -331,17 +376,27 @@ Item {
 
     function scrollToBottom() {
         timeline.positionViewAtEnd()
+        timeline.contentY = Math.max(timeline.originY,
+                                     timeline.contentHeight - timeline.height + timeline.originY)
         followingTail = true
         if (chatViewModel)
             chatViewModel.setTimelineAtNewest(true)
     }
 
+    function scheduleScrollToBottom(passes) {
+        const requestedPasses = passes === undefined ? 1 : Math.max(1, Number(passes))
+        tailScrollPassesRemaining = Math.max(tailScrollPassesRemaining, requestedPasses)
+        scrollToBottomTimer.restart()
+    }
+
     function jumpToLatest() {
         if (chatViewModel && chatViewModel.hasNewer) {
             followingTail = true
+            scheduleScrollToBottom(4)
             chatViewModel.loadLatest()
         } else {
-            scrollToBottom()
+            followingTail = true
+            scheduleScrollToBottom(4)
         }
     }
 
@@ -374,6 +429,26 @@ Item {
         id: scrollBarHideTimer
         interval: 900
         onTriggered: root.scrollBarVisible = false
+    }
+
+    Timer {
+        id: scrollToBottomTimer
+        interval: 16
+        onTriggered: {
+            if (!root.followingTail) {
+                root.tailScrollPassesRemaining = 0
+                return
+            }
+            if (!root.initialPositioned || !root.chatViewModel || root.chatViewModel.loadingInitial ||
+                    root.chatViewModel.loadingOlder || root.chatViewModel.loadingNewer ||
+                    root.chatViewModel.hasNewer)
+                return
+
+            root.scrollToBottom()
+            root.tailScrollPassesRemaining = Math.max(0, root.tailScrollPassesRemaining - 1)
+            if (root.tailScrollPassesRemaining > 0)
+                scrollToBottomTimer.restart()
+        }
     }
 
     function requestOlder() {
@@ -753,7 +828,7 @@ Item {
             if (root.followingTail && root.initialPositioned && root.chatViewModel &&
                     !root.chatViewModel.loadingInitial && !root.chatViewModel.loadingOlder &&
                     !root.chatViewModel.loadingNewer && !root.chatViewModel.hasNewer)
-                Qt.callLater(root.scrollToBottom)
+                root.scheduleScrollToBottom()
         }
         onMovementStarted: root.revealScrollBar()
         onMovementEnded: scrollBarHideTimer.restart()
@@ -832,7 +907,8 @@ Item {
             readonly property bool isFirstNewEvent: root.newEventsBelow > 0 &&
                                                     (!root.chatViewModel || !root.chatViewModel.hasNewer) &&
                                                     index === timeline.count - root.newEventsBelow
-            height: (isFirstNewEvent ? newMessagesMarker.implicitHeight : 0) + (rendererItem ? rendererItem.implicitHeight : 0)
+            height: (isFirstNewEvent ? newMessagesMarker.implicitHeight : 0) +
+                    (rendererItem ? rendererItem.implicitHeight : 0)
             Accessible.role: Accessible.ListItem
             Accessible.name: senderDisplayName.length > 0
                              ? senderDisplayName + ": " + plainText
@@ -1147,6 +1223,19 @@ Item {
         addReaction: root.addReaction
     }
 
+    TimelineMessagePopup {
+        id: timelineMessagePopup
+        parent: root
+        z: 30
+        backgroundColor: root.themeValue("messagePopupBackgroundColor",
+                                         root.darkSurface ? "#303944" : "#f8fbfe")
+        textColor: root.themeValue("messagePopupTextColor", root.fallbackTextColor)
+        mutedTextColor: root.themeValue("messagePopupMutedTextColor", root.fallbackMutedTextColor)
+        accentColor: root.themeValue("accentColor", root.darkSurface ? "#82c5ff" : "#1675bd")
+        warningColor: root.themeValue("messagePopupWarningColor", root.darkSurface ? "#f1b86a" : "#b45309")
+        positionForStableId: root.timelineMessagePopupPosition
+    }
+
     Connections {
         target: root.chatViewModel
         function onTimelineStateChanged() {
@@ -1155,12 +1244,15 @@ Item {
                 return
             if (!root.chatViewModel.loadingInitial && !root.initialPositioned) {
                 root.initialPositioned = true
-                Qt.callLater(root.scrollToBottom)
+                root.scheduleScrollToBottom(4)
             }
             if (!root.chatViewModel.loadingInitial && root.followingTail && !root.chatViewModel.hasNewer)
-                Qt.callLater(root.scrollToBottom)
+                root.scheduleScrollToBottom()
             if (!root.chatViewModel.loadingOlder && !root.chatViewModel.loadingNewer)
                 Qt.callLater(root.restoreOlderAnchor)
+        }
+        function onTimelineActionsRevisionChanged() {
+            root.timelineActionsCache = ({})
         }
         function onComposerContextChanged() {
             composerContextContainer.createRenderer()
@@ -1178,6 +1270,9 @@ Item {
         function onTimelinePositionRequested(stableId) {
             Qt.callLater(function() { root.positionTimelineItem(stableId) })
         }
+        function onTimelineWarningRequested(stableId, title, message) {
+            timelineMessagePopup.openFor(stableId, title, message, false, "", null)
+        }
     }
 
     Connections {
@@ -1191,10 +1286,10 @@ Item {
                 return
             if (!root.initialPositioned && !root.chatViewModel.loadingInitial) {
                 root.initialPositioned = true
-                Qt.callLater(root.scrollToBottom)
+                root.scheduleScrollToBottom()
             } else if (root.followingTail && !root.chatViewModel.loadingOlder &&
                        !root.chatViewModel.loadingNewer && !root.chatViewModel.hasNewer) {
-                Qt.callLater(root.scrollToBottom)
+                root.scheduleScrollToBottom()
             }
         }
     }

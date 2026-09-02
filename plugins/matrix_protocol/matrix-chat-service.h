@@ -88,6 +88,7 @@ private:
     bool sendLocationToRoom(const Chat &chat, const QString &geoUri);
     void postText(Quotient::Room *room, const QString &text, const QString &transactionId,
                   const std::optional<Quotient::EventRelation> &relation = std::nullopt);
+    void dumpTimeline(Quotient::Room *room);
     void postAttachment(Quotient::Room *room, const QString &filePath, const QString &description);
     void postLocation(Quotient::Room *room, const QString &geoUri);
     bool isSupportedRoom(const Quotient::Room *room) const;

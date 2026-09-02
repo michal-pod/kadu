@@ -20,6 +20,7 @@
 #include "chat-timeline-model.h"
 
 #include <algorithm>
+#include <iterator>
 
 #include <QtCore/QBuffer>
 #include <QtCore/QFileInfo>
@@ -30,6 +31,46 @@
 #include <QtGui/QPixmap>
 #include <QtWidgets/QFileIconProvider>
 
+bool ChatTimelineModel::reactionsEqual(const QVector<ChatTimelineReaction> &left,
+                                       const QVector<ChatTimelineReaction> &right)
+{
+    if (left.size() != right.size())
+        return false;
+    for (auto index = 0; index < left.size(); ++index)
+    {
+        const auto &leftReaction = left.at(index);
+        const auto &rightReaction = right.at(index);
+        if (leftReaction.key != rightReaction.key || leftReaction.senderIds != rightReaction.senderIds ||
+            leftReaction.senderDisplayNames != rightReaction.senderDisplayNames ||
+            leftReaction.own != rightReaction.own)
+            return false;
+    }
+    return true;
+}
+
+bool ChatTimelineModel::attachmentsEqual(const QVector<ChatTimelineAttachment> &left,
+                                         const QVector<ChatTimelineAttachment> &right)
+{
+    if (left.size() != right.size())
+        return false;
+    for (auto index = 0; index < left.size(); ++index)
+    {
+        const auto &leftAttachment = left.at(index);
+        const auto &rightAttachment = right.at(index);
+        if (leftAttachment.kind != rightAttachment.kind || leftAttachment.fileName != rightAttachment.fileName ||
+            leftAttachment.mimeType != rightAttachment.mimeType || leftAttachment.size != rightAttachment.size ||
+            leftAttachment.dimensions != rightAttachment.dimensions ||
+            leftAttachment.duration != rightAttachment.duration ||
+            leftAttachment.sourceUri != rightAttachment.sourceUri ||
+            leftAttachment.thumbnailUri != rightAttachment.thumbnailUri ||
+            leftAttachment.encryptedFileMetadata != rightAttachment.encryptedFileMetadata ||
+            leftAttachment.state != rightAttachment.state || leftAttachment.progress != rightAttachment.progress ||
+            leftAttachment.localResourceId != rightAttachment.localResourceId ||
+            leftAttachment.errorText != rightAttachment.errorText)
+            return false;
+    }
+    return true;
+}
 ChatTimelineModel::ChatTimelineModel(QObject *parent) : QAbstractListModel{parent}
 {
 }
@@ -166,32 +207,33 @@ void ChatTimelineModel::reset(const QVector<ChatTimelineItem> &items)
 {
     beginResetModel();
     m_items.clear();
-    m_rowsByStableId.clear();
-    m_rowsByTransactionId.clear();
+    m_items.reserve(items.size());
+    QHash<QString, int> rowsByStableId;
     for (const auto &timelineItem : items)
     {
-        const auto knownRow = timelineItem.stableId.isEmpty() ? -1 : m_rowsByStableId.value(timelineItem.stableId, -1);
+        const auto knownRow = timelineItem.stableId.isEmpty() ? -1 : rowsByStableId.value(timelineItem.stableId, -1);
         if (knownRow < 0)
+        {
+            if (!timelineItem.stableId.isEmpty())
+                rowsByStableId.insert(timelineItem.stableId, m_items.size());
             m_items.append(timelineItem);
+        }
         else if (m_items[knownRow].revision <= timelineItem.revision)
             m_items[knownRow] = timelineItem;
-        rebuildRows();
     }
     std::sort(m_items.begin(), m_items.end(), comesBefore);
     rebuildRows();
     endResetModel();
 }
 
-void ChatTimelineModel::prepend(const ChatTimelinePage &page)
+bool ChatTimelineModel::prepend(const ChatTimelinePage &page, int maximumSize)
 {
-    for (const auto &timelineItem : page.items)
-        upsert(timelineItem);
+    return mergePage(page, true, maximumSize);
 }
 
-void ChatTimelineModel::append(const ChatTimelinePage &page)
+bool ChatTimelineModel::append(const ChatTimelinePage &page, int maximumSize)
 {
-    for (const auto &timelineItem : page.items)
-        upsert(timelineItem);
+    return mergePage(page, false, maximumSize);
 }
 
 void ChatTimelineModel::upsert(const ChatTimelineItem &timelineItem)
@@ -280,7 +322,8 @@ void ChatTimelineModel::remove(const QString &stableId)
     rebuildRows();
     endRemoveRows();
     emitReplyChangedFor(stableId);
-    emitGroupingChangedAround(row);
+    emitPresentationChangedAt(row - 1);
+    emitPresentationChangedAt(row);
 }
 
 void ChatTimelineModel::removeFirst(int count)
@@ -299,8 +342,7 @@ void ChatTimelineModel::removeFirst(int count)
     endRemoveRows();
     for (const auto &stableId : removedIds)
         emitReplyChangedFor(stableId);
-    if (!m_items.isEmpty())
-        emitGroupingChangedAround(0);
+    emitPresentationChangedAt(0);
 }
 
 void ChatTimelineModel::removeLast(int count)
@@ -320,8 +362,7 @@ void ChatTimelineModel::removeLast(int count)
     endRemoveRows();
     for (const auto &stableId : removedIds)
         emitReplyChangedFor(stableId);
-    if (!m_items.isEmpty())
-        emitGroupingChangedAround(static_cast<int>(m_items.size()) - 1);
+    emitPresentationChangedAt(static_cast<int>(m_items.size()) - 1);
 }
 
 void ChatTimelineModel::clear()
@@ -353,12 +394,82 @@ bool ChatTimelineModel::isMessage(const ChatTimelineItem &timelineItem)
            timelineItem.kind == ChatTimelineItemKind::LocationMessage;
 }
 
+QList<int> ChatTimelineModel::changedItemDataRoles(const ChatTimelineItem &current,
+                                                   const ChatTimelineItem &replacement)
+{
+    QList<int> roles;
+    const auto addRole = [&roles](int role) {
+        if (!roles.contains(role))
+            roles.append(role);
+    };
+
+    if (current.stableId != replacement.stableId)
+        addRole(StableIdRole);
+    if (current.transactionId != replacement.transactionId)
+        addRole(TransactionIdRole);
+    if (current.protocolEventType != replacement.protocolEventType)
+        addRole(ProtocolEventTypeRole);
+    if (current.kind != replacement.kind)
+    {
+        addRole(KindRole);
+        addRole(SystemEventRole);
+        addRole(EmoteRole);
+    }
+    if (current.timestamp != replacement.timestamp)
+    {
+        addRole(TimestampRole);
+        addRole(DateRole);
+    }
+    if (current.sender.own != replacement.sender.own)
+        addRole(OwnEventRole);
+    if (current.sender.id != replacement.sender.id)
+        addRole(SenderIdRole);
+    if (current.sender.displayName != replacement.sender.displayName)
+        addRole(SenderDisplayNameRole);
+    if (current.sender.avatarSource != replacement.sender.avatarSource)
+        addRole(SenderAvatarSourceRole);
+    if (current.sender.color != replacement.sender.color)
+        addRole(SenderColorRole);
+    if (current.content.plainText != replacement.content.plainText)
+        addRole(PlainTextRole);
+    if (current.content.formattedText != replacement.content.formattedText)
+        addRole(FormattedTextRole);
+    if (current.content.replyToId != replacement.content.replyToId)
+    {
+        addRole(ReplyToIdRole);
+        addRole(ReplyRole);
+    }
+    if (!attachmentsEqual(current.content.attachments, replacement.content.attachments))
+        addRole(AttachmentsRole);
+    if (current.content.locationUri != replacement.content.locationUri)
+        addRole(LocationUriRole);
+    if (!reactionsEqual(current.content.reactions, replacement.content.reactions))
+        addRole(ReactionsRole);
+    if (current.state.deliveryState != replacement.state.deliveryState)
+        addRole(DeliveryStateRole);
+    if (current.state.edited != replacement.state.edited)
+        addRole(EditedRole);
+    if (current.state.redacted != replacement.state.redacted)
+        addRole(RedactedRole);
+    if (current.state.encrypted != replacement.state.encrypted)
+        addRole(EncryptedRole);
+    if (current.state.decryptionState != replacement.state.decryptionState)
+        addRole(DecryptionStateRole);
+    if (current.state.errorText != replacement.state.errorText)
+        addRole(ErrorTextRole);
+
+    if (current.kind != replacement.kind || current.timestamp != replacement.timestamp ||
+        current.sender.id != replacement.sender.id)
+        for (const auto role : presentationRoles())
+            addRole(role);
+
+    return roles;
+}
+
 int ChatTimelineModel::insertionRow(const ChatTimelineItem &timelineItem) const
 {
-    auto row = 0;
-    while (row < m_items.size() && comesBefore(m_items.at(row), timelineItem))
-        ++row;
-    return row;
+    const auto position = std::lower_bound(m_items.cbegin(), m_items.cend(), timelineItem, comesBefore);
+    return static_cast<int>(std::distance(m_items.cbegin(), position));
 }
 
 ChatTimelineModel::GroupPosition ChatTimelineModel::groupPositionAt(int row) const
@@ -398,23 +509,110 @@ void ChatTimelineModel::rebuildRows()
 
 void ChatTimelineModel::emitGroupingChangedAround(int row)
 {
-    if (m_items.isEmpty())
+    emitPresentationChangedAt(row - 1);
+    emitPresentationChangedAt(row + 1);
+}
+
+void ChatTimelineModel::emitPresentationChangedAt(int row)
+{
+    if (row >= 0 && row < m_items.size())
+        emit dataChanged(index(row), index(row), presentationRoles());
+}
+
+bool ChatTimelineModel::mergePage(const ChatTimelinePage &page, bool prependPage, int maximumSize)
+{
+    QVector<ChatTimelineItem> additions;
+    additions.reserve(page.items.size());
+
+    for (const auto &timelineItem : page.items)
+    {
+        auto existingRow = timelineItem.stableId.isEmpty() ? -1 : rowForStableId(timelineItem.stableId);
+        if (existingRow < 0 && !timelineItem.transactionId.isEmpty())
+            existingRow = rowForTransactionId(timelineItem.transactionId);
+        if (existingRow >= 0)
+        {
+            if (m_items.at(existingRow).revision <= timelineItem.revision)
+                replaceItem(existingRow, timelineItem);
+            continue;
+        }
+
+        const auto duplicate = std::find_if(additions.begin(), additions.end(), [&timelineItem](const auto &candidate) {
+            return (!timelineItem.stableId.isEmpty() && candidate.stableId == timelineItem.stableId) ||
+                   (!timelineItem.transactionId.isEmpty() &&
+                    candidate.transactionId == timelineItem.transactionId);
+        });
+        if (duplicate == additions.end())
+            additions.append(timelineItem);
+        else if (duplicate->revision <= timelineItem.revision)
+            *duplicate = timelineItem;
+    }
+
+    if (additions.isEmpty())
+        return false;
+
+    std::sort(additions.begin(), additions.end(), comesBefore);
+    const auto formsContiguousBoundary =
+        m_items.isEmpty() ||
+        (prependPage ? comesBefore(additions.constLast(), m_items.constFirst())
+                     : comesBefore(m_items.constLast(), additions.constFirst()));
+    if (!formsContiguousBoundary)
+    {
+        for (const auto &timelineItem : additions)
+            insertItem(timelineItem);
+        const auto overflow = maximumSize > 0 ? m_items.size() - maximumSize : 0;
+        if (overflow > 0)
+        {
+            if (prependPage)
+                removeLast(overflow);
+            else
+                removeFirst(overflow);
+        }
+        return overflow > 0;
+    }
+
+    const auto overflow = maximumSize > 0 ? m_items.size() + additions.size() - maximumSize : 0;
+    if (overflow > 0)
+    {
+        if (prependPage)
+            removeLast(qMin(overflow, m_items.size()));
+        else
+            removeFirst(qMin(overflow, m_items.size()));
+    }
+    insertItems(prependPage ? 0 : m_items.size(), additions);
+    const auto remainingOverflow = maximumSize > 0 ? m_items.size() - maximumSize : 0;
+    if (remainingOverflow > 0)
+    {
+        if (prependPage)
+            removeLast(remainingOverflow);
+        else
+            removeFirst(remainingOverflow);
+    }
+    return overflow > 0 || remainingOverflow > 0;
+}
+
+void ChatTimelineModel::insertItems(int row, const QVector<ChatTimelineItem> &items)
+{
+    if (items.isEmpty())
         return;
-    if (row > 0)
-        emit dataChanged(index(row - 1), index(row - 1), presentationRoles());
-    if (row + 1 < m_items.size())
-        emit dataChanged(index(row + 1), index(row + 1), presentationRoles());
+
+    const auto previousRow = row - 1;
+    const auto followingRow = row + items.size();
+    beginInsertRows({}, row, row + items.size() - 1);
+    for (auto index = 0; index < items.size(); ++index)
+        m_items.insert(row + index, items.at(index));
+    rebuildRows();
+    endInsertRows();
+
+    emitPresentationChangedAt(previousRow);
+    emitPresentationChangedAt(followingRow);
+    for (const auto &timelineItem : items)
+        emitReplyChangedFor(timelineItem.stableId);
 }
 
 void ChatTimelineModel::insertItem(const ChatTimelineItem &timelineItem)
 {
     const auto row = insertionRow(timelineItem);
-    beginInsertRows({}, row, row);
-    m_items.insert(row, timelineItem);
-    rebuildRows();
-    endInsertRows();
-    emitReplyChangedFor(timelineItem.stableId);
-    emitGroupingChangedAround(row);
+    insertItems(row, {timelineItem});
 }
 
 void ChatTimelineModel::replaceItem(int row, const ChatTimelineItem &timelineItem)
@@ -422,11 +620,21 @@ void ChatTimelineModel::replaceItem(int row, const ChatTimelineItem &timelineIte
     const auto current = m_items.at(row);
     if (current.sourceOrder == timelineItem.sourceOrder && current.stableId == timelineItem.stableId)
     {
+        const auto changedRoles = changedItemDataRoles(current, timelineItem);
+        const auto groupingChanged = current.kind != timelineItem.kind || current.timestamp != timelineItem.timestamp ||
+                                     current.sender.id != timelineItem.sender.id;
+        const auto replyPreviewChanged = current.sender.displayName != timelineItem.sender.displayName ||
+                                         current.content.plainText != timelineItem.content.plainText ||
+                                         current.content.formattedText != timelineItem.content.formattedText;
         m_items[row] = timelineItem;
-        rebuildRows();
-        emit dataChanged(index(row), index(row), itemDataRoles());
-        emitReplyChangedFor(timelineItem.stableId);
-        emitGroupingChangedAround(row);
+        if (current.transactionId != timelineItem.transactionId)
+            rebuildRows();
+        if (!changedRoles.isEmpty())
+            emit dataChanged(index(row), index(row), changedRoles);
+        if (replyPreviewChanged)
+            emitReplyChangedFor(timelineItem.stableId);
+        if (groupingChanged)
+            emitGroupingChangedAround(row);
         return;
     }
 
@@ -516,19 +724,6 @@ QVariantMap ChatTimelineModel::replyData(const ChatTimelineItem &timelineItem) c
     data.insert(QStringLiteral("plainText"), reply.content.plainText);
     data.insert(QStringLiteral("formattedText"), reply.content.formattedText);
     return data;
-}
-
-const QList<int> &ChatTimelineModel::itemDataRoles()
-{
-    static const QList<int> roles{StableIdRole, TransactionIdRole, ProtocolEventTypeRole, KindRole, TimestampRole, DateRole, OwnEventRole,
-                                  SenderIdRole, SenderDisplayNameRole, SenderAvatarSourceRole, SenderColorRole,
-                                  PlainTextRole, FormattedTextRole, ReplyToIdRole, ReplyRole, AttachmentsRole, LocationUriRole,
-                                  ReactionsRole,
-                                  DeliveryStateRole, EditedRole, RedactedRole, EncryptedRole, DecryptionStateRole,
-                                  ErrorTextRole, SystemEventRole, EmoteRole, GroupPositionRole, ShowSenderRole, ShowAvatarRole,
-                                  ShowTimestampRole,
-                                  StartsNewDayRole};
-    return roles;
 }
 
 void ChatTimelineModel::emitReplyChangedFor(const QString &stableId)

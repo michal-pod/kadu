@@ -81,6 +81,8 @@ private slots:
     void shouldRequestOlderPageWithThePreviousCursor();
     void shouldTrackNewEventsOutsideTheNewestViewport();
     void shouldKeepABoundedWindowWhenLoadingOlderMessages();
+    void shouldKeepOlderRequestActiveWhileApplyingItsPage();
+    void shouldExposeTheBeginningAfterTheFinalOlderPage();
     void shouldLoadContextAroundAnArbitraryMessage();
     void shouldNotInsertLiveEventsIntoAHistoricalWindow();
 
@@ -172,6 +174,59 @@ void ChatTimelineControllerTest::shouldKeepABoundedWindowWhenLoadingOlderMessage
     QCOMPARE(controller.timeline()->rowForStableId(QStringLiteral("$100")), -1);
     QVERIFY(controller.hasOlder());
     QVERIFY(controller.hasNewer());
+}
+
+void ChatTimelineControllerTest::shouldKeepOlderRequestActiveWhileApplyingItsPage()
+{
+    Account account{new AccountShared{}};
+    const auto chat = Chat::null;
+    TimelineServiceStub timelineService{account};
+    ChatTimelineController controller{chat, &timelineService};
+
+    ChatTimelinePage initialPage;
+    initialPage.items.append(makeItem(QStringLiteral("$newer"), QByteArrayLiteral("002")));
+    initialPage.olderCursor = QByteArrayLiteral("older");
+    initialPage.hasOlder = true;
+    timelineService.enqueue(initialPage);
+    controller.loadInitial();
+    QTRY_VERIFY(controller.hasOlder());
+
+    auto loadingWhileInserting = false;
+    connect(controller.timeline(), &QAbstractItemModel::rowsInserted, this,
+            [&controller, &loadingWhileInserting] { loadingWhileInserting = controller.isLoadingOlder(); });
+
+    ChatTimelinePage olderPage;
+    olderPage.items.append(makeItem(QStringLiteral("$older"), QByteArrayLiteral("001")));
+    timelineService.enqueue(olderPage);
+    controller.loadOlder();
+
+    QTRY_COMPARE(controller.timeline()->rowCount(), 2);
+    QVERIFY(loadingWhileInserting);
+}
+
+void ChatTimelineControllerTest::shouldExposeTheBeginningAfterTheFinalOlderPage()
+{
+    Account account{new AccountShared{}};
+    const auto chat = Chat::null;
+    TimelineServiceStub timelineService{account};
+    ChatTimelineController controller{chat, &timelineService};
+
+    ChatTimelinePage initialPage;
+    initialPage.items.append(makeItem(QStringLiteral("$newer"), QByteArrayLiteral("002")));
+    initialPage.olderCursor = QByteArrayLiteral("older");
+    initialPage.hasOlder = true;
+    timelineService.enqueue(initialPage);
+    controller.loadInitial();
+    QTRY_VERIFY(controller.hasOlder());
+
+    ChatTimelinePage oldestPage;
+    oldestPage.items.append(makeItem(QStringLiteral("$oldest"), QByteArrayLiteral("001")));
+    timelineService.enqueue(oldestPage);
+    controller.loadOlder();
+
+    QTRY_COMPARE(controller.timeline()->rowCount(), 2);
+    QVERIFY(!controller.hasOlder());
+    QCOMPARE(controller.timeline()->rowForStableId(QStringLiteral("$oldest")), 0);
 }
 
 void ChatTimelineControllerTest::shouldLoadContextAroundAnArbitraryMessage()

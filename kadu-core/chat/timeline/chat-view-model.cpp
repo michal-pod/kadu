@@ -44,7 +44,6 @@
 #include <QtGui/QClipboard>
 #include <QtGui/QFont>
 #include <QtGui/QGuiApplication>
-#include <QtWidgets/QMessageBox>
 
 ChatViewModel::ChatViewModel(
     Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
@@ -106,6 +105,11 @@ ChatViewModel::ChatViewModel(
                 [this](const Chat &chat) {
                     if (chat == m_chat)
                         emit roomInfoChanged();
+                });
+        connect(protocolTimelineService, &ProtocolTimelineService::timelineWarning, this,
+                [this](const Chat &chat, const QString &stableId, const QString &title, const QString &message) {
+                    if (chat == m_chat)
+                        emit timelineWarningRequested(stableId, title, message);
                 });
     }
     else
@@ -439,6 +443,8 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
                                    {QStringLiteral("key"), QStringLiteral("delete")},
                                    {QStringLiteral("text"), tr("Delete message")},
                                    {QStringLiteral("iconName"), QStringLiteral("edit-delete")},
+                                   {QStringLiteral("confirmationText"), tr("Do you want to delete this message?")},
+                                   {QStringLiteral("confirmationActionText"), tr("Delete")},
                                    {QStringLiteral("destructive"), true}});
     if (available.testFlag(ChatTimelineAction::ShowSource))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::ShowSource)},
@@ -455,6 +461,8 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
                                    {QStringLiteral("key"), QStringLiteral("unpin")},
                                    {QStringLiteral("text"), tr("Unpin message")},
                                    {QStringLiteral("iconName"), QStringLiteral("list-remove")},
+                                   {QStringLiteral("confirmationText"), tr("Do you want to unpin this message?")},
+                                   {QStringLiteral("confirmationActionText"), tr("Unpin")},
                                    {QStringLiteral("destructive"), true}});
     return actions;
 }
@@ -495,15 +503,6 @@ void ChatViewModel::executeTimelineAction(const QString &stableId, int action)
         setComposerContext(ComposerMode::Edit, m_timeline->item(stableId));
         return;
     }
-    if (timelineAction == ChatTimelineAction::Delete &&
-        QMessageBox::question(nullptr, tr("Delete message"), tr("Do you want to delete this message?"),
-                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
-        return;
-    if (timelineAction == ChatTimelineAction::Unpin &&
-        QMessageBox::question(nullptr, tr("Unpin message"), tr("Do you want to unpin this message?"),
-                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
-        return;
-
     service->executeAction(m_chat, stableId, timelineAction);
 }
 

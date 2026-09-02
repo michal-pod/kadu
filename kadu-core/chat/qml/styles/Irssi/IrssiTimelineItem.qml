@@ -18,6 +18,8 @@ Item {
     required property bool ownEvent
     property string senderId: ""
     required property string senderDisplayName
+    property url senderAvatarSource: ""
+    property color senderColor: "transparent"
     required property string plainText
     required property string formattedText
     property string replyToId: ""
@@ -37,6 +39,7 @@ Item {
     required property bool encrypted
     required property int decryptionState
     required property string errorText
+    property var chatFont: ({})
     property string terminalFont: "monospace"
     property var openUrl: null
     property var openImage: null
@@ -60,6 +63,7 @@ Item {
     implicitHeight: content.implicitHeight + 2
 
     function timestampText() { return Qt.formatTime(timestamp, "HH:mm:ss") }
+    function dayChangeText() { return qsTr("Day changed to %1").arg(Qt.formatDate(timestamp, "dd MMM yyyy")) }
     function nickText() { return ownEvent ? (senderDisplayName || qsTr("You")) : senderDisplayName }
     function actorText() {
         const name = nickText() || qsTr("Unknown")
@@ -84,9 +88,12 @@ Item {
 
     Menu {
         id: eventMenu
+        property var entries: []
+        onAboutToShow: entries = root.actions()
+        onClosed: entries = []
 
         Repeater {
-            model: root.actions()
+            model: eventMenu.entries
 
             delegate: MenuItem {
                 required property var modelData
@@ -100,6 +107,17 @@ Item {
         id: content
         width: parent.width
         spacing: 0
+
+        // Irssi prints its stock daychange format as a standalone line, with
+        // no timestamp, before the first entry of the new day.
+        Text {
+            width: parent.width
+            visible: root.startsNewDay
+            text: root.dayChangeText()
+            color: root.textColor
+            font.family: root.terminalFont
+            font.pointSize: root.fontSize
+        }
 
         Row {
             width: parent.width
@@ -250,28 +268,57 @@ Item {
                             border.width: 1
                             border.color: "#0000b8"
 
-                            KaduChat.ChatLocation {
+                            Loader {
                                 id: locationPreview
                                 anchors.centerIn: parent
-                                geoUri: root.locationUri
-                                openLocation: root.openLocation
-                                maximumWidth: Math.min(parent.width - 2, 416)
-                                textColor: "#d9d9d9"
-                                markerColor: "#0000ff"
+                                width: Math.min(parent.width - 2, 416)
+                                active: root.locationUri.length > 0
+
+                                sourceComponent: Component {
+                                    KaduChat.ChatLocation {
+                                        availableWidth: locationPreview.width
+                                        maximumWidth: locationPreview.width
+                                        geoUri: root.locationUri
+                                        openLocation: root.openLocation
+                                        textColor: "#d9d9d9"
+                                        markerColor: "#0000ff"
+                                    }
+                                }
                             }
                         }
                     }
 
-                    Text {
+                    Row {
                         id: reactionsLine
                         width: parent.width
                         visible: root.reactions.length > 0
-                        text: root.reactions.map(function(reaction) {
-                            return "[" + reaction.key + " " + reaction.senderIds.length + "]"
-                        }).join(" ")
-                        color: root.reactionColor
-                        font.family: root.terminalFont
-                        font.pointSize: root.fontSize
+                        spacing: 4
+
+                        Repeater {
+                            model: root.reactions
+
+                            delegate: Text {
+                                required property var modelData
+
+                                text: "[" + modelData.key + " " + modelData.senderIds.length + "]"
+                                color: root.reactionColor
+                                font.family: root.terminalFont
+                                font.pointSize: root.fontSize
+
+                                MouseArea {
+                                    id: reactionArea
+                                    anchors.fill: parent
+                                    enabled: modelData.own === true && root.removeOwnReaction
+                                    hoverEnabled: enabled
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: root.removeOwnReaction(root.stableId, modelData.key)
+                                }
+
+                                ToolTip.visible: reactionArea.containsMouse
+                                ToolTip.text: qsTr("Click to remove your reaction")
+                                ToolTip.delay: 350
+                            }
+                        }
                     }
                 }
             }

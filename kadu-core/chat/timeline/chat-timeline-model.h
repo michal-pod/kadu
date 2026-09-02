@@ -102,8 +102,8 @@ public:
     void setGroupingIntervalSeconds(int seconds);
 
     void reset(const QVector<ChatTimelineItem> &items);
-    void prepend(const ChatTimelinePage &page);
-    void append(const ChatTimelinePage &page);
+    bool prepend(const ChatTimelinePage &page, int maximumSize = 0);
+    bool append(const ChatTimelinePage &page, int maximumSize = 0);
     void upsert(const ChatTimelineItem &item);
     void replaceLocalEcho(const QString &transactionId, const ChatTimelineItem &serverItem);
     void update(const QString &stableId, const ChatTimelineItem &item);
@@ -124,7 +124,10 @@ private:
 
     static bool comesBefore(const ChatTimelineItem &left, const ChatTimelineItem &right);
     static bool isMessage(const ChatTimelineItem &item);
-    static const QList<int> &itemDataRoles();
+    static bool reactionsEqual(const QVector<ChatTimelineReaction> &left, const QVector<ChatTimelineReaction> &right);
+    static bool attachmentsEqual(const QVector<ChatTimelineAttachment> &left,
+                                 const QVector<ChatTimelineAttachment> &right);
+    static QList<int> changedItemDataRoles(const ChatTimelineItem &current, const ChatTimelineItem &replacement);
     static const QList<int> &presentationRoles();
     static QVariantList attachmentData(const QVector<ChatTimelineAttachment> &attachments);
     static QVariantList reactionData(const QVector<ChatTimelineReaction> &reactions);
@@ -132,8 +135,11 @@ private:
     int insertionRow(const ChatTimelineItem &item) const;
     GroupPosition groupPositionAt(int row) const;
     void rebuildRows();
+    void emitPresentationChangedAt(int row);
     void emitGroupingChangedAround(int row);
     void emitReplyChangedFor(const QString &stableId);
+    bool mergePage(const ChatTimelinePage &page, bool prepend, int maximumSize);
+    void insertItems(int row, const QVector<ChatTimelineItem> &items);
     void insertItem(const ChatTimelineItem &item);
     void replaceItem(int row, const ChatTimelineItem &item);
 };

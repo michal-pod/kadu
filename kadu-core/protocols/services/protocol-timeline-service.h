@@ -183,4 +183,14 @@ signals:
      * @short The protocol changed title, avatar or description metadata shown above a timeline.
      */
     void chatHeaderChanged(const Chat &chat);
+
+    /**
+     * @short A non-blocking warning associated with a timeline event.
+     *
+     * Timeline implementations must use this instead of showing a modal
+     * QWidget message box while handling an action initiated from QML.  The
+     * view anchors the transient notification next to the event when it is
+     * visible.
+     */
+    void timelineWarning(const Chat &chat, const QString &stableId, const QString &title, const QString &message);
 };

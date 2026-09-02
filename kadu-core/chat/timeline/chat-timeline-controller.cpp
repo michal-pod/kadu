@@ -270,13 +270,6 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
     if (generation != m_requestGeneration)
         return;
 
-    if (requestKind == RequestKind::Latest || requestKind == RequestKind::Around)
-        setLoadingInitial(false);
-    else if (requestKind == RequestKind::Older)
-        setLoadingOlder(false);
-    else
-        setLoadingNewer(false);
-
     if (!page.error.isEmpty())
     {
         setHistoryError(page.error);
@@ -284,28 +277,37 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
             setHasOlder(false);
         else if (requestKind == RequestKind::Newer)
             setHasNewer(false);
+        if (requestKind == RequestKind::Latest || requestKind == RequestKind::Around)
+            setLoadingInitial(false);
+        else if (requestKind == RequestKind::Older)
+            setLoadingOlder(false);
+        else
+            setLoadingNewer(false);
         return;
     }
 
+    auto windowTrimmed = false;
     if (requestKind == RequestKind::Latest)
     {
         // loadLatest() clears the previous window before issuing the request,
         // so anything in the model now arrived from live sync while it was pending.
         const auto liveItems = m_timeline->items();
         m_timeline->reset(page.items);
-        for (const auto &item : liveItems)
-            m_timeline->upsert(item);
+        ChatTimelinePage livePage;
+        livePage.items = liveItems;
+        windowTrimmed = m_timeline->append(livePage, MaximumWindowSize);
     }
     else if (requestKind == RequestKind::Around)
         m_timeline->reset(page.items);
     else if (requestKind == RequestKind::Older)
-        m_timeline->prepend(page);
+        windowTrimmed = m_timeline->prepend(page, MaximumWindowSize);
     else
-        m_timeline->append(page);
+        windowTrimmed = m_timeline->append(page, MaximumWindowSize);
 
     const auto overflow = m_timeline->rowCount() - MaximumWindowSize;
     if (overflow > 0)
     {
+        windowTrimmed = true;
         if (requestKind == RequestKind::Older)
             m_timeline->removeLast(overflow);
         else
@@ -330,7 +332,7 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
         setHasNewer(usableNewer);
     }
 
-    if (overflow > 0)
+    if (windowTrimmed)
     {
         if (requestKind == RequestKind::Older)
             setHasNewer(true);
@@ -340,8 +342,9 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
 
     if (requestKind == RequestKind::Newer && !m_hasNewer && !m_deferredLiveItems.isEmpty())
     {
-        for (const auto &item : std::as_const(m_deferredLiveItems))
-            m_timeline->upsert(item);
+        ChatTimelinePage deferredPage;
+        deferredPage.items = std::move(m_deferredLiveItems);
+        const auto deferredTrimmed = m_timeline->append(deferredPage, MaximumWindowSize);
         m_deferredLiveItems.clear();
         const auto liveOverflow = m_timeline->rowCount() - MaximumWindowSize;
         if (liveOverflow > 0)
@@ -349,6 +352,8 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
             m_timeline->removeFirst(liveOverflow);
             setHasOlder(true);
         }
+        else if (deferredTrimmed)
+            setHasOlder(true);
         setNewEventsBelow(0);
     }
 
@@ -356,6 +361,16 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
         setNewEventsBelow(0);
     if (requestKind == RequestKind::Around)
         emit timelinePositionRequested(requestedAnchor);
+
+    // Keep the request marked as active until the model and both cursors are
+    // consistent. ListView reacts synchronously to row changes; clearing this
+    // earlier allowed it to start another edge request with the stale cursor.
+    if (requestKind == RequestKind::Latest || requestKind == RequestKind::Around)
+        setLoadingInitial(false);
+    else if (requestKind == RequestKind::Older)
+        setLoadingOlder(false);
+    else
+        setLoadingNewer(false);
 
     // Servers can return a page containing only state events already merged
     // from live sync. Continue transparently while their cursor advances.
@@ -457,13 +472,10 @@ void ChatTimelineController::eventReceived(const Chat &chat, const ChatTimelineI
         m_timeline->upsert(item);
     else if (!m_hasNewer)
     {
-        m_timeline->upsert(item);
-        const auto overflow = m_timeline->rowCount() - MaximumWindowSize;
-        if (overflow > 0)
-        {
-            m_timeline->removeFirst(overflow);
+        ChatTimelinePage livePage;
+        livePage.items = {item};
+        if (m_timeline->append(livePage, MaximumWindowSize))
             setHasOlder(true);
-        }
     }
     else
     {

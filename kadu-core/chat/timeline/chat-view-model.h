@@ -167,6 +167,7 @@ signals:
     void reactionSelectorRequested(const QString &stableId);
     void recentReactionEmojisChanged();
     void timelinePositionRequested(const QString &stableId);
+    void timelineWarningRequested(const QString &stableId, const QString &title, const QString &message);
 
 private:
     Chat m_chat;
