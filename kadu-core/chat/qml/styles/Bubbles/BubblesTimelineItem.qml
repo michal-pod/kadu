@@ -65,6 +65,7 @@ Item {
     property var removeOwnReaction: null
     property var addReaction: null
     property var requestFullReactionSelector: null
+    property var jumpToTimelineItem: null
     // Auxiliary views can retain the regular entry component while asking the
     // style to place it in the incoming column.
     property bool forceIncomingAlignment: false
@@ -439,6 +440,15 @@ Item {
                                                   (root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor).g,
                                                   (root.ownEvent ? root.outgoingTextColor : root.incomingAvatarColor).b,
                                                   0.42)
+
+                            HoverHandler {
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            TapHandler {
+                                onTapped: if (root.jumpToTimelineItem)
+                                              root.jumpToTimelineItem(root.replyToId)
+                            }
 
                             Rectangle {
                                 anchors.left: parent.left

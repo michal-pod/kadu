@@ -29,7 +29,9 @@ class KADUAPI ChatTimelinePage
 {
 public:
     QVector<ChatTimelineItem> items;
-    QByteArray cursor;
-    bool hasMore = false;
+    QByteArray olderCursor;
+    QByteArray newerCursor;
+    bool hasOlder = false;
+    bool hasNewer = false;
     QString error;
 };

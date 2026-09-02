@@ -69,8 +69,8 @@ ChatTimelinePage LegacyMessageTimelineAdapter::page(const SortedMessages &messag
                                                     bool hasMore) const
 {
     ChatTimelinePage timelinePage;
-    timelinePage.cursor = cursor;
-    timelinePage.hasMore = hasMore;
+    timelinePage.olderCursor = cursor;
+    timelinePage.hasOlder = hasMore;
     timelinePage.items.reserve(static_cast<qsizetype>(messages.size()));
     for (const auto &message : messages)
         timelinePage.items.append(item(message));

@@ -48,6 +48,7 @@ Item {
     property int attachmentImageRevision: 0
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
+    property string highlightedStableId: ""
     property var defaultComposerContextComponent: null
     property var defaultComposerOverlayComponent: null
     property var defaultPinnedMessagesPanelComponent: null
@@ -63,7 +64,7 @@ Item {
         const bottomIndex = timeline.indexAt(timeline.width / 2, timeline.contentY + timeline.height - 2)
         return bottomIndex < 0 ? 0 : Math.max(0, timeline.count - bottomIndex - 1)
     }
-    readonly property bool jumpToLatestVisible: latestMessagesHidden >= 3
+    readonly property bool jumpToLatestVisible: (chatViewModel && chatViewModel.hasNewer) || latestMessagesHidden >= 3
 
     // These values also make the fallback renderer readable when a selected
     // external style cannot be loaded.
@@ -108,6 +109,14 @@ Item {
     function addReaction(stableId, key) {
         if (chatViewModel)
             chatViewModel.addReaction(stableId, key)
+    }
+
+    function jumpToTimelineItem(stableId) {
+        if (!chatViewModel || !stableId)
+            return
+        followingTail = false
+        chatViewModel.setTimelineAtNewest(false)
+        chatViewModel.jumpToTimelineItem(stableId)
     }
 
     function requestFullReactionSelector(stableId, sourceItem) {
@@ -180,6 +189,8 @@ Item {
             item.addReaction = root.addReaction
         if (item.requestFullReactionSelector !== undefined)
             item.requestFullReactionSelector = root.requestFullReactionSelector
+        if (item.jumpToTimelineItem !== undefined)
+            item.jumpToTimelineItem = root.jumpToTimelineItem
     }
 
     function defaultComposerContext() {
@@ -290,6 +301,8 @@ Item {
             item.addReaction = root.addReaction
         if (item.requestFullReactionSelector !== undefined)
             item.requestFullReactionSelector = root.requestFullReactionSelector
+        if (item.jumpToTimelineItem !== undefined)
+            item.jumpToTimelineItem = root.jumpToTimelineItem
     }
 
     function atBottom() {
@@ -302,6 +315,15 @@ Item {
         followingTail = true
         if (chatViewModel)
             chatViewModel.setTimelineAtNewest(true)
+    }
+
+    function jumpToLatest() {
+        if (chatViewModel && chatViewModel.hasNewer) {
+            followingTail = true
+            chatViewModel.loadLatest()
+        } else {
+            scrollToBottom()
+        }
     }
 
     function scrollPage(direction) {
@@ -336,7 +358,8 @@ Item {
     }
 
     function requestOlder() {
-        if (!chatViewModel || !chatViewModel.hasOlder || chatViewModel.loadingInitial || chatViewModel.loadingOlder)
+        if (!chatViewModel || !chatViewModel.hasOlder || chatViewModel.loadingInitial ||
+                chatViewModel.loadingOlder || chatViewModel.loadingNewer)
             return
 
         const row = timeline.indexAt(timeline.width / 2, Math.max(timeline.contentY, timeline.originY) + 2)
@@ -344,6 +367,30 @@ Item {
         olderAnchorId = item ? item.stableId : ""
         olderAnchorOffset = item ? timeline.contentY - item.y : 0
         chatViewModel.loadOlder()
+    }
+
+    function requestNewer() {
+        if (!chatViewModel || !chatViewModel.hasNewer || chatViewModel.loadingInitial ||
+                chatViewModel.loadingOlder || chatViewModel.loadingNewer)
+            return
+
+        const row = timeline.indexAt(timeline.width / 2, timeline.contentY + timeline.height - 2)
+        const item = timeline.itemAtIndex(Math.max(0, row))
+        olderAnchorId = item ? item.stableId : ""
+        olderAnchorOffset = item ? timeline.contentY - item.y : 0
+        chatViewModel.loadNewer()
+    }
+
+    function positionTimelineItem(stableId) {
+        if (!chatViewModel || !stableId)
+            return
+        const index = chatViewModel.timeline.rowForStableId(stableId)
+        if (index < 0)
+            return
+        timeline.positionViewAtIndex(index, ListView.Center)
+        highlightedStableId = stableId
+        highlightTimer.restart()
+        revealScrollBar()
     }
 
     function restoreOlderAnchor() {
@@ -381,6 +428,12 @@ Item {
                 item.copyText = root.copyText
             root.applyTimelineStyleProperties()
         }
+    }
+
+    Timer {
+        id: highlightTimer
+        interval: 1800
+        onTriggered: root.highlightedStableId = ""
     }
 
     onActiveThemeChanged: applyTimelineStyleProperties()
@@ -597,7 +650,7 @@ Item {
                 root.revealScrollBar()
                 event.accepted = true
             } else if (event.key === Qt.Key_End) {
-                root.scrollToBottom()
+                root.jumpToLatest()
                 event.accepted = true
             }
         }
@@ -619,7 +672,7 @@ Item {
             if (moving || dragging)
                 root.revealScrollBar()
             if (moving || dragging || verticalScrollBar.pressed)
-                followingTail = root.atBottom()
+                followingTail = root.atBottom() && (!root.chatViewModel || !root.chatViewModel.hasNewer)
             if (moving || dragging || verticalScrollBar.pressed) {
                 if (root.chatViewModel)
                     root.chatViewModel.setTimelineAtNewest(followingTail)
@@ -627,19 +680,30 @@ Item {
             }
             if (contentY <= originY + 64)
                 root.requestOlder()
+            if (contentY + height >= originY + contentHeight - 64)
+                root.requestNewer()
         }
         onContentHeightChanged: {
             if (root.followingTail && root.initialPositioned && root.chatViewModel &&
-                    !root.chatViewModel.loadingInitial && !root.chatViewModel.loadingOlder)
+                    !root.chatViewModel.loadingInitial && !root.chatViewModel.loadingOlder &&
+                    !root.chatViewModel.loadingNewer && !root.chatViewModel.hasNewer)
                 Qt.callLater(root.scrollToBottom)
         }
         onMovementStarted: root.revealScrollBar()
         onMovementEnded: scrollBarHideTimer.restart()
         onAtYBeginningChanged: if (atYBeginning) root.requestOlder()
+        onAtYEndChanged: if (atYEnd) root.requestNewer()
 
         header: Item {
             width: timeline.width
             height: 44
+
+            Text {
+                anchors.centerIn: parent
+                visible: root.chatViewModel && root.chatViewModel.loadingOlder
+                text: qsTr("Loading older messages…")
+                color: root.themeValue("mutedTextColor", root.fallbackMutedTextColor)
+            }
 
             Row {
                 anchors.centerIn: parent
@@ -688,7 +752,19 @@ Item {
             width: timeline.width
             property var rendererItem: null
 
-            readonly property bool isFirstNewEvent: root.newEventsBelow > 0 && index === timeline.count - root.newEventsBelow
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 2
+                visible: delegateRoot.stableId === root.highlightedStableId
+                color: "transparent"
+                border.width: 2
+                border.color: root.themeValue("accentColor", root.darkSurface ? "#82c5ff" : "#1675bd")
+                radius: 6
+            }
+
+            readonly property bool isFirstNewEvent: root.newEventsBelow > 0 &&
+                                                    (!root.chatViewModel || !root.chatViewModel.hasNewer) &&
+                                                    index === timeline.count - root.newEventsBelow
             height: (isFirstNewEvent ? newMessagesMarker.implicitHeight : 0) + (rendererItem ? rendererItem.implicitHeight : 0)
             Accessible.role: Accessible.ListItem
             Accessible.name: senderDisplayName.length > 0
@@ -777,11 +853,11 @@ Item {
 
         footer: Item {
             width: timeline.width
-            height: root.chatViewModel && root.chatViewModel.loadingOlder ? 40 : 8
+            height: root.chatViewModel && root.chatViewModel.loadingNewer ? 40 : 8
             Text {
                 anchors.centerIn: parent
-                visible: root.chatViewModel && root.chatViewModel.loadingOlder
-                text: qsTr("Loading older messages…")
+                visible: root.chatViewModel && root.chatViewModel.loadingNewer
+                text: qsTr("Loading newer messages…")
                 color: root.themeValue("mutedTextColor", root.fallbackMutedTextColor)
             }
         }
@@ -837,7 +913,7 @@ Item {
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                     || event.key === Qt.Key_Space) {
-                root.scrollToBottom()
+                root.jumpToLatest()
                 event.accepted = true
             }
         }
@@ -886,7 +962,7 @@ Item {
         }
 
         TapHandler {
-            onTapped: root.scrollToBottom()
+            onTapped: root.jumpToLatest()
         }
     }
 
@@ -1014,7 +1090,9 @@ Item {
                 root.initialPositioned = true
                 Qt.callLater(root.scrollToBottom)
             }
-            if (!root.chatViewModel.loadingOlder)
+            if (!root.chatViewModel.loadingInitial && root.followingTail && !root.chatViewModel.hasNewer)
+                Qt.callLater(root.scrollToBottom)
+            if (!root.chatViewModel.loadingOlder && !root.chatViewModel.loadingNewer)
                 Qt.callLater(root.restoreOlderAnchor)
         }
         function onComposerContextChanged() {
@@ -1030,6 +1108,9 @@ Item {
         function onReactionSelectorRequested(stableId) {
             root.requestFullReactionSelector(stableId, timeline)
         }
+        function onTimelinePositionRequested(stableId) {
+            Qt.callLater(function() { root.positionTimelineItem(stableId) })
+        }
     }
 
     Connections {
@@ -1044,7 +1125,8 @@ Item {
             if (!root.initialPositioned && !root.chatViewModel.loadingInitial) {
                 root.initialPositioned = true
                 Qt.callLater(root.scrollToBottom)
-            } else if (root.followingTail && !root.chatViewModel.loadingOlder) {
+            } else if (root.followingTail && !root.chatViewModel.loadingOlder &&
+                       !root.chatViewModel.loadingNewer && !root.chatViewModel.hasNewer) {
                 Qt.callLater(root.scrollToBottom)
             }
         }

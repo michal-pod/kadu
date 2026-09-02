@@ -37,6 +37,7 @@ Item {
     property var removeOwnReaction: null
     property var addReaction: null
     property var requestFullReactionSelector: null
+    property var jumpToTimelineItem: null
     property bool showTrigger: false
 
     readonly property bool darkSurface: colorScheme === "Dark" ||
@@ -104,12 +105,10 @@ Item {
         width: Math.max(280, Math.min(root.width - 16, 560))
         height: Math.min(440, content.implicitHeight + topPadding + bottomPadding)
         padding: 10
-        modal: false
+        modal: true
+        dim: true
         z: 10
-        // Closing on an outside press races with the header button: the popup
-        // closes before the button's clicked signal and is opened again by the
-        // toggle. The header button and Escape deliberately own closing it.
-        closePolicy: Popup.CloseOnEscape
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         background: Rectangle {
             color: root.colorScheme === "System" ? systemPalette.base
@@ -147,6 +146,18 @@ Item {
 
                     width: pinnedMessagesList.width
                     implicitHeight: timelineEntry.item ? timelineEntry.item.implicitHeight : entryContent.implicitHeight + 14
+
+                    MouseArea {
+                        anchors.fill: timelineEntry
+                        enabled: entry.available === true
+                        z: 2
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            pinnedMessagesPopup.close()
+                            if (root.jumpToTimelineItem)
+                                root.jumpToTimelineItem(entry.stableId)
+                        }
+                    }
 
                     Component {
                         id: timelineItemComponent
@@ -193,6 +204,7 @@ Item {
                             removeOwnReaction: root.removeOwnReaction
                             addReaction: root.addReaction
                             requestFullReactionSelector: root.requestFullReactionSelector
+                            jumpToTimelineItem: root.jumpToTimelineItem
                         }
                     }
 
@@ -232,13 +244,16 @@ Item {
                             elide: Text.ElideRight
                         }
 
-                        Text {
+                        Button {
                             width: parent.width
                             visible: !entry.available
-                            text: qsTr("Open the history around this message is not available yet.")
-                            color: root.mutedTextColor
-                            font.italic: true
-                            wrapMode: Text.Wrap
+                            text: qsTr("Open message")
+                            Accessible.name: text
+                            onClicked: {
+                                pinnedMessagesPopup.close()
+                                if (root.jumpToTimelineItem)
+                                    root.jumpToTimelineItem(entry.stableId)
+                            }
                         }
 
                         Row {

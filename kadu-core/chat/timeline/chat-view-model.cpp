@@ -63,7 +63,13 @@ ChatViewModel::ChatViewModel(
             m_timelineController, &ChatTimelineController::loadingOlderChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
         connect(
+            m_timelineController, &ChatTimelineController::loadingNewerChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
+        connect(
             m_timelineController, &ChatTimelineController::hasOlderChanged, this,
+            &ChatViewModel::timelineStateChangedSlot);
+        connect(
+            m_timelineController, &ChatTimelineController::hasNewerChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
         connect(
             m_timelineController, &ChatTimelineController::readMarkerIdChanged, this,
@@ -71,6 +77,8 @@ ChatViewModel::ChatViewModel(
         connect(
             m_timelineController, &ChatTimelineController::newEventsBelowChanged, this,
             &ChatViewModel::timelineStateChangedSlot);
+        connect(m_timelineController, &ChatTimelineController::timelinePositionRequested, this,
+                &ChatViewModel::timelinePositionRequested);
         connect(protocolTimelineService, &ProtocolTimelineService::pinnedMessagesChanged, this,
                 [this](const Chat &chat) {
                     if (chat == m_chat)
@@ -196,9 +204,19 @@ bool ChatViewModel::loadingOlder() const
     return m_timelineController && m_timelineController->isLoadingOlder();
 }
 
+bool ChatViewModel::loadingNewer() const
+{
+    return m_timelineController && m_timelineController->isLoadingNewer();
+}
+
 bool ChatViewModel::hasOlder() const
 {
     return m_timelineController && m_timelineController->hasOlder();
+}
+
+bool ChatViewModel::hasNewer() const
+{
+    return m_timelineController && m_timelineController->hasNewer();
 }
 
 QVariantMap ChatViewModel::chatFont() const
@@ -536,6 +554,12 @@ void ChatViewModel::markTimelineItemVisible(const QString &stableId)
         m_timelineController->markVisible(stableId);
 }
 
+void ChatViewModel::jumpToTimelineItem(const QString &stableId)
+{
+    if (m_timelineController)
+        m_timelineController->jumpTo(stableId);
+}
+
 void ChatViewModel::cancelComposerContext()
 {
     if (!composerActive())
@@ -587,6 +611,18 @@ void ChatViewModel::loadOlder()
 {
     if (m_timelineController)
         m_timelineController->loadOlder();
+}
+
+void ChatViewModel::loadNewer()
+{
+    if (m_timelineController)
+        m_timelineController->loadNewer();
+}
+
+void ChatViewModel::loadLatest()
+{
+    if (m_timelineController)
+        m_timelineController->loadLatest();
 }
 
 ProtocolTimelineService *ChatViewModel::timelineService(ProtocolTimelineService *service) const

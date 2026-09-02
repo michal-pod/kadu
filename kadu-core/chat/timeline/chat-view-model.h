@@ -64,7 +64,9 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(bool usesProtocolTimeline READ usesProtocolTimeline CONSTANT)
     Q_PROPERTY(bool loadingInitial READ loadingInitial NOTIFY timelineStateChanged)
     Q_PROPERTY(bool loadingOlder READ loadingOlder NOTIFY timelineStateChanged)
+    Q_PROPERTY(bool loadingNewer READ loadingNewer NOTIFY timelineStateChanged)
     Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY timelineStateChanged)
+    Q_PROPERTY(bool hasNewer READ hasNewer NOTIFY timelineStateChanged)
     Q_PROPERTY(QString readMarkerId READ readMarkerId NOTIFY timelineStateChanged)
     Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
     Q_PROPERTY(int timelineActionsRevision READ timelineActionsRevision NOTIFY timelineActionsChanged)
@@ -104,7 +106,9 @@ public:
     bool usesProtocolTimeline() const;
     bool loadingInitial() const;
     bool loadingOlder() const;
+    bool loadingNewer() const;
     bool hasOlder() const;
+    bool hasNewer() const;
     QString readMarkerId() const;
     int newEventsBelow() const;
     int timelineActionsRevision() const;
@@ -131,12 +135,15 @@ public:
     Q_INVOKABLE void executeChatHeaderAction(const QString &actionId);
     Q_INVOKABLE void setTimelineAtNewest(bool atNewest);
     Q_INVOKABLE void markTimelineItemVisible(const QString &stableId);
+    Q_INVOKABLE void jumpToTimelineItem(const QString &stableId);
     Q_INVOKABLE void cancelComposerContext();
 
 public slots:
     void open();
     void close();
     void loadOlder();
+    void loadNewer();
+    void loadLatest();
 
 signals:
     void titleChanged();
@@ -154,6 +161,7 @@ signals:
     void composerContextActivated(ChatViewModel::ComposerMode mode);
     void reactionSelectorRequested(const QString &stableId);
     void recentReactionEmojisChanged();
+    void timelinePositionRequested(const QString &stableId);
 
 private:
     Chat m_chat;

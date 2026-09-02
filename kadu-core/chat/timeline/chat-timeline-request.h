@@ -24,16 +24,19 @@
 
 #include <QtCore/QByteArray>
 
-enum class ChatTimelineDirection
+enum class ChatTimelineRequestMode
 {
+    Latest,
     Older,
-    Newer
+    Newer,
+    Around
 };
 
 struct KADUAPI ChatTimelineRequest
 {
     Chat chat;
     QByteArray cursor;
-    ChatTimelineDirection direction = ChatTimelineDirection::Older;
+    QString anchorId;
+    ChatTimelineRequestMode mode = ChatTimelineRequestMode::Latest;
     int limit = 0;
 };

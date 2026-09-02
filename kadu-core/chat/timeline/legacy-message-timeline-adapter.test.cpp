@@ -85,8 +85,8 @@ void LegacyMessageTimelineAdapterTest::shouldMapSortedMessagesToPage()
 
     const auto page = adapter.page(messages, QByteArrayLiteral("cursor"), true);
     QCOMPARE(page.items.size(), 2);
-    QCOMPARE(page.cursor, QByteArrayLiteral("cursor"));
-    QVERIFY(page.hasMore);
+    QCOMPARE(page.olderCursor, QByteArrayLiteral("cursor"));
+    QVERIFY(page.hasOlder);
     QCOMPARE(page.items.at(0).stableId, QStringLiteral("legacy:first"));
 }
 

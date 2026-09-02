@@ -282,6 +282,47 @@ void ChatTimelineModel::remove(const QString &stableId)
     emitGroupingChangedAround(row);
 }
 
+void ChatTimelineModel::removeFirst(int count)
+{
+    count = qBound(0, count, static_cast<int>(m_items.size()));
+    if (count == 0)
+        return;
+
+    QStringList removedIds;
+    removedIds.reserve(count);
+    for (auto index = 0; index < count; ++index)
+        removedIds.append(m_items.at(index).stableId);
+    beginRemoveRows({}, 0, count - 1);
+    m_items.remove(0, count);
+    rebuildRows();
+    endRemoveRows();
+    for (const auto &stableId : removedIds)
+        emitReplyChangedFor(stableId);
+    if (!m_items.isEmpty())
+        emitGroupingChangedAround(0);
+}
+
+void ChatTimelineModel::removeLast(int count)
+{
+    count = qBound(0, count, static_cast<int>(m_items.size()));
+    if (count == 0)
+        return;
+
+    const auto first = static_cast<int>(m_items.size()) - count;
+    QStringList removedIds;
+    removedIds.reserve(count);
+    for (auto index = first; index < static_cast<int>(m_items.size()); ++index)
+        removedIds.append(m_items.at(index).stableId);
+    beginRemoveRows({}, first, static_cast<int>(m_items.size()) - 1);
+    m_items.remove(first, count);
+    rebuildRows();
+    endRemoveRows();
+    for (const auto &stableId : removedIds)
+        emitReplyChangedFor(stableId);
+    if (!m_items.isEmpty())
+        emitGroupingChangedAround(static_cast<int>(m_items.size()) - 1);
+}
+
 void ChatTimelineModel::clear()
 {
     if (m_items.isEmpty())

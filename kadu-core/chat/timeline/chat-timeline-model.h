@@ -109,6 +109,8 @@ public:
     void update(const QString &stableId, const ChatTimelineItem &item);
     void redact(const QString &stableId, const QString &reason = QString());
     void remove(const QString &stableId);
+    void removeFirst(int count);
+    void removeLast(int count);
     void clear();
 
 signals:

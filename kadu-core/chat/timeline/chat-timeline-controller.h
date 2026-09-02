@@ -33,8 +33,9 @@ class ProtocolTimelineService;
  *
  * The controller owns no network state. It issues page requests through the
  * protocol service and ignores results belonging to a superseded session.
- * Live events are applied immediately, including while a page is pending;
- * ChatTimelineModel then deduplicates the page by stable and transaction IDs.
+ * Live events are applied immediately in the latest window and deferred while
+ * a historical window is visible. ChatTimelineModel deduplicates merged pages
+ * by stable and transaction IDs.
  */
 class KADUAPI ChatTimelineController : public QObject
 {
@@ -43,7 +44,9 @@ class KADUAPI ChatTimelineController : public QObject
     Q_PROPERTY(ChatTimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(bool loadingInitial READ isLoadingInitial NOTIFY loadingInitialChanged)
     Q_PROPERTY(bool loadingOlder READ isLoadingOlder NOTIFY loadingOlderChanged)
+    Q_PROPERTY(bool loadingNewer READ isLoadingNewer NOTIFY loadingNewerChanged)
     Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY hasOlderChanged)
+    Q_PROPERTY(bool hasNewer READ hasNewer NOTIFY hasNewerChanged)
     Q_PROPERTY(QString historyError READ historyError NOTIFY historyErrorChanged)
     Q_PROPERTY(bool active READ isActive WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(bool atNewest READ isAtNewest WRITE setAtNewest NOTIFY atNewestChanged)
@@ -58,7 +61,9 @@ public:
     ChatTimelineModel *timeline() const;
     bool isLoadingInitial() const;
     bool isLoadingOlder() const;
+    bool isLoadingNewer() const;
     bool hasOlder() const;
+    bool hasNewer() const;
     QString historyError() const;
     bool isActive() const;
     bool isAtNewest() const;
@@ -67,7 +72,10 @@ public:
 
 public slots:
     void loadInitial(int limit = 50);
+    void loadLatest(int limit = 50);
     void loadOlder(int limit = 50);
+    void loadNewer(int limit = 50);
+    void jumpTo(const QString &stableId, int limit = 100);
     void retryHistory();
     void cancelRequests();
     void setActive(bool active);
@@ -77,24 +85,31 @@ public slots:
 signals:
     void loadingInitialChanged();
     void loadingOlderChanged();
+    void loadingNewerChanged();
     void hasOlderChanged();
+    void hasNewerChanged();
     void historyErrorChanged();
     void activeChanged();
     void atNewestChanged();
     void readMarkerIdChanged();
     void newEventsBelowChanged();
+    void timelinePositionRequested(const QString &stableId);
 
 private:
     enum class RequestKind
     {
-        Initial,
-        Older
+        Latest,
+        Older,
+        Newer,
+        Around
     };
 
     Chat m_chat;
     QPointer<ProtocolTimelineService> m_timelineService;
     ChatTimelineModel *m_timeline = nullptr;
     QByteArray m_olderCursor;
+    QByteArray m_newerCursor;
+    QVector<ChatTimelineItem> m_deferredLiveItems;
     QString m_historyError;
     QString m_readMarkerId;
     QFuture<void> m_pageContinuation;
@@ -102,16 +117,22 @@ private:
     int m_newEventsBelow = 0;
     bool m_loadingInitial = false;
     bool m_loadingOlder = false;
+    bool m_loadingNewer = false;
     bool m_hasOlder = false;
+    bool m_hasNewer = false;
     bool m_active = false;
     bool m_atNewest = false;
 
-    void requestPage(RequestKind requestKind, const QByteArray &cursor, int limit);
+    static constexpr int MaximumWindowSize = 100;
+
+    void requestPage(RequestKind requestKind, const QByteArray &cursor, const QString &anchorId, int limit);
     void pageAvailable(RequestKind requestKind, quint64 generation, const QByteArray &requestedCursor,
-                       const ChatTimelinePage &page);
+                       const QString &requestedAnchor, const ChatTimelinePage &page);
     void setLoadingInitial(bool loading);
     void setLoadingOlder(bool loading);
+    void setLoadingNewer(bool loading);
     void setHasOlder(bool hasOlder);
+    void setHasNewer(bool hasNewer);
     void setHistoryError(const QString &error);
     void setReadMarkerId(const QString &stableId);
     void setNewEventsBelow(int count);

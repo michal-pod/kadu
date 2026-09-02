@@ -33,6 +33,8 @@
 #include "html/sanitized-html-string.h"
 
 #include <Quotient/connection.h>
+#include <Quotient/csapi/event_context.h>
+#include <Quotient/csapi/message_pagination.h>
 #include <Quotient/csapi/rooms.h>
 #include <Quotient/eventitem.h>
 #include <Quotient/events/encryptedevent.h>
@@ -616,7 +618,14 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const Ch
     if (!m_loadedRooms.contains(room))
         return waitForRoomInitialState(request, room);
 
-    if (request.direction != ChatTimelineDirection::Older || room->allHistoryLoaded())
+    static const auto remoteCursorPrefix = QByteArrayLiteral("matrix:");
+    if ((request.mode == ChatTimelineRequestMode::Older || request.mode == ChatTimelineRequestMode::Newer) &&
+        request.cursor.startsWith(remoteCursorPrefix))
+        return requestPaginatedPage(request, room);
+    if (request.mode != ChatTimelineRequestMode::Latest)
+        return requestContextPage(request, room);
+
+    if (room->allHistoryLoaded())
         return completedPage(pageForRoom(request, room));
 
     const auto requestedLimit = request.limit > 0 ? request.limit : 50;
@@ -641,6 +650,156 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const Ch
             const auto chat = chatForRoom(watchedRoom.data());
             if (chat)
                 emit pinnedMessagesChanged(chat);
+            finishRequest(promise, std::move(page));
+        },
+        [this, promise] {
+            ChatTimelinePage page;
+            page.error = tr("Could not retrieve Matrix history.");
+            finishRequest(promise, std::move(page));
+        });
+    return future;
+}
+
+QFuture<ChatTimelinePage> MatrixTimelineService::requestContextPage(const ChatTimelineRequest &request,
+                                                                    Quotient::Room *room)
+{
+    if (!m_connection || !room || request.anchorId.isEmpty())
+    {
+        ChatTimelinePage page;
+        page.error = tr("Matrix event is not available.");
+        return completedPage(std::move(page));
+    }
+
+    const auto requestedLimit = request.limit > 0 ? request.limit : 50;
+    const auto contextLimit = request.mode == ChatTimelineRequestMode::Around
+                                  ? requestedLimit
+                                  : qMin(requestedLimit * 2, 200);
+    auto promise = std::make_shared<QPromise<ChatTimelinePage>>();
+    auto future = promise->future();
+    promise->start();
+
+    const QPointer<Quotient::Room> watchedRoom{room};
+    m_connection->callApi<Quotient::GetEventContextJob>(room->id(), request.anchorId, contextLimit).then(
+        this,
+        [this, promise, request, requestedLimit, watchedRoom](Quotient::GetEventContextJob *job) {
+            ChatTimelinePage page;
+            if (!watchedRoom || !job)
+            {
+                page.error = tr("Matrix room is no longer available.");
+                finishRequest(promise, std::move(page));
+                return;
+            }
+
+            auto before = job->eventsBefore();
+            auto event = job->event();
+            auto after = job->eventsAfter();
+            static const auto remoteCursorPrefix = QByteArrayLiteral("matrix:");
+            page.olderCursor = job->begin().isEmpty() ? QByteArray{} : remoteCursorPrefix + job->begin().toUtf8();
+            page.newerCursor = job->end().isEmpty() ? QByteArray{} : remoteCursorPrefix + job->end().toUtf8();
+            page.hasOlder = !page.olderCursor.isEmpty();
+            page.hasNewer = !page.newerCursor.isEmpty();
+
+            auto appendEvent = [this, &page, watchedRoom](const Quotient::RoomEventPtr &remoteEvent) {
+                if (!remoteEvent)
+                    return;
+                auto item = itemForDetachedEvent(watchedRoom.data(), *remoteEvent);
+                if (!item.stableId.isEmpty())
+                    page.items.append(std::move(item));
+            };
+
+            if (request.mode == ChatTimelineRequestMode::Older)
+            {
+                const auto limit = static_cast<Quotient::RoomEvents::size_type>(requestedLimit);
+                const auto first = before.size() > limit ? before.size() - limit : 0;
+                for (auto index = before.size(); index > first; --index)
+                    appendEvent(before.at(index - 1));
+                page.hasNewer = true;
+                if (page.newerCursor.isEmpty())
+                    page.newerCursor = request.anchorId.toUtf8();
+            }
+            else if (request.mode == ChatTimelineRequestMode::Newer)
+            {
+                const auto count = std::min(static_cast<Quotient::RoomEvents::size_type>(requestedLimit),
+                                            after.size());
+                for (Quotient::RoomEvents::size_type index = 0; index < count; ++index)
+                    appendEvent(after.at(index));
+                page.hasOlder = true;
+                if (page.olderCursor.isEmpty())
+                    page.olderCursor = request.anchorId.toUtf8();
+            }
+            else
+            {
+                for (auto index = before.size(); index > 0; --index)
+                    appendEvent(before.at(index - 1));
+                appendEvent(event);
+                for (const auto &remoteEvent : after)
+                    appendEvent(remoteEvent);
+            }
+
+            finishRequest(promise, std::move(page));
+        },
+        [this, promise] {
+            ChatTimelinePage page;
+            page.error = tr("Could not retrieve the Matrix event context.");
+            finishRequest(promise, std::move(page));
+        });
+    return future;
+}
+
+QFuture<ChatTimelinePage> MatrixTimelineService::requestPaginatedPage(const ChatTimelineRequest &request,
+                                                                      Quotient::Room *room)
+{
+    static const auto remoteCursorPrefix = QByteArrayLiteral("matrix:");
+    const auto token = QString::fromUtf8(request.cursor.sliced(remoteCursorPrefix.size()));
+    const auto older = request.mode == ChatTimelineRequestMode::Older;
+    const auto direction = older ? QStringLiteral("b") : QStringLiteral("f");
+    const auto requestedLimit = request.limit > 0 ? request.limit : 50;
+    auto promise = std::make_shared<QPromise<ChatTimelinePage>>();
+    auto future = promise->future();
+    promise->start();
+
+    const QPointer<Quotient::Room> watchedRoom{room};
+    m_connection->callApi<Quotient::GetRoomEventsJob>(room->id(), direction, token, QString{}, requestedLimit).then(
+        this,
+        [this, promise, request, older, watchedRoom](Quotient::GetRoomEventsJob *job) {
+            ChatTimelinePage page;
+            if (!watchedRoom || !job)
+            {
+                page.error = tr("Matrix room is no longer available.");
+                finishRequest(promise, std::move(page));
+                return;
+            }
+
+            static const auto remoteCursorPrefix = QByteArrayLiteral("matrix:");
+            const auto nextCursor = job->end().isEmpty() ? QByteArray{}
+                                                         : remoteCursorPrefix + job->end().toUtf8();
+            auto events = job->chunk();
+            auto appendEvent = [this, &page, watchedRoom](const Quotient::RoomEventPtr &remoteEvent) {
+                if (!remoteEvent)
+                    return;
+                auto item = itemForDetachedEvent(watchedRoom.data(), *remoteEvent);
+                if (!item.stableId.isEmpty())
+                    page.items.append(std::move(item));
+            };
+
+            if (older)
+            {
+                for (auto index = events.size(); index > 0; --index)
+                    appendEvent(events.at(index - 1));
+                page.olderCursor = nextCursor;
+                page.hasOlder = !nextCursor.isEmpty();
+                page.newerCursor = request.cursor;
+                page.hasNewer = true;
+            }
+            else
+            {
+                for (const auto &remoteEvent : events)
+                    appendEvent(remoteEvent);
+                page.newerCursor = nextCursor;
+                page.hasNewer = !nextCursor.isEmpty();
+                page.olderCursor = request.cursor;
+                page.hasOlder = true;
+            }
             finishRequest(promise, std::move(page));
         },
         [this, promise] {
@@ -1012,11 +1171,40 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
     }
 
     if (inspected)
-        page.cursor = QByteArray::number(nextCursor);
+        page.olderCursor = QByteArray::number(nextCursor);
     else if (!room->messageEvents().empty() && !room->allHistoryLoaded())
-        page.cursor = QByteArray::number(room->minTimelineIndex());
-    page.hasMore = accepted == limit || !room->allHistoryLoaded();
+        page.olderCursor = QByteArray::number(room->minTimelineIndex());
+    page.hasOlder = accepted == limit || !room->allHistoryLoaded();
     return page;
+}
+
+ChatTimelineItem MatrixTimelineService::itemForDetachedEvent(Quotient::Room *room,
+                                                              const Quotient::RoomEvent &remoteEvent)
+{
+    const auto eventId = remoteEvent.id();
+    const Quotient::RoomEvent *event = &remoteEvent;
+    Quotient::RoomEventPtr decryptedEvent;
+    auto encrypted = !remoteEvent.encryptedJson().isEmpty();
+    if (const auto *encryptedEvent = Quotient::eventCast<const Quotient::EncryptedEvent>(&remoteEvent))
+    {
+        encrypted = true;
+        decryptedEvent = room ? room->decryptMessage(*encryptedEvent) : nullptr;
+        if (decryptedEvent)
+        {
+            m_decryptedEventSources.insert(eventId, decryptedEvent->fullJson());
+            event = decryptedEvent.get();
+        }
+        else if (room)
+            m_sessionRecovery->requestFromBackup(room, *encryptedEvent);
+    }
+
+    if (!event || shouldHideEventFromTimeline(*event))
+        return {};
+    auto item = itemForEvent(room, *event, eventId, 0, encrypted);
+    item.sourceOrder = sourceOrderForEvent(remoteEvent, eventId, 0);
+    if (!item.timestamp.isValid())
+        item.timestamp = remoteEvent.originTimestamp().toLocalTime();
+    return item;
 }
 
 ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event,
@@ -1028,7 +1216,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     if (item.transactionId.isEmpty())
         item.transactionId = m_eventTransactionIds.value(eventId);
     item.protocolEventType = event.matrixType();
-    item.sourceOrder = sourceOrderForIndex(timelineIndex);
+    item.sourceOrder = sourceOrderForEvent(event, eventId, timelineIndex);
     item.timestamp = event.originTimestamp().toLocalTime();
     item.sender.id = event.senderId();
     item.sender.displayName = event.senderId();
@@ -1590,8 +1778,12 @@ QString MatrixTimelineService::transactionIdForLocalEcho(const QString &stableId
     return stableId.startsWith(prefix) ? stableId.sliced(prefix.size()) : QString{};
 }
 
-QByteArray MatrixTimelineService::sourceOrderForIndex(qint64 timelineIndex) const
+QByteArray MatrixTimelineService::sourceOrderForEvent(const Quotient::RoomEvent &event, const QString &eventId,
+                                                       qint64 timelineIndex) const
 {
+    if (event.originTimestamp().isValid())
+        return event.originTimestamp().toUTC().toString(Qt::ISODateWithMs).toUtf8() + ':' + eventId.toUtf8();
+
     const auto unsignedIndex = static_cast<quint64>(timelineIndex) ^ (quint64{1} << 63);
     return QByteArray::number(unsignedIndex, 16).rightJustified(16, '0');
 }

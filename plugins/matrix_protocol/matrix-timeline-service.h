@@ -104,7 +104,10 @@ private:
     void updatePendingEvent(Quotient::Room *room, int pendingEventIndex);
     QFuture<ChatTimelinePage> waitForRoomInitialState(const ChatTimelineRequest &request, Quotient::Room *room);
     QFuture<ChatTimelinePage> requestTimelineForRoom(const ChatTimelineRequest &request, Quotient::Room *room);
+    QFuture<ChatTimelinePage> requestContextPage(const ChatTimelineRequest &request, Quotient::Room *room);
+    QFuture<ChatTimelinePage> requestPaginatedPage(const ChatTimelineRequest &request, Quotient::Room *room);
     ChatTimelinePage pageForRoom(const ChatTimelineRequest &request, Quotient::Room *room);
+    ChatTimelineItem itemForDetachedEvent(Quotient::Room *room, const Quotient::RoomEvent &event);
     const Quotient::RoomEvent *eventForTimelineItem(Quotient::Room *room, const Quotient::TimelineItem &timelineItem,
                                                     Quotient::RoomEventPtr &decryptedEvent, bool &encrypted) const;
     ChatTimelineItem itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event, const QString &eventId,
@@ -131,7 +134,8 @@ private:
     static QString attachmentResourceId(const QString &eventId, bool thumbnail);
     static QString localEchoId(const QString &transactionId);
     static QString transactionIdForLocalEcho(const QString &stableId);
-    QByteArray sourceOrderForIndex(qint64 timelineIndex) const;
+    QByteArray sourceOrderForEvent(const Quotient::RoomEvent &event, const QString &eventId,
+                                   qint64 timelineIndex) const;
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const;
     void finishRequest(const std::shared_ptr<QPromise<ChatTimelinePage>> &promise, ChatTimelinePage page) const;
 
