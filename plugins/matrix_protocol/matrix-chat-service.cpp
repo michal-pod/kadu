@@ -28,7 +28,6 @@
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
 #include "chat/chat-storage.h"
-#include "chat/type/chat-type-contact.h"
 #include "chat/type/chat-type-room.h"
 #include "contacts/contact-manager.h"
 #include "contacts/contact-set.h"
@@ -103,6 +102,11 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
         for (auto *room : m_connection->allRooms())
             synchronizeRoom(room);
     });
+    connect(m_connection, &Quotient::Connection::directChatsListChanged, this,
+            [this](const Quotient::DirectChatsMap &, const Quotient::DirectChatsMap &) {
+                for (auto *room : m_connection->allRooms())
+                    synchronizeRoom(room);
+            });
 
     for (auto *room : m_connection->allRooms())
         watchRoom(room);
@@ -138,12 +142,6 @@ void MatrixChatService::setMessageStorage(MessageStorage *messageStorage)
     m_messageStorage = messageStorage;
 }
 
-QString MatrixChatService::directChatId(const Chat &chat) const
-{
-    const auto contacts = chat.contacts().toContactVector();
-    return contacts.size() == 1 ? contacts.constFirst().id() : QString{};
-}
-
 QString MatrixChatService::roomId(const Chat &chat) const
 {
     const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details());
@@ -160,27 +158,11 @@ bool MatrixChatService::sendText(const Chat &chat, const QString &text, Message 
     if (!message.isNull())
         message.setId(transactionId);
 
-    if (const auto id = roomId(chat); !id.isEmpty())
-    {
-        auto *room = m_connection->room(id, Quotient::JoinState::Join);
-        if (!isSupportedRoom(room))
-            return false;
-
-        postText(room, text, transactionId, relation);
-        return true;
-    }
-
-    const auto recipientId = directChatId(chat);
-    if (recipientId.isEmpty())
+    auto *room = m_connection->room(roomId(chat), Quotient::JoinState::Join);
+    if (!isSupportedRoom(room))
         return false;
 
-    m_connection->getDirectChat(recipientId).then(
-        this, [this, text, transactionId, relation](Quotient::Room *room) {
-            if (!room)
-                return;
-
-            postText(room, text, transactionId, relation);
-        });
+    postText(room, text, transactionId, relation);
     return true;
 }
 
@@ -275,22 +257,11 @@ bool MatrixChatService::sendAttachmentToRoom(const Chat &chat, const QString &fi
     if (!m_connection || !m_connection->isLoggedIn() || !QFileInfo{filePath}.isFile())
         return false;
 
-    if (const auto id = roomId(chat); !id.isEmpty())
-    {
-        auto *room = m_connection->room(id, Quotient::JoinState::Join);
-        if (!isSupportedRoom(room))
-            return false;
-
-        postAttachment(room, filePath, description);
-        return true;
-    }
-
-    const auto recipientId = directChatId(chat);
-    if (recipientId.isEmpty())
+    auto *room = m_connection->room(roomId(chat), Quotient::JoinState::Join);
+    if (!isSupportedRoom(room))
         return false;
 
-    m_connection->getDirectChat(recipientId).then(
-        this, [this, filePath, description](Quotient::Room *room) { postAttachment(room, filePath, description); });
+    postAttachment(room, filePath, description);
     return true;
 }
 
@@ -413,22 +384,11 @@ bool MatrixChatService::sendLocationToRoom(const Chat &chat, const QString &geoU
     if (!m_connection || !m_connection->isLoggedIn() || !QUrl{geoUri}.isValid() || !geoUri.startsWith(QStringLiteral("geo:")))
         return false;
 
-    if (const auto id = roomId(chat); !id.isEmpty())
-    {
-        auto *room = m_connection->room(id, Quotient::JoinState::Join);
-        if (!isSupportedRoom(room))
-            return false;
-
-        postLocation(room, geoUri);
-        return true;
-    }
-
-    const auto recipientId = directChatId(chat);
-    if (recipientId.isEmpty())
+    auto *room = m_connection->room(roomId(chat), Quotient::JoinState::Join);
+    if (!isSupportedRoom(room))
         return false;
 
-    m_connection->getDirectChat(recipientId).then(
-        this, [this, geoUri](Quotient::Room *room) { postLocation(room, geoUri); });
+    postLocation(room, geoUri);
     return true;
 }
 
@@ -494,20 +454,28 @@ bool MatrixChatService::sendLocation(const Chat &chat, const QString &geoUri)
 
 void MatrixChatService::leaveChat(const Chat &chat)
 {
-    if (const auto id = roomId(chat); !id.isEmpty())
-    {
-        if (auto *room = m_connection ? m_connection->room(id, Quotient::JoinState::Join) : nullptr)
-            room->leaveRoom();
+    const auto id = roomId(chat);
+    if (id.isEmpty())
         return;
-    }
 
-    chat.setIgnoreAllMessages(true);
+    if (auto *room = m_connection ? m_connection->room(id, Quotient::JoinState::Join) : nullptr)
+        room->leaveRoom();
 }
 
 bool MatrixChatService::isSupportedRoom(const Quotient::Room *room) const
 {
-    return room && room->joinState() == Quotient::JoinState::Join &&
-           (!m_connection || !m_connection->isDirectChat(room->id()));
+    return room && room->joinState() == Quotient::JoinState::Join;
+}
+
+QString MatrixChatService::directPeerId(const Quotient::Room *room) const
+{
+    if (!m_connection || !room || !m_connection->isDirectChat(room->id()))
+        return {};
+
+    auto peerIds = m_connection->directChatMemberIds(room);
+    peerIds.removeAll(m_connection->userId());
+    peerIds.removeDuplicates();
+    return peerIds.size() == 1 ? peerIds.constFirst() : QString{};
 }
 
 Chat MatrixChatService::roomChat(Quotient::Room *room) const
@@ -519,6 +487,9 @@ Chat MatrixChatService::roomChat(Quotient::Room *room) const
     if (!chat)
         return Chat::null;
 
+    chat.addProperty(
+        QStringLiteral("chat-widget:show-contacts-list"), !m_connection->isDirectChat(room->id()),
+        CustomProperties::NonStorable);
     const auto displayName = room->displayName();
     chat.setDisplay(displayName.isEmpty() ? room->id() : displayName);
     if (auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
@@ -530,6 +501,22 @@ void MatrixChatService::synchronizeRoom(Quotient::Room *room)
 {
     if (!m_initialSyncFinished)
         return;
+
+    if (!isSupportedRoom(room))
+    {
+        if (!m_chatManager || !m_chatStorage || !room)
+            return;
+
+        const auto chat = ChatTypeRoom::findChat(
+            m_chatManager, m_chatStorage, account(), room->id(), ActionReturnNull);
+        if (!chat)
+            return;
+
+        if (auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
+            details->setConnected(false);
+        m_chatManager->removeItem(chat);
+        return;
+    }
 
     if (!roomChat(room))
         return;
@@ -552,7 +539,9 @@ void MatrixChatService::synchronizeRoomDetails(Quotient::Room *room)
     details->setDescription(room->topic());
     if (!Quotient::Avatar::isUrlValid(room->avatarUrl()))
     {
-        details->setAvatar({});
+        const auto peerId = directPeerId(room);
+        details->setAvatar(
+            peerId.isEmpty() ? QPixmap{} : QPixmap::fromImage(room->memberAvatar(peerId, AVATAR_SIZE)));
         return;
     }
 
@@ -622,8 +611,15 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
             [this, room] { synchronizeRoomMembers(room); });
     connect(room, &Quotient::Room::displaynameChanged, this,
             [this, room](Quotient::Room *, const QString &) { synchronizeRoom(room); });
+    connect(room, &Quotient::Room::joinStateChanged, this,
+            [this, room](Quotient::JoinState, Quotient::JoinState) { synchronizeRoom(room); });
     connect(room, &Quotient::Room::topicChanged, this, [this, room] { synchronizeRoomDetails(room); });
     connect(room, &Quotient::Room::avatarChanged, this, [this, room] { synchronizeRoomDetails(room); });
+    connect(room, &Quotient::Room::memberAvatarUpdated, this,
+            [this, room](const Quotient::RoomMember &member) {
+                if (member.id() == directPeerId(room))
+                    synchronizeRoomDetails(room);
+            });
     connect(room, &Quotient::Room::encryption, this, [this, room] { synchronizeRoom(room); });
     connect(room, &QObject::destroyed, this, [this, room] {
         m_watchedRooms.remove(room);
@@ -636,8 +632,7 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
     if (!m_connection || !m_loadedRooms.contains(room))
         return;
 
-    const auto directChat = m_connection->isDirectChat(room->id());
-    if (!directChat && !isSupportedRoom(room))
+    if (!isSupportedRoom(room))
         return;
 
     for (const auto &item : room->messageEvents())
@@ -658,42 +653,8 @@ void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, i
 
         // The decrypted RoomMessageEvent is a view of the timeline event. Keep the ID
         // from TimelineItem: for encrypted messages it is the only stable server event ID.
-        if (directChat)
-            handleDirectMessageEvent(*event, item->id());
-        else
-            handleRoomMessageEvent(room, *event, item->id());
+        handleRoomMessageEvent(room, *event, item->id());
     }
-}
-
-void MatrixChatService::handleDirectMessageEvent(const Quotient::RoomMessageEvent &event,
-                                                 const QString &eventId)
-{
-    if (!m_chatManager || !m_chatStorage || !m_contactManager || !m_messageStorage)
-        return;
-
-    const auto sentByCurrentAccount = m_connection && event.senderId() == m_connection->userId();
-    const auto contact = sentByCurrentAccount ? account().accountContact()
-                                              : m_contactManager->byId(account(), event.senderId(), ActionCreateAndAdd);
-    if (!sentByCurrentAccount && m_contactAvatarService)
-        m_contactAvatarService->observeContact(event.senderId());
-    const auto chat = ChatTypeContact::findChat(m_chatManager, m_chatStorage, contact, ActionCreateAndAdd);
-    if (!chat || chat.isIgnoreAllMessages())
-        return;
-
-    auto message = m_messageStorage->create();
-    message.setId(eventId);
-    message.setMessageChat(chat);
-    message.setMessageSender(contact);
-    message.setType(MessageTypeReceived);
-    message.setSendDate(event.originTimestamp().toLocalTime());
-    message.setReceiveDate(QDateTime::currentDateTime());
-
-    auto text = event.plainBody();
-    if (rawMessageTransformerService())
-        text = QString::fromUtf8(rawMessageTransformerService()->transform(text.toUtf8(), message).rawContent());
-    message.setContent(normalizeHtml(plainToHtml(text)));
-
-    emit messageReceived(message);
 }
 
 void MatrixChatService::handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,

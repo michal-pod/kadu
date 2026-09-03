@@ -21,10 +21,20 @@
 #include "chat-state-service.h"
 #include "chat-state-service.moc"
 
+#include "chat/chat.h"
+#include "contacts/contact-set.h"
+
 ChatStateService::ChatStateService(Account account, QObject *parent) : AccountService(account, parent)
 {
 }
 
 ChatStateService::~ChatStateService()
 {
+}
+
+void ChatStateService::sendState(const Chat &chat, ChatState state)
+{
+    const auto contact = chat.contacts().toContact();
+    if (contact)
+        sendState(contact, state);
 }

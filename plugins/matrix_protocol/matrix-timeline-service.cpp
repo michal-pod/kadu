@@ -25,9 +25,7 @@
 #include "chat/chat-manager.h"
 #include "chat/chat-storage.h"
 #include "chat/timeline/chat-timeline-model.h"
-#include "chat/type/chat-type-contact.h"
 #include "chat/type/chat-type-room.h"
-#include "contacts/contact-manager.h"
 #include "html/html-conversion.h"
 #include "html/html-string.h"
 #include "html/sanitized-html-string.h"
@@ -1026,33 +1024,13 @@ void MatrixTimelineService::setChatStorage(ChatStorage *chatStorage)
     m_chatStorage = chatStorage;
 }
 
-void MatrixTimelineService::setContactManager(ContactManager *contactManager)
-{
-    m_contactManager = contactManager;
-}
-
 Chat MatrixTimelineService::chatForRoom(Quotient::Room *room) const
 {
-    if (!m_connection || !m_chatManager || !m_chatStorage || !room)
+    if (!m_connection || !m_chatManager || !m_chatStorage || !room ||
+        room->joinState() != Quotient::JoinState::Join)
         return Chat::null;
 
-    if (!m_connection->isDirectChat(room->id()))
-        return ChatTypeRoom::findChat(m_chatManager, m_chatStorage, account(), room->id(), ActionCreateAndAdd);
-
-    if (!m_contactManager)
-        return Chat::null;
-
-    const auto directChats = m_connection->directChats();
-    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
-    {
-        if (it.value() != room->id() || !it.key())
-            continue;
-
-        const auto contact = m_contactManager->byId(account(), it.key()->id(), ActionCreateAndAdd);
-        return contact ? ChatTypeContact::findChat(m_chatManager, m_chatStorage, contact, ActionCreateAndAdd)
-                       : Chat::null;
-    }
-    return Chat::null;
+    return ChatTypeRoom::findChat(m_chatManager, m_chatStorage, account(), room->id(), ActionCreateAndAdd);
 }
 
 Quotient::Room *MatrixTimelineService::roomForChat(const Chat &chat) const
@@ -1062,17 +1040,6 @@ Quotient::Room *MatrixTimelineService::roomForChat(const Chat &chat) const
 
     if (const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
         return m_connection->room(details->room(), Quotient::JoinState::Join);
-
-    const auto contacts = chat.contacts().toContactVector();
-    if (contacts.size() != 1)
-        return nullptr;
-
-    const auto directChats = m_connection->directChats();
-    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
-    {
-        if (it.key() && it.key()->id() == contacts.constFirst().id())
-            return m_connection->room(it.value(), Quotient::JoinState::Join);
-    }
     return nullptr;
 }
 

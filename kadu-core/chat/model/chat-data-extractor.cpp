@@ -20,6 +20,7 @@
 
 #include "accounts/account.h"
 #include "chat/chat.h"
+#include "chat/chat-details-room.h"
 #include "chat/type/chat-type-manager.h"
 #include "icons/icons-manager.h"
 #include "icons/kadu-icon.h"
@@ -74,6 +75,14 @@ QVariant ChatDataExtractor::data(const Chat &chat, int role)
         else
             return m_iconsManager->iconByPath(KaduIcon("internet-group-chat"));
     }
+    case AvatarRole:
+        if (const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
+            return details->avatar();
+        return QVariant();
+    case DescriptionRole:
+        if (const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
+            return details->description();
+        return QVariant();
     case AccountRole:
         return QVariant::fromValue(chat.chatAccount());
     case ChatRole:

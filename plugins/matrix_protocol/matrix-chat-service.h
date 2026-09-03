@@ -79,7 +79,6 @@ private:
     QSet<QString> m_localTransactionIds;
     bool m_initialSyncFinished = false;
 
-    QString directChatId(const Chat &chat) const;
     QString roomId(const Chat &chat) const;
     bool sendText(const Chat &chat, const QString &text, Message message = {},
                   const std::optional<Quotient::EventRelation> &relation = std::nullopt);
@@ -92,13 +91,13 @@ private:
     void postAttachment(Quotient::Room *room, const QString &filePath, const QString &description);
     void postLocation(Quotient::Room *room, const QString &geoUri);
     bool isSupportedRoom(const Quotient::Room *room) const;
+    QString directPeerId(const Quotient::Room *room) const;
     Chat roomChat(Quotient::Room *room) const;
     void synchronizeRoom(Quotient::Room *room);
     void synchronizeRoomDetails(Quotient::Room *room);
     void synchronizeRoomMembers(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
-    void handleDirectMessageEvent(const Quotient::RoomMessageEvent &event, const QString &eventId);
     void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,
                                 const QString &eventId);
 

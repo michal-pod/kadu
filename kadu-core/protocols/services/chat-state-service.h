@@ -44,8 +44,8 @@ enum class ChatState;
  * This service allows sending and receiving information about composing state in chats. It supports several states
  * defined in ChatStateService::State enum.
  *
- * One method should be overrided by subclasses: sendState(). It sends our chat state to peer. When peer changes its
- * chats state, peerStateChanged() signal is emited.
+ * Subclasses implement contact-based state sending and may override its chat-aware variant when the conversation
+ * cannot be identified by a single contact. State changes can likewise be reported with or without chat context.
  */
 class KADUAPI ChatStateService : public AccountService
 {
@@ -66,6 +66,14 @@ public:
      */
     virtual void sendState(const Contact &contact, ChatState state) = 0;
 
+    /**
+     * @short Send our state in the context of a particular chat.
+     *
+     * The default implementation forwards one-contact chats to sendState(Contact, ChatState).
+     * Protocols whose chat identity is independent of its participants can override this method.
+     */
+    virtual void sendState(const Chat &chat, ChatState state);
+
 signals:
     /**
      * @short Signal emited when peer changed its chat state.
@@ -73,6 +81,11 @@ signals:
      * @param state new state received from peer
      */
     void peerStateChanged(const Contact &contact, ChatState state);
+
+    /**
+     * @short Signal emitted when a peer changed state in a particular chat.
+     */
+    void peerStateChangedInChat(const Chat &chat, const Contact &contact, ChatState state);
 };
 
 /**

@@ -51,7 +51,6 @@ namespace Quotient
 class Connection;
 class KeyVerificationSession;
 class Room;
-class User;
 }
 
 class MatrixProtocol final : public Protocol
@@ -127,13 +126,10 @@ private:
     QHash<QString, QSet<QString>> m_handledInRoomVerificationEvents;
     QSet<Quotient::Room *> m_inRoomVerificationRooms;
     QSet<Quotient::Room *> m_debugWatchedRooms;
-    QHash<QString, QPointer<Quotient::User>> m_directUsers;
 
     void createConnection();
     void watchRoomForDebug(Quotient::Room *room);
     void dumpMatrixRooms();
-    void synchronizeDirectContacts();
-    void synchronizeDirectContactProfile(const QString &userId);
     void handleConnectionError(const QString &message, const QString &details = {});
     void loginWithPassword();
     void promptForRecoveryKeyRestore();

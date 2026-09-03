@@ -280,21 +280,6 @@ Quotient::Room *MatrixHistoryService::roomForChat(const Chat &chat) const
 
     if (const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
         return m_connection->room(details->room(), Quotient::JoinState::Join);
-
-    const auto contacts = chat.contacts().toContactVector();
-    if (contacts.size() != 1)
-        return nullptr;
-
-    const auto directChats = m_connection->directChats();
-    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
-    {
-        if (!it.key() || it.key()->id() != contacts.constFirst().id())
-            continue;
-
-        if (auto *room = m_connection->room(it.value(), Quotient::JoinState::Join))
-            return room;
-    }
-
     return nullptr;
 }
 

@@ -201,11 +201,17 @@ void ChatWidgetImpl::init()
 
     connect(edit(), SIGNAL(textChanged()), this, SLOT(updateComposing()));
 
-    // icon for conference never changes
-    if (CurrentChat.contacts().count() == 1)
+    if (auto *chatStateService = m_chatStateServiceRepository->chatStateService(chat().chatAccount()))
     {
-        auto chatStateService = m_chatStateServiceRepository->chatStateService(chat().chatAccount());
-        connect(chatStateService, &ChatStateService::peerStateChanged, this, &ChatWidgetImpl::contactActivityChanged);
+        // The legacy signal has no chat identity and is safe only for a one-contact chat.
+        if (CurrentChat.contacts().count() == 1)
+            connect(chatStateService, &ChatStateService::peerStateChanged, this,
+                    &ChatWidgetImpl::contactActivityChanged);
+        connect(chatStateService, &ChatStateService::peerStateChangedInChat, this,
+                [this](const Chat &stateChat, const Contact &contact, ChatState state) {
+                    if (stateChat == CurrentChat)
+                        contactActivityChanged(contact, state);
+                });
     }
 
     connect(CurrentChat, SIGNAL(updated()), this, SLOT(chatUpdated()));
@@ -259,7 +265,10 @@ void ChatWidgetImpl::createGui()
     InputBox->setMinimumHeight(10);
 
     auto *chatType = m_chatTypeManager->chatType(CurrentChat.type());
-    if (chatType && chatType->name() != "Contact")
+    const auto showContactsListByDefault = chatType && chatType->name() != "Contact";
+    const auto showContactsList =
+        CurrentChat.property(QStringLiteral("chat-widget:show-contacts-list"), showContactsListByDefault).toBool();
+    if (showContactsList)
         createContactsList();
 
     VerticalSplitter->addWidget(HorizontalSplitter);
@@ -336,8 +345,10 @@ void ChatWidgetImpl::createContactsList()
     layout->addWidget(BuddiesWidget);
 
     QList<int> sizes;
-    sizes.append(3);
+    sizes.append(5);
     sizes.append(1);
+    HorizontalSplitter->setStretchFactor(0, 1);
+    HorizontalSplitter->setStretchFactor(1, 0);
     HorizontalSplitter->setSizes(sizes);
 }
 
@@ -753,8 +764,8 @@ void ChatWidgetImpl::composingStopped()
     IsComposing = false;
 
     auto chatStateService = m_chatStateServiceRepository->chatStateService(chat().chatAccount());
-    if (chatStateService && chat().contacts().toContact())
-        chatStateService->sendState(chat().contacts().toContact(), ChatState::Paused);
+    if (chatStateService)
+        chatStateService->sendState(chat(), ChatState::Paused);
 }
 
 void ChatWidgetImpl::checkComposing()
@@ -780,8 +791,7 @@ void ChatWidgetImpl::updateComposing()
         if (edit()->toPlainText().isEmpty())
             return;
 
-        if (chat().contacts().toContact())
-            chatStateService->sendState(chat().contacts().toContact(), ChatState::Composing);
+        chatStateService->sendState(chat(), ChatState::Composing);
 
         ComposingTimer.start();
     }

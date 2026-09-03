@@ -25,6 +25,8 @@
 #include <QtCore/QPointer>
 #include <QtCore/QSet>
 
+class ChatManager;
+class ChatStorage;
 class ContactManager;
 
 namespace Quotient
@@ -43,20 +45,26 @@ public:
 
     void setConnection(Quotient::Connection *connection);
     virtual void sendState(const Contact &contact, ChatState state) override;
+    virtual void sendState(const Chat &chat, ChatState state) override;
 
 private:
     static constexpr auto TypingTimeout = 5000;
 
+    QPointer<ChatManager> m_chatManager;
+    QPointer<ChatStorage> m_chatStorage;
     QPointer<ContactManager> m_contactManager;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
     QHash<Quotient::Room *, QSet<QString>> m_typingMembers;
     QHash<QString, bool> m_sentTypingStates;
 
-    QString directRoomId(const Contact &contact) const;
+    Quotient::Room *roomForChat(const Chat &chat) const;
+    Chat chatForRoom(Quotient::Room *room) const;
     void watchRoom(Quotient::Room *room);
     void synchronizeTypingMembers(Quotient::Room *room);
 
 private slots:
+    INJEQT_SET void setChatManager(ChatManager *chatManager);
+    INJEQT_SET void setChatStorage(ChatStorage *chatStorage);
     INJEQT_SET void setContactManager(ContactManager *contactManager);
 };

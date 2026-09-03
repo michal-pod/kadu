@@ -20,6 +20,10 @@
 #include "matrix-chat-state-service.h"
 #include "matrix-chat-state-service.moc"
 
+#include "chat/chat-details-room.h"
+#include "chat/chat-manager.h"
+#include "chat/chat-storage.h"
+#include "chat/type/chat-type-room.h"
 #include "contacts/contact-manager.h"
 #include "protocols/services/chat-state.h"
 
@@ -71,13 +75,20 @@ void MatrixChatStateService::setContactManager(ContactManager *contactManager)
 
 void MatrixChatStateService::sendState(const Contact &contact, ChatState state)
 {
-    if (!m_connection || !m_connection->isLoggedIn() || !contact)
+    Q_UNUSED(contact)
+    Q_UNUSED(state)
+}
+
+void MatrixChatStateService::sendState(const Chat &chat, ChatState state)
+{
+    if (!m_connection || !m_connection->isLoggedIn())
         return;
 
-    const auto roomId = directRoomId(contact);
-    if (roomId.isEmpty())
+    auto *room = roomForChat(chat);
+    if (!room)
         return;
 
+    const auto roomId = room->id();
     const auto typing = state == ChatState::Composing;
     if (m_sentTypingStates.value(roomId, false) == typing)
         return;
@@ -89,21 +100,31 @@ void MatrixChatStateService::sendState(const Contact &contact, ChatState state)
         m_connection->callApi<Quotient::SetTypingJob>(m_connection->userId(), roomId, false);
 }
 
-QString MatrixChatStateService::directRoomId(const Contact &contact) const
+void MatrixChatStateService::setChatManager(ChatManager *chatManager)
 {
-    if (!m_connection)
-        return {};
+    m_chatManager = chatManager;
+}
 
-    const auto directChats = m_connection->directChats();
-    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
-    {
-        if (!it.key() || it.key()->id() != contact.id())
-            continue;
+void MatrixChatStateService::setChatStorage(ChatStorage *chatStorage)
+{
+    m_chatStorage = chatStorage;
+}
 
-        if (m_connection->room(it.value(), Quotient::JoinState::Join))
-            return it.value();
-    }
-    return {};
+Quotient::Room *MatrixChatStateService::roomForChat(const Chat &chat) const
+{
+    if (!m_connection || !chat)
+        return nullptr;
+
+    const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details());
+    return details ? m_connection->room(details->room(), Quotient::JoinState::Join) : nullptr;
+}
+
+Chat MatrixChatStateService::chatForRoom(Quotient::Room *room) const
+{
+    if (!m_chatManager || !m_chatStorage || !room || room->joinState() != Quotient::JoinState::Join)
+        return Chat::null;
+
+    return ChatTypeRoom::findChat(m_chatManager, m_chatStorage, account(), room->id(), ActionCreateAndAdd);
 }
 
 void MatrixChatStateService::watchRoom(Quotient::Room *room)
@@ -114,33 +135,44 @@ void MatrixChatStateService::watchRoom(Quotient::Room *room)
     m_watchedRooms.insert(room);
     connect(room, &Quotient::Room::typingChanged, this,
             [this, room] { synchronizeTypingMembers(room); });
-    connect(room, &QObject::destroyed, this, [this, room] {
+    connect(room, &Quotient::Room::joinStateChanged, this,
+            [this, room](Quotient::JoinState, Quotient::JoinState newState) {
+                m_sentTypingStates.remove(room->id());
+                if (newState == Quotient::JoinState::Join)
+                    synchronizeTypingMembers(room);
+                else
+                    m_typingMembers.remove(room);
+            });
+    const auto roomId = room->id();
+    connect(room, &QObject::destroyed, this, [this, room, roomId] {
         m_watchedRooms.remove(room);
         m_typingMembers.remove(room);
+        m_sentTypingStates.remove(roomId);
     });
     synchronizeTypingMembers(room);
 }
 
 void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
 {
-    if (!m_connection || !m_contactManager || !room)
+    if (!m_connection || !m_contactManager || !room || room->joinState() != Quotient::JoinState::Join)
         return;
 
     QSet<QString> currentMembers;
-    if (m_connection->isDirectChat(room->id()))
-    {
-        for (const auto &member : room->otherMembersTyping())
-            currentMembers.insert(member.id());
-    }
+    for (const auto &member : room->otherMembersTyping())
+        currentMembers.insert(member.id());
 
     const auto previousMembers = m_typingMembers.value(room);
+    const auto chat = chatForRoom(room);
+    if (!chat)
+        return;
+
     for (const auto &matrixId : previousMembers)
     {
         if (currentMembers.contains(matrixId))
             continue;
 
         const auto contact = m_contactManager->byId(account(), matrixId, ActionCreateAndAdd);
-        emit peerStateChanged(contact, ChatState::Paused);
+        emit peerStateChangedInChat(chat, contact, ChatState::Paused);
     }
     for (const auto &matrixId : currentMembers)
     {
@@ -148,7 +180,7 @@ void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
             continue;
 
         const auto contact = m_contactManager->byId(account(), matrixId, ActionCreateAndAdd);
-        emit peerStateChanged(contact, ChatState::Composing);
+        emit peerStateChangedInChat(chat, contact, ChatState::Composing);
     }
 
     if (currentMembers.isEmpty())

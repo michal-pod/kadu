@@ -170,10 +170,6 @@ ProtocolTimelineService *MatrixProtocol::timelineService()
 
 void MatrixProtocol::createConnection()
 {
-    for (const auto &user : m_directUsers)
-        if (user)
-            disconnect(user.data(), nullptr, this, nullptr);
-    m_directUsers.clear();
     for (auto *room : m_debugWatchedRooms)
         if (room)
             disconnect(room, nullptr, this, nullptr);
@@ -213,18 +209,16 @@ void MatrixProtocol::createConnection()
         loggedIn();
     });
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
-    connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::synchronizeDirectContacts);
     // Temporary Matrix room/contact diagnostic. Uncomment while investigating list mapping.
     // connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::dumpMatrixRooms);
     // connect(m_connection, &Quotient::Connection::newRoom, this, [this](Quotient::Room *room) {
     //     watchRoomForDebug(room);
     //     dumpMatrixRooms();
     // });
-    connect(m_connection, &Quotient::Connection::directChatsListChanged, this,
-            [this](const Quotient::DirectChatsMap &, const Quotient::DirectChatsMap &) {
-                synchronizeDirectContacts();
-                // dumpMatrixRooms();
-            });
+    // connect(m_connection, &Quotient::Connection::directChatsListChanged, this,
+    //         [this](const Quotient::DirectChatsMap &, const Quotient::DirectChatsMap &) {
+    //             dumpMatrixRooms();
+    //         });
     connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
             [this](Quotient::KeyVerificationSession *session) {
                 registerInRoomVerificationSession(session);
@@ -412,92 +406,6 @@ void MatrixProtocol::dumpMatrixRooms()
 
     qInfo().noquote() << "[Matrix room dump]"
                       << QString::fromUtf8(QJsonDocument{dump}.toJson(QJsonDocument::Indented));
-}
-
-void MatrixProtocol::synchronizeDirectContacts()
-{
-    if (!m_connection || !m_buddyManager || !m_contactManager)
-        return;
-
-    QSet<QString> directUserIds;
-    const auto directChats = m_connection->directChats();
-    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
-    {
-        const auto *mappedUser = it.key();
-        if (!mappedUser || mappedUser->id() == m_connection->userId())
-            continue;
-
-        if (!m_connection->room(it.value(), Quotient::JoinState::Invite | Quotient::JoinState::Join))
-            continue;
-
-        directUserIds.insert(mappedUser->id());
-    }
-
-    for (const auto &contact : m_contactManager->contacts(account()))
-    {
-        if (!contact || contact == account().accountContact() || directUserIds.contains(contact.id()))
-            continue;
-
-        const auto buddy = contact.ownerBuddy();
-        if (buddy && !buddy.isAnonymous() && buddy.contacts().size() == 1)
-            buddy.setAnonymous(true);
-    }
-
-    for (auto it = m_directUsers.begin(); it != m_directUsers.end();)
-    {
-        if (directUserIds.contains(it.key()))
-        {
-            ++it;
-            continue;
-        }
-
-        if (it.value())
-            disconnect(it.value(), nullptr, this, nullptr);
-        it = m_directUsers.erase(it);
-    }
-
-    for (const auto &userId : directUserIds)
-    {
-        auto *user = m_connection->user(userId);
-        if (!user)
-            continue;
-
-        if (!m_directUsers.contains(userId))
-        {
-            m_directUsers.insert(userId, user);
-            connect(user, &Quotient::User::defaultNameChanged, this,
-                    [this, userId] { synchronizeDirectContactProfile(userId); });
-            connect(user, &QObject::destroyed, this,
-                    [this, userId] { m_directUsers.remove(userId); });
-        }
-
-        synchronizeDirectContactProfile(userId);
-    }
-}
-
-void MatrixProtocol::synchronizeDirectContactProfile(const QString &userId)
-{
-    if (!m_connection || !m_buddyManager || !m_contactManager || !m_directUsers.contains(userId))
-        return;
-
-    auto *user = m_directUsers.value(userId).data();
-    if (!user)
-        return;
-
-    const auto contact = m_contactManager->byId(account(), userId, ActionCreateAndAdd);
-    const auto buddy = m_buddyManager->byContact(contact, ActionCreateAndAdd);
-    if (!buddy)
-        return;
-
-    const auto displayName = user->displayname();
-    if (buddy.isAnonymous() || buddy.contacts().size() == 1)
-        buddy.setDisplay(displayName.isEmpty() ? userId : displayName);
-    buddy.setAnonymous(false);
-
-    if (m_contactAvatarService)
-        m_contactAvatarService->observeContact(userId);
-    else
-        user->load();
 }
 
 void MatrixProtocol::promptForRecoveryKeyRestore()

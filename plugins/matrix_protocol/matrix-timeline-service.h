@@ -39,7 +39,6 @@
 
 class ChatManager;
 class ChatStorage;
-class ContactManager;
 class MatrixMegolmSessionRecovery;
 
 namespace Quotient
@@ -81,7 +80,6 @@ private:
 
     QPointer<ChatManager> m_chatManager;
     QPointer<ChatStorage> m_chatStorage;
-    QPointer<ContactManager> m_contactManager;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
     QSet<Quotient::Room *> m_loadedRooms;
@@ -165,5 +163,4 @@ private:
 private slots:
     INJEQT_SET void setChatManager(ChatManager *chatManager);
     INJEQT_SET void setChatStorage(ChatStorage *chatStorage);
-    INJEQT_SET void setContactManager(ContactManager *contactManager);
 };
