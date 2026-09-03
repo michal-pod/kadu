@@ -69,7 +69,13 @@ void TalkableDelegateConfiguration::configurationUpdated()
         m_configuration->deprecatedApi()->readBoolEntry("Look", "TalkableListAlwaysShowIdentityName");
     ShowAvatars = m_configuration->deprecatedApi()->readBoolEntry("Look", "ShowAvatars");
     AvatarBorder = m_configuration->deprecatedApi()->readBoolEntry("Look", "AvatarBorder");
-    AvatarGreyOut = m_configuration->deprecatedApi()->readBoolEntry("Look", "AvatarGreyOut");
+    const auto avatarStyle = m_configuration->deprecatedApi()->readEntry("Look", "AvatarStyle", "StatusDot");
+    if (avatarStyle == QStringLiteral("None"))
+        CurrentAvatarStyle = TalkableDelegateConfiguration::AvatarStyle::None;
+    else if (avatarStyle == QStringLiteral("GreyOut"))
+        CurrentAvatarStyle = TalkableDelegateConfiguration::AvatarStyle::GreyOut;
+    else
+        CurrentAvatarStyle = TalkableDelegateConfiguration::AvatarStyle::StatusDot;
     AlignTop = m_configuration->deprecatedApi()->readBoolEntry("Look", "AlignUserboxIconsTop");
     ShowBold = m_configuration->deprecatedApi()->readBoolEntry("Look", "ShowBold");
     ShowDescription = m_configuration->deprecatedApi()->readBoolEntry("Look", "ShowDesc");

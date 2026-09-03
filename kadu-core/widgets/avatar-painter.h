@@ -22,11 +22,15 @@
 #ifndef AVATAR_PAINTER_H
 #define AVATAR_PAINTER_H
 
+#include "status/status-type.h"
+
 #include <QtCore/QString>
+#include <QtGui/QColor>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QStyleOptionViewItem>
 
 class QModelIndex;
+class QPainter;
 
 class TalkableDelegateConfiguration;
 
@@ -39,11 +43,14 @@ class AvatarPainter
 
     QPixmap Avatar;
 
-    bool greyOut();
+    bool greyOut() const;
+    StatusType statusType() const;
+    QColor statusDotColor() const;
     QPixmap cropped();
     QString cacheKey(qreal devicePixelRatio);
     QPixmap getOrCreateCacheItem(qreal devicePixelRatio);
     void paintFromCache(QPainter *painter);
+    void paintStatusDot(QPainter *painter, const QRect &displayRect) const;
 
     void doPaint(QPainter *painter, const QSize &size, qreal devicePixelRatio);
 

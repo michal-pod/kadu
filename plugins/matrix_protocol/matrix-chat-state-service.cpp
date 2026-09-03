@@ -165,6 +165,7 @@ void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
     const auto chat = chatForRoom(room);
     if (!chat)
         return;
+    auto *details = qobject_cast<ChatDetailsRoom *>(chat.details());
 
     for (const auto &matrixId : previousMembers)
     {
@@ -172,6 +173,8 @@ void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
             continue;
 
         const auto contact = m_contactManager->byId(account(), matrixId, ActionCreateAndAdd);
+        if (details)
+            details->addContact(contact);
         emit peerStateChangedInChat(chat, contact, ChatState::Paused);
     }
     for (const auto &matrixId : currentMembers)
@@ -180,6 +183,8 @@ void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
             continue;
 
         const auto contact = m_contactManager->byId(account(), matrixId, ActionCreateAndAdd);
+        if (details)
+            details->addContact(contact);
         emit peerStateChangedInChat(chat, contact, ChatState::Composing);
     }
 

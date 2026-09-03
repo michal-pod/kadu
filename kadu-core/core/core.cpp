@@ -210,7 +210,7 @@ void Core::createDefaultConfiguration()
 
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "AlignUserboxIconsTop", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "AvatarBorder", false);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "AvatarGreyOut", true);
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "AvatarStyle", "StatusDot");
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Look", "ForceCustomChatFont", false);
     QFont chatFont = qApp->font();
 #ifdef Q_OS_WIN

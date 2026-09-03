@@ -29,6 +29,7 @@
 
 #include "contacts/contact.h"
 #include "model/roles.h"
+#include "status/status.h"
 #include "widgets/talkable-delegate-configuration.h"
 
 #include "avatar-painter.h"
@@ -41,13 +42,38 @@ AvatarPainter::AvatarPainter(
     Avatar = Index.data(AvatarRole).value<QPixmap>();
 }
 
-bool AvatarPainter::greyOut()
+bool AvatarPainter::greyOut() const
 {
-    if (!Configuration->avatarGreyOut())
+    if (Configuration->avatarStyle() != TalkableDelegateConfiguration::AvatarStyle::GreyOut)
         return false;
 
-    Contact contact = Index.data(ContactRole).value<Contact>();
-    return contact.currentStatus().isDisconnected();
+    const auto contact = Index.data(ContactRole).value<Contact>();
+    return contact && contact.currentStatus().isDisconnected();
+}
+
+StatusType AvatarPainter::statusType() const
+{
+    const auto statusData = Index.data(StatusRole);
+    return statusData.isValid() ? statusData.value<Status>().type() : StatusType::None;
+}
+
+QColor AvatarPainter::statusDotColor() const
+{
+    if (Configuration->avatarStyle() != TalkableDelegateConfiguration::AvatarStyle::StatusDot)
+        return {};
+
+    switch (statusType())
+    {
+    case StatusType::FreeForChat:
+    case StatusType::Online:
+        return QColor{34, 197, 94};
+    case StatusType::Away:
+        return QColor{234, 179, 8};
+    case StatusType::DoNotDisturb:
+        return QColor{239, 68, 68};
+    default:
+        return {};
+    }
 }
 
 QString AvatarPainter::cacheKey(qreal devicePixelRatio)
@@ -55,11 +81,13 @@ QString AvatarPainter::cacheKey(qreal devicePixelRatio)
     // The ratio belongs in the key: an item rendered for one screen must not be reused on another
     // with a different scale, which is exactly what happens with two monitors magnified
     // differently.
-    return QString("msi-%1-%2,%3,%4,%5")
+    return QString("msi-%1-%2,%3,%4,%5,%6,%7")
         .arg(Avatar.cacheKey())
-        .arg(greyOut())
+        .arg(static_cast<int>(Configuration->avatarStyle()))
+        .arg(static_cast<int>(statusType()))
         .arg(Configuration->avatarBorder())
         .arg(Option.state & QStyle::State_Selected ? 1 : 0)
+        .arg(Option.palette.cacheKey())
         .arg(devicePixelRatio);
 }
 
@@ -106,6 +134,36 @@ QPixmap AvatarPainter::cropped()
     return QPixmap::fromImage(cropped);
 }
 
+void AvatarPainter::paintStatusDot(QPainter *painter, const QRect &displayRect) const
+{
+    const auto color = statusDotColor();
+    if (!color.isValid())
+        return;
+
+    const auto diameter = qBound(8.0, qMin(displayRect.width(), displayRect.height()) * 0.32, 12.0);
+    QRectF dotRect{0.0, 0.0, diameter, diameter};
+    dotRect.moveBottomRight(QPointF{displayRect.right() + 0.5, displayRect.bottom() + 0.5});
+
+    const auto backgroundRole =
+        Option.state & QStyle::State_Selected ? QPalette::Highlight : QPalette::Base;
+
+    painter->save();
+    painter->setPen(QPen{Option.palette.color(backgroundRole), 2.0});
+    painter->setBrush(color);
+    painter->drawEllipse(dotRect);
+
+    if (statusType() == StatusType::FreeForChat)
+    {
+        const auto center = dotRect.center();
+        const auto armLength = diameter * 0.2;
+        painter->setPen(
+            QPen{QColor{Qt::white}, qMax(1.25, diameter * 0.12), Qt::SolidLine, Qt::RoundCap});
+        painter->drawLine(QPointF{center.x() - armLength, center.y()}, QPointF{center.x() + armLength, center.y()});
+        painter->drawLine(QPointF{center.x(), center.y() - armLength}, QPointF{center.x(), center.y() + armLength});
+    }
+    painter->restore();
+}
+
 void AvatarPainter::doPaint(QPainter *painter, const QSize &size, qreal devicePixelRatio)
 {
     QPixmap croppedAvatar = cropped();
@@ -144,6 +202,8 @@ void AvatarPainter::doPaint(QPainter *painter, const QSize &size, qreal devicePi
     // draw avatar border
     if (Configuration->avatarBorder())
         painter->drawRoundedRect(displayRect, radius, radius);
+
+    paintStatusDot(painter, displayRect);
 }
 
 void AvatarPainter::paint(QPainter *painter)

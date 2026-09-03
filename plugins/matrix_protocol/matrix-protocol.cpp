@@ -38,6 +38,7 @@
 #include "matrix-contact-avatar-service.h"
 #include "matrix-device-verification-notification-service.h"
 #include "matrix-history-service.h"
+#include "matrix-room-members-model.h"
 #include "matrix-timeline-service.h"
 #include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
@@ -168,6 +169,19 @@ ProtocolTimelineService *MatrixProtocol::timelineService()
     return m_timelineService;
 }
 
+QAbstractItemModel *MatrixProtocol::createChatMembersModel(const Chat &chat, QObject *parent)
+{
+    if (!m_connection || !m_contactManager)
+        return nullptr;
+
+    const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details());
+    auto *room = details ? m_connection->room(details->room(), Quotient::JoinState::Join) : nullptr;
+    if (!room || m_connection->isDirectChat(room->id()))
+        return nullptr;
+
+    return new MatrixRoomMembersModel{account(), room, m_contactManager, parent};
+}
+
 void MatrixProtocol::createConnection()
 {
     for (auto *room : m_debugWatchedRooms)
@@ -176,6 +190,7 @@ void MatrixProtocol::createConnection()
     m_debugWatchedRooms.clear();
 
     m_connection = new Quotient::Connection{QUrl{MatrixAccountData{account()}.homeserver()}, this};
+    m_connection->setLazyLoading(true);
     // Encryption must be enabled before logging in: this makes libQuotient initialise
     // the local Olm account and publish this client's device keys.
     m_connection->enableEncryption(true);

@@ -28,6 +28,7 @@ set (SOURCES
     matrix-protocol-factory.cpp
     matrix-protocol.cpp
     matrix-room-invitation-notification-service.cpp
+    matrix-room-members-model.cpp
     matrix-verify-device-action.cpp
 )
 

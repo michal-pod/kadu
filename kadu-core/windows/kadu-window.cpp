@@ -437,8 +437,11 @@ void KaduWindow::talkableActivatedSlot(const Talkable &talkable)
         return;
 
     auto chat = m_talkableConverter->toChat(talkable);
+    const auto participantCount =
+        chat ? chat.property(QStringLiteral("chat-widget:participant-count"), chat.contacts().size()).toInt() : 0;
     const auto isChatWithMyself =
-        chat && chat.contacts().size() == 1 && chat.contacts().toBuddySet().contains(m_myself->buddy());
+        chat && participantCount <= 1 && chat.contacts().size() == 1 &&
+        chat.contacts().toBuddySet().contains(m_myself->buddy());
     if (chat && !isChatWithMyself)
     {
         m_chatWidgetManager->openChat(chat, OpenChatActivation::Activate);

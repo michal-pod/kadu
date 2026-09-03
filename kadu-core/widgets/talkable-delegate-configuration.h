@@ -37,6 +37,15 @@ class TalkableDelegateConfiguration : public QObject, private ConfigurationAware
 {
     Q_OBJECT
 
+public:
+    enum class AvatarStyle
+    {
+        None,
+        GreyOut,
+        StatusDot
+    };
+
+private:
     QPointer<Configuration> m_configuration;
     QPointer<IconsManager> m_iconsManager;
 
@@ -57,7 +66,7 @@ class TalkableDelegateConfiguration : public QObject, private ConfigurationAware
     bool UseConfigurationColors;
     bool CustomColors;
     bool AvatarBorder;
-    bool AvatarGreyOut;
+    AvatarStyle CurrentAvatarStyle = AvatarStyle::StatusDot;
     QColor DescriptionColor;
     QColor FontColor;
 
@@ -146,9 +155,9 @@ public:
     {
         return AvatarBorder;
     }
-    bool avatarGreyOut() const
+    AvatarStyle avatarStyle() const
     {
-        return AvatarGreyOut;
+        return CurrentAvatarStyle;
     }
     const QColor &descriptionColor() const
     {

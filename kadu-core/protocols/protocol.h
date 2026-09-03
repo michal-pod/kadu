@@ -49,6 +49,7 @@ Q_DECLARE_FLAGS(RemoteHistorySearchCapabilities, RemoteHistorySearchCapability)
 Q_DECLARE_OPERATORS_FOR_FLAGS(RemoteHistorySearchCapabilities)
 
 class QPixmap;
+class QAbstractItemModel;
 
 class AccountShared;
 class BuddyListSerializationService;
@@ -158,6 +159,10 @@ public:
         return nullptr;
     }
     virtual ProtocolTimelineService *timelineService()
+    {
+        return nullptr;
+    }
+    virtual QAbstractItemModel *createChatMembersModel(const Chat &, QObject *)
     {
         return nullptr;
     }

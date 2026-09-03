@@ -91,6 +91,7 @@ public:
     }
     virtual ProtocolHistoryService *historyService() override;
     virtual ProtocolTimelineService *timelineService() override;
+    virtual QAbstractItemModel *createChatMembersModel(const Chat &chat, QObject *parent) override;
     virtual QString statusPixmapPath() override
     {
         return "xmpp";

@@ -490,6 +490,10 @@ Chat MatrixChatService::roomChat(Quotient::Room *room) const
     chat.addProperty(
         QStringLiteral("chat-widget:show-contacts-list"), !m_connection->isDirectChat(room->id()),
         CustomProperties::NonStorable);
+    chat.addProperty(
+        QStringLiteral("chat-widget:participant-count"),
+        qMax(room->joinedCount(), static_cast<int>(chat.contacts().size())),
+        CustomProperties::NonStorable);
     const auto displayName = room->displayName();
     chat.setDisplay(displayName.isEmpty() ? room->id() : displayName);
     if (auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
@@ -521,7 +525,6 @@ void MatrixChatService::synchronizeRoom(Quotient::Room *room)
     if (!roomChat(room))
         return;
 
-    room->setDisplayed(true);
     synchronizeRoomDetails(room);
     synchronizeRoomMembers(room);
 }
@@ -564,18 +567,28 @@ void MatrixChatService::synchronizeRoomMembers(Quotient::Room *room)
     if (!details)
         return;
 
-    ContactSet roomContacts;
-    for (const auto &member : room->joinedMembers())
+    ContactSet roomContacts{account().accountContact()};
+    for (const auto &contact : details->contacts())
     {
-        const auto contact = member.isLocalMember()
-                                 ? account().accountContact()
-                                 : m_contactManager->byId(account(), member.id(), ActionCreateAndAdd);
-        if (!contact)
-            continue;
+        if (contact == account().accountContact() || room->memberState(contact.id()) == Quotient::Membership::Join)
+            roomContacts.insert(contact);
+    }
 
-        roomContacts.insert(contact);
-        if (!member.isLocalMember() && m_contactAvatarService)
-            m_contactAvatarService->observeContact(member.id());
+    if (m_connection && m_connection->isDirectChat(room->id()))
+    {
+        auto directMemberIds = m_connection->directChatMemberIds(room);
+        directMemberIds.removeAll(m_connection->userId());
+        directMemberIds.removeDuplicates();
+        for (const auto &memberId : directMemberIds)
+        {
+            const auto contact = m_contactManager->byId(account(), memberId, ActionCreateAndAdd);
+            if (!contact)
+                continue;
+
+            roomContacts.insert(contact);
+            if (m_contactAvatarService)
+                m_contactAvatarService->observeContact(memberId);
+        }
     }
 
     const auto existingContacts = details->contacts();
@@ -606,8 +619,6 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
         synchronizeRoom(room);
     });
     connect(room, &Quotient::Room::memberListChanged, this,
-            [this, room] { synchronizeRoomMembers(room); });
-    connect(room, &Quotient::Room::allMembersLoaded, this,
             [this, room] { synchronizeRoomMembers(room); });
     connect(room, &Quotient::Room::displaynameChanged, this,
             [this, room](Quotient::Room *, const QString &) { synchronizeRoom(room); });

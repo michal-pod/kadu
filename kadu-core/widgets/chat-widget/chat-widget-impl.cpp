@@ -67,6 +67,7 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QMetaObject>
 #include <QtCore/QMimeData>
+#include <QtCore/QSortFilterProxyModel>
 #include <QtCore/QVariant>
 #include <QtGui/QKeyEvent>
 #include <QtQml/QQmlContext>
@@ -314,16 +315,36 @@ void ChatWidgetImpl::createContactsList()
     view->setItemsExpandable(false);
 
     auto chain = new ModelChain(this);
-    auto contactListModel = m_injectedFactory->makeInjected<ContactListModel>(chain);
-    new ChatAdapter(contactListModel, CurrentChat);
-    chain->setBaseModel(contactListModel);
-    ProxyModel = m_injectedFactory->makeInjected<TalkableProxyModel>(chain);
+    auto *protocol = CurrentChat.chatAccount() ? CurrentChat.chatAccount().protocolHandler() : nullptr;
+    auto *membersModel = protocol ? protocol->createChatMembersModel(CurrentChat, chain) : nullptr;
+    if (membersModel)
+    {
+        chain->setBaseModel(membersModel);
+        auto *membersProxy = new QSortFilterProxyModel{chain};
+        membersProxy->setDynamicSortFilter(true);
+        membersProxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        membersProxy->setFilterRole(Qt::ToolTipRole);
+        membersProxy->setSortCaseSensitivity(Qt::CaseInsensitive);
+        membersProxy->setSortRole(Qt::DisplayRole);
+        connect(BuddiesWidget, &FilteredTreeView::filterChanged, membersProxy,
+                &QSortFilterProxyModel::setFilterFixedString);
+        chain->addProxyModel(membersProxy);
+        membersProxy->sort(0);
+    }
+    else
+    {
+        auto contactListModel = m_injectedFactory->makeInjected<ContactListModel>(chain);
+        new ChatAdapter(contactListModel, CurrentChat);
+        chain->setBaseModel(contactListModel);
+        ProxyModel = m_injectedFactory->makeInjected<TalkableProxyModel>(chain);
 
-    NameTalkableFilter *nameFilter = new NameTalkableFilter(NameTalkableFilter::UndecidedMatching, ProxyModel);
-    connect(BuddiesWidget, SIGNAL(filterChanged(QString)), nameFilter, SLOT(setName(QString)));
+        NameTalkableFilter *nameFilter =
+            new NameTalkableFilter(NameTalkableFilter::UndecidedMatching, ProxyModel);
+        connect(BuddiesWidget, SIGNAL(filterChanged(QString)), nameFilter, SLOT(setName(QString)));
 
-    ProxyModel->addFilter(nameFilter);
-    chain->addProxyModel(ProxyModel);
+        ProxyModel->addFilter(nameFilter);
+        chain->addProxyModel(ProxyModel);
+    }
 
     view->setChain(chain);
     view->setRootIsDecorated(false);
