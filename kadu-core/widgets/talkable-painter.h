@@ -66,7 +66,6 @@ class TalkablePainter
     const QFontMetrics &fontMetrics();
     int itemIndentation();
 
-    void fixColors();
     QColor textColor() const;
 
     bool useBold() const;
@@ -92,10 +91,6 @@ class TalkablePainter
     void paintIdentityName(QPainter *painter);
     void paintName(QPainter *painter);
     void paintDescription(QPainter *painter);
-
-#ifdef Q_OS_WIN
-    static bool useColorsWorkaround();
-#endif
 
 public:
     TalkablePainter(

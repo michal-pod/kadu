@@ -40,38 +40,6 @@
 #include "talkable-painter.h"
 #include "talkable-painter.moc"
 
-#ifdef Q_OS_WIN
-#include <windows.h>
-#endif
-
-#ifdef Q_OS_WIN
-bool TalkablePainter::useColorsWorkaround()
-{
-    static bool checked = false;
-    static bool use = false;
-    if (checked)
-        return use;
-
-    checked = true;
-
-    // Qt 6 supports only NT-based Windows versions newer than Vista. The
-    // UxTheme probes below retain the actual capability check.
-    // Inspired by QWindowsXPStylePrivate::useXP().
-    typedef BOOL(WINAPI * PtrIsAppThemed)();
-    typedef BOOL(WINAPI * PtrIsThemeActive)();
-    HMODULE uxThemeHandle = GetModuleHandle(TEXT("UxTheme.dll"));
-    if (uxThemeHandle == NULL)
-        return false;
-    PtrIsAppThemed pIsAppThemed = (PtrIsAppThemed)GetProcAddress(uxThemeHandle, "IsAppThemed");
-    PtrIsThemeActive pIsThemeActive = (PtrIsThemeActive)GetProcAddress(uxThemeHandle, "IsThemeActive");
-    if (pIsAppThemed == NULL || pIsThemeActive == NULL)
-        return false;
-    use = (pIsThemeActive() && pIsAppThemed());
-
-    return use;
-}
-#endif
-
 TalkablePainter::TalkablePainter(
     TalkableDelegateConfiguration *configuration, QStyleOptionViewItem option, const QModelIndex &index)
         : Configuration(configuration), Option(option), Index(index), FontMetrics(Configuration->font()),
@@ -96,22 +64,6 @@ TalkablePainter::~TalkablePainter()
 {
     delete DescriptionDocument;
     DescriptionDocument = 0;
-}
-
-void TalkablePainter::fixColors()
-{
-#ifdef Q_OS_WIN
-    // Kadu bug #1531
-    // http://bugreports.qt.nokia.com/browse/QTBUG-15637
-    // for windows only
-    if (useColorsWorkaround())
-    {
-        // copied from QWindowsVistaStyle::drawControl()
-        Option.palette.setColor(
-            QPalette::All, QPalette::HighlightedText, Option.palette.color(QPalette::Active, QPalette::Text));
-        Option.palette.setColor(QPalette::All, QPalette::Highlight, Option.palette.base().color().darker(108));
-    }
-#endif
 }
 
 QColor TalkablePainter::textColor() const
@@ -310,8 +262,6 @@ QTextDocument *TalkablePainter::getDescriptionDocument(int width)
 {
     if (DescriptionDocument)
         return DescriptionDocument;
-
-    fixColors();
 
     const QColor &color = drawSelected() || drawDisabled() || !Configuration->useConfigurationColors()
                               ? textColor()
@@ -519,9 +469,6 @@ void TalkablePainter::paint(QPainter *painter)
 
     computeLayout();
 
-    fixColors();
-
-    // some bit of broken logic
     if (drawSelected() || drawDisabled() || !Configuration->useConfigurationColors())
         painter->setPen(textColor());
     else

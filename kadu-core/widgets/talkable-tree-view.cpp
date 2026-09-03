@@ -20,6 +20,7 @@
  */
 
 #include <QtCore/QDir>
+#include <QtCore/QAbstractItemModel>
 #include <QtCore/QModelIndex>
 #include <QtCore/QScopedPointer>
 #include <QtCore/QTemporaryFile>
@@ -143,7 +144,7 @@ void TalkableTreeView::setChain(ModelChain *chain)
 
     // maybe contact priorities changed?
     // fix for #2392
-    connect(model(), SIGNAL(dataChanged(QModelIndex, QModelIndex)), this, SLOT(updateContext()));
+    connect(model(), &QAbstractItemModel::dataChanged, this, &TalkableTreeView::updateContext);
 }
 
 ModelChain *TalkableTreeView::chain() const
@@ -312,8 +313,11 @@ ActionContext *TalkableTreeView::actionContext()
 
 void TalkableTreeView::doubleClickedSlot(const QModelIndex &index)
 {
-    if (index.isValid())
-        triggerActivate(index);
+    // A double click is an operation on its row.  In particular, it must not
+    // reuse a chat assembled earlier from a multi-item selection.
+    const auto talkable = talkableAt(index);
+    if (!talkable.isEmpty())
+        emit talkableActivated(talkable);
 }
 
 // Tool Tips

@@ -186,8 +186,7 @@ void KaduTreeView::keyPressEvent(QKeyEvent *event)
 
 void KaduTreeView::resizeEvent(QResizeEvent *event)
 {
-    Q_UNUSED(event);
-    // QTreeView::resizeEvent(event);
+    QTreeView::resizeEvent(event);
 
     if (BackgroundImageMode == BackgroundStretched)
         updateBackground();

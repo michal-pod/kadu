@@ -26,6 +26,10 @@
 
 #include "avatars/aggregated-account-avatar-service.h"
 #include "avatars/aggregated-contact-avatar-service.h"
+#include "buddies/buddy-manager.h"
+#include "chat/chat-details-room.h"
+#include "chat/chat-manager.h"
+#include "contacts/contact-manager.h"
 
 #include "matrix-account-data.h"
 #include "matrix-chat-service.h"
@@ -47,11 +51,15 @@
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/keyverificationsession.h>
 #include <Quotient/room.h>
+#include <Quotient/user.h>
 
 #include <qt6keychain/keychain.h>
 
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QDebug>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QUrl>
@@ -72,6 +80,21 @@ MatrixProtocol::~MatrixProtocol()
         m_chatStateServiceRepository->removeChatStateService(m_chatStateService);
     if (m_chatServiceRepository && m_chatService)
         m_chatServiceRepository->removeChatService(m_chatService);
+}
+
+void MatrixProtocol::setBuddyManager(BuddyManager *buddyManager)
+{
+    m_buddyManager = buddyManager;
+}
+
+void MatrixProtocol::setChatManager(ChatManager *chatManager)
+{
+    m_chatManager = chatManager;
+}
+
+void MatrixProtocol::setContactManager(ContactManager *contactManager)
+{
+    m_contactManager = contactManager;
 }
 
 void MatrixProtocol::setChatServiceRepository(ChatServiceRepository *chatServiceRepository)
@@ -147,6 +170,15 @@ ProtocolTimelineService *MatrixProtocol::timelineService()
 
 void MatrixProtocol::createConnection()
 {
+    for (const auto &user : m_directUsers)
+        if (user)
+            disconnect(user.data(), nullptr, this, nullptr);
+    m_directUsers.clear();
+    for (auto *room : m_debugWatchedRooms)
+        if (room)
+            disconnect(room, nullptr, this, nullptr);
+    m_debugWatchedRooms.clear();
+
     m_connection = new Quotient::Connection{QUrl{MatrixAccountData{account()}.homeserver()}, this};
     // Encryption must be enabled before logging in: this makes libQuotient initialise
     // the local Olm account and publish this client's device keys.
@@ -181,6 +213,18 @@ void MatrixProtocol::createConnection()
         loggedIn();
     });
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
+    connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::synchronizeDirectContacts);
+    // Temporary Matrix room/contact diagnostic. Uncomment while investigating list mapping.
+    // connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::dumpMatrixRooms);
+    // connect(m_connection, &Quotient::Connection::newRoom, this, [this](Quotient::Room *room) {
+    //     watchRoomForDebug(room);
+    //     dumpMatrixRooms();
+    // });
+    connect(m_connection, &Quotient::Connection::directChatsListChanged, this,
+            [this](const Quotient::DirectChatsMap &, const Quotient::DirectChatsMap &) {
+                synchronizeDirectContacts();
+                // dumpMatrixRooms();
+            });
     connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
             [this](Quotient::KeyVerificationSession *session) {
                 registerInRoomVerificationSession(session);
@@ -214,6 +258,246 @@ void MatrixProtocol::createConnection()
     connect(
         m_connection, &Quotient::Connection::resolveError, this,
         [this](const QString &message) { handleConnectionError(message); });
+}
+
+void MatrixProtocol::watchRoomForDebug(Quotient::Room *room)
+{
+    if (!room || m_debugWatchedRooms.contains(room))
+        return;
+
+    m_debugWatchedRooms.insert(room);
+    connect(room, &Quotient::Room::changed, this,
+            [this](Quotient::Room::Changes) { dumpMatrixRooms(); });
+    connect(room, &QObject::destroyed, this,
+            [this, room] { m_debugWatchedRooms.remove(room); });
+}
+
+void MatrixProtocol::dumpMatrixRooms()
+{
+    if (!m_connection)
+        return;
+
+    const auto joinStateName = [](Quotient::JoinState state) {
+        switch (state)
+        {
+        case Quotient::JoinState::Invite:
+            return QStringLiteral("invite");
+        case Quotient::JoinState::Join:
+            return QStringLiteral("join");
+        case Quotient::JoinState::Leave:
+            return QStringLiteral("leave");
+        }
+
+        return QStringLiteral("unknown");
+    };
+
+    QJsonArray roomsJson;
+    const auto rooms = m_connection->allRooms();
+    for (auto *room : rooms)
+    {
+        if (!room)
+            continue;
+
+        watchRoomForDebug(room);
+
+        QJsonObject roomJson;
+        roomJson.insert(QStringLiteral("roomId"), room->id());
+        roomJson.insert(QStringLiteral("joinState"), joinStateName(room->joinState()));
+        roomJson.insert(QStringLiteral("joinStateValue"), static_cast<int>(room->joinState()));
+        roomJson.insert(QStringLiteral("displayName"), room->displayName());
+        roomJson.insert(QStringLiteral("name"), room->name());
+        roomJson.insert(QStringLiteral("canonicalAlias"), room->canonicalAlias());
+        roomJson.insert(QStringLiteral("aliases"), QJsonArray::fromStringList(room->aliases()));
+        roomJson.insert(QStringLiteral("isDirect"), m_connection->isDirectChat(room->id()));
+        roomJson.insert(
+            QStringLiteral("directMxids"),
+            QJsonArray::fromStringList(m_connection->directChatMemberIds(room)));
+        roomJson.insert(
+            QStringLiteral("joinedMxids"), QJsonArray::fromStringList(room->joinedMemberIds()));
+        roomJson.insert(QStringLiteral("joinedCount"), room->joinedCount());
+        roomJson.insert(QStringLiteral("invitedCount"), room->invitedCount());
+        roomJson.insert(QStringLiteral("totalMemberCount"), room->totalMemberCount());
+        roomJson.insert(QStringLiteral("encrypted"), room->usesEncryption());
+        roomJson.insert(QStringLiteral("predecessorRoomId"), room->predecessorId());
+        roomJson.insert(QStringLiteral("successorRoomId"), room->successorId());
+        roomsJson.append(roomJson);
+    }
+
+    QJsonArray directChatsJson;
+    const auto directChats = m_connection->directChats();
+    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
+    {
+        QJsonObject directChatJson;
+        directChatJson.insert(QStringLiteral("mxid"), it.key() ? it.key()->id() : QString{});
+        directChatJson.insert(
+            QStringLiteral("globalDisplayName"), it.key() ? it.key()->displayname() : QString{});
+        directChatJson.insert(
+            QStringLiteral("globalAvatarUrl"), it.key() ? it.key()->avatarUrl().toString() : QString{});
+        directChatJson.insert(QStringLiteral("roomId"), it.value());
+        const auto *mappedRoom = m_connection->room(
+            it.value(), Quotient::JoinState::Invite | Quotient::JoinState::Join | Quotient::JoinState::Leave);
+        directChatJson.insert(QStringLiteral("roomKnown"), mappedRoom != nullptr);
+        directChatJson.insert(
+            QStringLiteral("roomJoinState"),
+            mappedRoom ? joinStateName(mappedRoom->joinState()) : QStringLiteral("unknown"));
+        directChatsJson.append(directChatJson);
+    }
+
+    QJsonObject dump;
+    dump.insert(QStringLiteral("accountMxid"), m_connection->userId());
+    dump.insert(QStringLiteral("directChats"), directChatsJson);
+    dump.insert(QStringLiteral("rooms"), roomsJson);
+
+    QJsonArray contactsJson;
+    if (m_contactManager)
+    {
+        for (const auto &contact : m_contactManager->contacts(account()))
+        {
+            const auto buddy = contact.ownerBuddy();
+            QJsonObject contactJson;
+            contactJson.insert(QStringLiteral("mxid"), contact.id());
+            contactJson.insert(QStringLiteral("anonymous"), contact.isAnonymous());
+            contactJson.insert(
+                QStringLiteral("buddyUuid"), buddy ? buddy.uuid().toString(QUuid::WithoutBraces) : QString{});
+            contactJson.insert(QStringLiteral("buddyDisplay"), buddy ? buddy.display() : QString{});
+            contactJson.insert(
+                QStringLiteral("buddyContactCount"), buddy ? buddy.contacts().size() : 0);
+            contactsJson.append(contactJson);
+        }
+    }
+    dump.insert(QStringLiteral("kaduContacts"), contactsJson);
+
+    QJsonArray buddiesJson;
+    if (m_buddyManager)
+    {
+        for (const auto &buddy : m_buddyManager->buddies(account(), true))
+        {
+            QStringList contactMxids;
+            for (const auto &contact : buddy.contacts(account()))
+                contactMxids.append(contact.id());
+
+            QJsonObject buddyJson;
+            buddyJson.insert(QStringLiteral("uuid"), buddy.uuid().toString(QUuid::WithoutBraces));
+            buddyJson.insert(QStringLiteral("display"), buddy.display());
+            buddyJson.insert(QStringLiteral("anonymous"), buddy.isAnonymous());
+            buddyJson.insert(QStringLiteral("contactMxids"), QJsonArray::fromStringList(contactMxids));
+            buddiesJson.append(buddyJson);
+        }
+    }
+    dump.insert(QStringLiteral("kaduBuddies"), buddiesJson);
+
+    QJsonArray chatsJson;
+    if (m_chatManager)
+    {
+        for (const auto &chat : m_chatManager->chats(account()))
+        {
+            QStringList contactMxids;
+            for (const auto &contact : chat.contacts())
+                contactMxids.append(contact.id());
+
+            const auto *roomDetails = qobject_cast<ChatDetailsRoom *>(chat.details());
+            const auto roomId = roomDetails ? roomDetails->room() : QString{};
+            QJsonObject chatJson;
+            chatJson.insert(QStringLiteral("type"), chat.type());
+            chatJson.insert(QStringLiteral("display"), chat.display());
+            chatJson.insert(QStringLiteral("roomId"), roomId);
+            chatJson.insert(QStringLiteral("contactMxids"), QJsonArray::fromStringList(contactMxids));
+            chatJson.insert(
+                QStringLiteral("matrixRoomIsDirect"),
+                !roomId.isEmpty() && m_connection->isDirectChat(roomId));
+            chatsJson.append(chatJson);
+        }
+    }
+    dump.insert(QStringLiteral("kaduChats"), chatsJson);
+
+    qInfo().noquote() << "[Matrix room dump]"
+                      << QString::fromUtf8(QJsonDocument{dump}.toJson(QJsonDocument::Indented));
+}
+
+void MatrixProtocol::synchronizeDirectContacts()
+{
+    if (!m_connection || !m_buddyManager || !m_contactManager)
+        return;
+
+    QSet<QString> directUserIds;
+    const auto directChats = m_connection->directChats();
+    for (auto it = directChats.cbegin(); it != directChats.cend(); ++it)
+    {
+        const auto *mappedUser = it.key();
+        if (!mappedUser || mappedUser->id() == m_connection->userId())
+            continue;
+
+        if (!m_connection->room(it.value(), Quotient::JoinState::Invite | Quotient::JoinState::Join))
+            continue;
+
+        directUserIds.insert(mappedUser->id());
+    }
+
+    for (const auto &contact : m_contactManager->contacts(account()))
+    {
+        if (!contact || contact == account().accountContact() || directUserIds.contains(contact.id()))
+            continue;
+
+        const auto buddy = contact.ownerBuddy();
+        if (buddy && !buddy.isAnonymous() && buddy.contacts().size() == 1)
+            buddy.setAnonymous(true);
+    }
+
+    for (auto it = m_directUsers.begin(); it != m_directUsers.end();)
+    {
+        if (directUserIds.contains(it.key()))
+        {
+            ++it;
+            continue;
+        }
+
+        if (it.value())
+            disconnect(it.value(), nullptr, this, nullptr);
+        it = m_directUsers.erase(it);
+    }
+
+    for (const auto &userId : directUserIds)
+    {
+        auto *user = m_connection->user(userId);
+        if (!user)
+            continue;
+
+        if (!m_directUsers.contains(userId))
+        {
+            m_directUsers.insert(userId, user);
+            connect(user, &Quotient::User::defaultNameChanged, this,
+                    [this, userId] { synchronizeDirectContactProfile(userId); });
+            connect(user, &QObject::destroyed, this,
+                    [this, userId] { m_directUsers.remove(userId); });
+        }
+
+        synchronizeDirectContactProfile(userId);
+    }
+}
+
+void MatrixProtocol::synchronizeDirectContactProfile(const QString &userId)
+{
+    if (!m_connection || !m_buddyManager || !m_contactManager || !m_directUsers.contains(userId))
+        return;
+
+    auto *user = m_directUsers.value(userId).data();
+    if (!user)
+        return;
+
+    const auto contact = m_contactManager->byId(account(), userId, ActionCreateAndAdd);
+    const auto buddy = m_buddyManager->byContact(contact, ActionCreateAndAdd);
+    if (!buddy)
+        return;
+
+    const auto displayName = user->displayname();
+    if (buddy.isAnonymous() || buddy.contacts().size() == 1)
+        buddy.setDisplay(displayName.isEmpty() ? userId : displayName);
+    buddy.setAnonymous(false);
+
+    if (m_contactAvatarService)
+        m_contactAvatarService->observeContact(userId);
+    else
+        user->load();
 }
 
 void MatrixProtocol::promptForRecoveryKeyRestore()

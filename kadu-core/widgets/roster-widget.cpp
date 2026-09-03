@@ -114,17 +114,19 @@ void RosterWidget::createGui()
 
 void RosterWidget::configurationUpdated()
 {
-    // The list is painted through a stylesheet, which names its colours outright and so cannot
-    // inherit them. Unless the user asks for colours of their own, they are taken from the palette
-    // here instead: the window's own background, and the colour a list uses for every second row.
+    // The stylesheet needs colours passed into it. With the system palette, keep every row on the
+    // list background: some platform styles expose a light
+    // AlternateBase even while their Base is dark, which produces a conspicuous white zebra stripe.
     auto const customColors = m_configuration->deprecatedApi()->readBoolEntry("Look", "UserboxCustomColors");
     auto const palette = QGuiApplication::palette();
 
     QString bgColor = customColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "UserboxBgColor").name()
                                    : palette.base().color().name();
-    QString alternateBgColor =
-        customColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "UserboxAlternateBgColor").name()
-                     : palette.alternateBase().color().name();
+    QString alternateBgColor = customColors
+                                   ? m_configuration->deprecatedApi()
+                                         ->readColorEntry("Look", "UserboxAlternateBgColor")
+                                         .name()
+                                   : bgColor;
 
     if (CompositingEnabled && m_configuration->deprecatedApi()->readBoolEntry("Look", "UserboxTransparency"))
     {

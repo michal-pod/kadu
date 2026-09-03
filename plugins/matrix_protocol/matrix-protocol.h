@@ -29,6 +29,9 @@
 
 class ChatServiceRepository;
 class ChatStateServiceRepository;
+class ChatManager;
+class BuddyManager;
+class ContactManager;
 class MatrixAccountAvatarService;
 class MatrixChatService;
 class MatrixChatStateService;
@@ -48,6 +51,7 @@ namespace Quotient
 class Connection;
 class KeyVerificationSession;
 class Room;
+class User;
 }
 
 class MatrixProtocol final : public Protocol
@@ -60,7 +64,7 @@ public:
 
     virtual bool contactsListReadOnly() override
     {
-        return false;
+        return true;
     }
     virtual bool isLocalHistorySupported() const override
     {
@@ -101,6 +105,9 @@ public:
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
     QPointer<ChatStateServiceRepository> m_chatStateServiceRepository;
+    QPointer<ChatManager> m_chatManager;
+    QPointer<BuddyManager> m_buddyManager;
+    QPointer<ContactManager> m_contactManager;
     QPointer<AggregatedAccountAvatarService> m_aggregatedAccountAvatarService;
     QPointer<AggregatedContactAvatarService> m_aggregatedContactAvatarService;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
@@ -119,8 +126,14 @@ private:
     QHash<QString, QPointer<Quotient::KeyVerificationSession>> m_inRoomVerificationSessions;
     QHash<QString, QSet<QString>> m_handledInRoomVerificationEvents;
     QSet<Quotient::Room *> m_inRoomVerificationRooms;
+    QSet<Quotient::Room *> m_debugWatchedRooms;
+    QHash<QString, QPointer<Quotient::User>> m_directUsers;
 
     void createConnection();
+    void watchRoomForDebug(Quotient::Room *room);
+    void dumpMatrixRooms();
+    void synchronizeDirectContacts();
+    void synchronizeDirectContactProfile(const QString &userId);
     void handleConnectionError(const QString &message, const QString &details = {});
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
@@ -129,6 +142,9 @@ private:
     void handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex);
 
 private slots:
+    INJEQT_SET void setBuddyManager(BuddyManager *buddyManager);
+    INJEQT_SET void setChatManager(ChatManager *chatManager);
+    INJEQT_SET void setContactManager(ContactManager *contactManager);
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
     INJEQT_SET void setChatStateServiceRepository(ChatStateServiceRepository *chatStateServiceRepository);
     INJEQT_SET void setAggregatedAccountAvatarService(AggregatedAccountAvatarService *aggregatedAccountAvatarService);

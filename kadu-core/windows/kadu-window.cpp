@@ -437,7 +437,9 @@ void KaduWindow::talkableActivatedSlot(const Talkable &talkable)
         return;
 
     auto chat = m_talkableConverter->toChat(talkable);
-    if (chat && !chat.contacts().toBuddySet().contains(m_myself->buddy()))
+    const auto isChatWithMyself =
+        chat && chat.contacts().size() == 1 && chat.contacts().toBuddySet().contains(m_myself->buddy());
+    if (chat && !isChatWithMyself)
     {
         m_chatWidgetManager->openChat(chat, OpenChatActivation::Activate);
         return;

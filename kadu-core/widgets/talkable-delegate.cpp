@@ -125,15 +125,6 @@ bool TalkableDelegate::editorEvent(
 
         break;
     }
-    case QEvent::MouseButtonDblClick:
-    {
-        QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-        if (Qt::LeftButton != mouseEvent->button())
-            return false;
-
-        break;
-    }
-
     case QEvent::KeyPress:
     {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);

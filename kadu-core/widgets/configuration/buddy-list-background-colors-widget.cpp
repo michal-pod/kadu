@@ -59,7 +59,7 @@ void BuddyListBackgroundColorsWidget::createGui()
 
 void BuddyListBackgroundColorsWidget::loadConfiguration()
 {
-    if (!m_mainWindow || m_mainWindow->dataManager())
+    if (!m_mainWindow || !m_mainWindow->dataManager())
         return;
 
     colorButton->setColor(m_mainWindow->dataManager()->readEntry("Look", "UserboxBgColor").value<QColor>());
@@ -69,10 +69,11 @@ void BuddyListBackgroundColorsWidget::loadConfiguration()
 
 void BuddyListBackgroundColorsWidget::configurationApplied()
 {
-    if (!m_mainWindow || m_mainWindow->dataManager())
+    if (!m_mainWindow || !m_mainWindow->dataManager())
         return;
 
     m_mainWindow->dataManager()->writeEntry("Look", "UserboxBgColor", QVariant(colorButton->color().name()));
     m_mainWindow->dataManager()->writeEntry(
         "Look", "UserboxAlternateBgColor", QVariant(alternateColorButton->color().name()));
+    m_mainWindow->dataManager()->writeEntry("Look", "UserboxCustomColors", true);
 }
