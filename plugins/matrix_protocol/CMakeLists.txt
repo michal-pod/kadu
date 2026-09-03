@@ -6,9 +6,11 @@ find_package (Kadu REQUIRED CONFIG)
 find_package (QuotientQt6 REQUIRED)
 
 set (SOURCES
+    gui/matrix-power-level-editor.cpp
     gui/matrix-device-verification-dialog.cpp
     gui/matrix-restore-recovery-key-dialog.cpp
     gui/matrix-room-invitation-dialog.cpp
+    gui/matrix-room-settings-window.cpp
     gui/matrix-add-account-widget.cpp
     gui/matrix-edit-account-widget.cpp
     matrix-account-data.cpp

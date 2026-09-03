@@ -141,13 +141,20 @@ void BuddyContactsTable::viewSelectionChanged(const QModelIndex &current, const 
     }
     else
     {
-        MoveUpButton->setEnabled(current.sibling(current.row() - 1, current.column()).isValid());
-        MoveDownButton->setEnabled(current.sibling(current.row() + 1, current.column()).isValid());
-        DetachContactButton->setEnabled(true);
-        RemoveContactButton->setEnabled(true);
+        auto item = current.data(BuddyContactsTableItemRole).value<BuddyContactsTableItem *>();
+        const auto readOnly = item && item->isReadOnly();
+        const auto previousIndex = current.sibling(current.row() - 1, current.column());
+        const auto nextIndex = current.sibling(current.row() + 1, current.column());
+        const auto previousItem =
+            previousIndex.data(BuddyContactsTableItemRole).value<BuddyContactsTableItem *>();
+        const auto nextItem = nextIndex.data(BuddyContactsTableItemRole).value<BuddyContactsTableItem *>();
+        MoveUpButton->setEnabled(previousIndex.isValid() && !readOnly && previousItem && !previousItem->isReadOnly());
+        MoveDownButton->setEnabled(nextIndex.isValid() && !readOnly && nextItem && !nextItem->isReadOnly());
+        DetachContactButton->setEnabled(!readOnly);
+        RemoveContactButton->setEnabled(!readOnly);
     }
 
-    DetachContactButton->setEnabled(MyBuddy.contacts().count() > 1);
+    DetachContactButton->setEnabled(DetachContactButton->isEnabled() && MyBuddy.contacts().count() > 1);
 }
 
 void BuddyContactsTable::moveUpClicked()

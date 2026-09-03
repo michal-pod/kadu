@@ -102,6 +102,7 @@ public:
     void setDetachedBuddyName(const QString &detachedBuddyName);
 
     bool isValid() const;
+    bool isReadOnly() const;
 
 signals:
     void updated(BuddyContactsTableItem *item);

@@ -50,6 +50,7 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(RemoteHistorySearchCapabilities)
 
 class QPixmap;
 class QAbstractItemModel;
+class QWidget;
 
 class AccountShared;
 class BuddyListSerializationService;
@@ -163,6 +164,17 @@ public:
         return nullptr;
     }
     virtual QAbstractItemModel *createChatMembersModel(const Chat &, QObject *)
+    {
+        return nullptr;
+    }
+    /**
+     * @short Create a protocol-specific settings window for a chat.
+     *
+     * Protocols whose room metadata is managed remotely should provide their own window and
+     * validate every operation against server-side permissions. Returning null keeps the legacy
+     * chat settings window as a fallback.
+     */
+    virtual QWidget *createChatSettingsWindow(const Chat &, QWidget *)
     {
         return nullptr;
     }

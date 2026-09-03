@@ -24,6 +24,7 @@
 #include "buddy-contacts-table-delegate.moc"
 
 #include "accounts/account.h"
+#include "accounts/filter/writeable-contacts-list-filter.h"
 #include "core/injected-factory.h"
 #include "model/roles.h"
 #include "widgets/accounts-combo-box.h"
@@ -52,6 +53,7 @@ QWidget *BuddyContactsTableDelegate::createEditor(
 
     AccountsComboBox *accountsComboBox = m_injectedFactory->makeInjected<AccountsComboBox>(
         index.data(AccountRole).value<Account>().isNull(), AccountsComboBox::NotVisibleWithOneRowSourceModel, parent);
+    accountsComboBox->addFilter(new WriteableContactsListFilter{accountsComboBox});
     // this connect does not work withour Account
     connect(accountsComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(dataChanged()));
 

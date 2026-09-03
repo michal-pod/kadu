@@ -29,6 +29,7 @@
 #include "core/injected-factory.h"
 #include "core/myself.h"
 #include "icons/icons-manager.h"
+#include "protocols/protocol.h"
 #include "windows/buddy-delete-window.h"
 #include "windows/kadu-window.h"
 #include "windows/message-dialog.h"
@@ -105,7 +106,11 @@ void DeleteTalkableAction::updateChatActionState(Action *action)
 
     auto const &chat = actionChat(action->context());
     auto chatType = m_chatTypeManager->chatType(chat.type());
-    action->setEnabled(chat && (!chatType || (chatType->name() != "Contact" && !chat.display().isEmpty())));
+    const auto account = chat.chatAccount();
+    const auto protocol = account ? account.protocolHandler() : nullptr;
+    action->setEnabled(
+        chat && (!protocol || !protocol->contactsListReadOnly()) &&
+        (!chatType || (chatType->name() != "Contact" && !chat.display().isEmpty())));
 }
 
 void DeleteTalkableAction::updateBuddyActionState(Action *action)
@@ -115,6 +120,15 @@ void DeleteTalkableAction::updateBuddyActionState(Action *action)
     const BuddySet &buddies = action->context()->buddies();
     if (buddies.isEmpty() || buddies.contains(m_myself->buddy()))
         return;
+
+    for (const auto &buddy : buddies)
+        for (const auto &contact : buddy.contacts())
+        {
+            const auto account = contact.contactAccount();
+            const auto protocol = account ? account.protocolHandler() : nullptr;
+            if (protocol && protocol->contactsListReadOnly())
+                return;
+        }
 
     action->setEnabled(true);
 }
@@ -157,6 +171,10 @@ void DeleteTalkableAction::chatActionTriggered(ActionContext *context)
     const Chat &chat = actionChat(context);
     if (!chat)
         return;
+    const auto account = chat.chatAccount();
+    const auto protocol = account ? account.protocolHandler() : nullptr;
+    if (protocol && protocol->contactsListReadOnly())
+        return;
 
     MessageDialog *dialog = MessageDialog::create(
         m_iconsManager->iconByPath(KaduIcon("dialog-warning")), tr("Delete Chat"),
@@ -173,6 +191,15 @@ void DeleteTalkableAction::buddyActionTriggered(ActionContext *context)
     auto buddySet = context->buddies();
     if (buddySet.empty())
         return;
+
+    for (const auto &buddy : buddySet)
+        for (const auto &contact : buddy.contacts())
+        {
+            const auto account = contact.contactAccount();
+            const auto protocol = account ? account.protocolHandler() : nullptr;
+            if (protocol && protocol->contactsListReadOnly())
+                return;
+        }
 
     auto deleteWindow = injectedFactory()->makeInjected<BuddyDeleteWindow>(buddySet);
     deleteWindow->show();

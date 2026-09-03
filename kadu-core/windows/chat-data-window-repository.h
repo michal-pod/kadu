@@ -21,10 +21,12 @@
 
 #include "chat/chat.h"
 
+#include <QtCore/QMap>
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 
-class ChatDataWindow;
 class InjectedFactory;
+class QWidget;
 
 class ChatDataWindowRepository : public QObject
 {
@@ -34,8 +36,8 @@ public:
     Q_INVOKABLE explicit ChatDataWindowRepository(QObject *parent = nullptr);
     virtual ~ChatDataWindowRepository();
 
-    ChatDataWindow *windowForChat(const Chat &chat);
-    const QMap<Chat, ChatDataWindow *> &windows() const;
+    QWidget *windowForChat(const Chat &chat);
+    const QMap<Chat, QWidget *> &windows() const;
 
 public slots:
     void showChatWindow(const Chat &chat);
@@ -43,10 +45,8 @@ public slots:
 private:
     QPointer<InjectedFactory> m_injectedFactory;
 
-    QMap<Chat, ChatDataWindow *> Windows;
+    QMap<Chat, QWidget *> Windows;
 
 private slots:
     INJEQT_SET void setInjectedFactory(InjectedFactory *injectedFactory);
-
-    void windowDestroyed(const Chat &chat);
 };

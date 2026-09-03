@@ -53,6 +53,10 @@ void Roster::addContact(const Contact &contact) const
     if (!contact)
         return;
 
+    const auto protocol = contact.contactAccount() ? contact.contactAccount().protocolHandler() : nullptr;
+    if (!protocol || protocol->contactsListReadOnly())
+        return;
+
     auto service = rosterService(contact);
     if (service)
     {
@@ -64,6 +68,10 @@ void Roster::addContact(const Contact &contact) const
 void Roster::removeContact(const Contact &contact) const
 {
     if (!contact)
+        return;
+
+    const auto protocol = contact.contactAccount() ? contact.contactAccount().protocolHandler() : nullptr;
+    if (!protocol || protocol->contactsListReadOnly())
         return;
 
     auto service = rosterService(contact);

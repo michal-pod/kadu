@@ -107,6 +107,12 @@ bool BuddyContactsTableItem::isValid() const
     return isEditValid();
 }
 
+bool BuddyContactsTableItem::isReadOnly() const
+{
+    const auto handler = ItemAccount ? ItemAccount.protocolHandler() : nullptr;
+    return handler && handler->contactsListReadOnly();
+}
+
 bool BuddyContactsTableItem::isAddValid() const
 {
     if (ItemContact)

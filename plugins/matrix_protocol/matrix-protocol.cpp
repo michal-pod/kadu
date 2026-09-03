@@ -43,6 +43,7 @@
 #include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
+#include "gui/matrix-room-settings-window.h"
 
 #include <Quotient/connection.h>
 #include <Quotient/csapi/authed-content-repo.h>
@@ -180,6 +181,15 @@ QAbstractItemModel *MatrixProtocol::createChatMembersModel(const Chat &chat, QOb
         return nullptr;
 
     return new MatrixRoomMembersModel{account(), room, m_contactManager, parent};
+}
+
+QWidget *MatrixProtocol::createChatSettingsWindow(const Chat &chat, QWidget *parent)
+{
+    const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details());
+    auto *room = details && m_connection
+                     ? m_connection->room(details->room(), Quotient::JoinState::Join)
+                     : nullptr;
+    return new MatrixRoomSettingsWindow{chat, m_connection, room, parent};
 }
 
 void MatrixProtocol::createConnection()

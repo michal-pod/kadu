@@ -17,7 +17,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "accounts/account.h"
 #include "core/injected-factory.h"
+#include "protocols/protocol.h"
 #include "windows/chat-data-window.h"
 
 #include "chat-data-window-repository.h"
@@ -36,31 +38,33 @@ void ChatDataWindowRepository::setInjectedFactory(InjectedFactory *injectedFacto
     m_injectedFactory = injectedFactory;
 }
 
-ChatDataWindow *ChatDataWindowRepository::windowForChat(const Chat &chat)
+QWidget *ChatDataWindowRepository::windowForChat(const Chat &chat)
 {
     if (Windows.contains(chat))
         return Windows.value(chat);
 
-    auto result = m_injectedFactory->makeInjected<ChatDataWindow>(chat);
-    connect(result, SIGNAL(destroyed(Chat)), this, SLOT(windowDestroyed(Chat)));
+    QWidget *result = nullptr;
+    const auto account = chat.chatAccount();
+    if (account && account.protocolHandler())
+        result = account.protocolHandler()->createChatSettingsWindow(chat, nullptr);
+    if (!result)
+        result = m_injectedFactory->makeInjected<ChatDataWindow>(chat);
+
+    result->setAttribute(Qt::WA_DeleteOnClose);
+    connect(result, &QObject::destroyed, this, [this, chat] { Windows.remove(chat); });
     Windows.insert(chat, result);
 
     return result;
 }
 
-const QMap<Chat, ChatDataWindow *> &ChatDataWindowRepository::windows() const
+const QMap<Chat, QWidget *> &ChatDataWindowRepository::windows() const
 {
     return Windows;
 }
 
-void ChatDataWindowRepository::windowDestroyed(const Chat &chat)
-{
-    Windows.remove(chat);
-}
-
 void ChatDataWindowRepository::showChatWindow(const Chat &chat)
 {
-    ChatDataWindow *window = windowForChat(chat);
+    QWidget *window = windowForChat(chat);
     if (window)
     {
         window->show();

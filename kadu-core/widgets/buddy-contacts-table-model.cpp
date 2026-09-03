@@ -147,6 +147,9 @@ void BuddyContactsTableModel::buddyFromContacts()
 
 void BuddyContactsTableModel::performItemAction(BuddyContactsTableItem *item)
 {
+    if (item->isReadOnly())
+        return;
+
     switch (item->action())
     {
     case BuddyContactsTableItem::ItemEdit:
@@ -331,9 +334,12 @@ Qt::ItemFlags BuddyContactsTableModel::flags(const QModelIndex &index) const
     if (index.row() < 0 || index.row() >= Contacts.size())
         return QAbstractItemModel::flags(index);
 
+    BuddyContactsTableItem *item = Contacts.at(index.row());
+    if (item->isReadOnly())
+        return QAbstractItemModel::flags(index) & ~(Qt::ItemIsEditable | Qt::ItemIsUserCheckable);
+
     if (2 == index.column())
     {
-        BuddyContactsTableItem *item = Contacts.at(index.row());
         // TODO fix when we support more than 2 protocols...
         if ("gadu" == item->itemAccount().protocolName())
             return QAbstractItemModel::flags(index);
@@ -432,6 +438,9 @@ bool BuddyContactsTableModel::setData(const QModelIndex &index, const QVariant &
         return false;
 
     BuddyContactsTableItem *item = Contacts.at(index.row());
+    if (item->isReadOnly())
+        return false;
+
     switch (index.column())
     {
     case 0:

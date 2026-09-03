@@ -27,6 +27,7 @@
 #include "chat/type/chat-type-manager.h"
 #include "core/injected-factory.h"
 #include "core/myself.h"
+#include "protocols/protocol.h"
 #include "windows/add-buddy-window.h"
 #include "windows/buddy-data-window-repository.h"
 #include "windows/buddy-data-window.h"
@@ -101,7 +102,11 @@ Buddy EditTalkableAction::actionBuddy(ActionContext *context) const
 void EditTalkableAction::setChatActionTitleAndIcon(Action *action)
 {
     action->setIcon(KaduIcon("x-office-address-book"));
-    action->setText(QCoreApplication::translate("KaduWindowActions", "View Chat Properties"));
+    const auto chat = actionChat(action->context());
+    action->setText(
+        chat.type() == QStringLiteral("Room")
+            ? QCoreApplication::translate("KaduWindowActions", "Room Settings...")
+            : QCoreApplication::translate("KaduWindowActions", "Chat Settings..."));
 }
 
 void EditTalkableAction::setBuddyActionTitleAndIcon(Action *action)
@@ -138,6 +143,15 @@ void EditTalkableAction::updateBuddyActionState(Action *action)
 
     if (buddy == m_myself->buddy())
         return;
+
+    if (buddy.isAnonymous())
+        for (const auto &contact : buddy.contacts())
+        {
+            const auto account = contact.contactAccount();
+            const auto protocol = account ? account.protocolHandler() : nullptr;
+            if (protocol && protocol->contactsListReadOnly())
+                return;
+        }
 
     action->setEnabled(true);
 }
@@ -190,7 +204,16 @@ void EditTalkableAction::buddyActionTriggered(ActionContext *context)
     if (!buddy)
         return;
     if (buddy.isAnonymous())
+    {
+        for (const auto &contact : buddy.contacts())
+        {
+            const auto account = contact.contactAccount();
+            const auto protocol = account ? account.protocolHandler() : nullptr;
+            if (protocol && protocol->contactsListReadOnly())
+                return;
+        }
         (injectedFactory()->makeInjected<AddBuddyWindow>(m_kaduWindowService->kaduWindow(), buddy, true))->show();
+    }
     else
         m_buddyDataWindowRepository->showBuddyWindow(buddy);
 }
