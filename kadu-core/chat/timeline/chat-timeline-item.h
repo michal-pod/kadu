@@ -59,7 +59,8 @@ enum class ChatTimelineItemKind
     ErrorNotice,
     UnsupportedEvent,
     EncryptedEvent,
-    LocationMessage
+    LocationMessage,
+    RoomSettingsChanged
 };
 
 enum class ChatTimelineDeliveryState

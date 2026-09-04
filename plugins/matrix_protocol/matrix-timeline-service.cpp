@@ -47,6 +47,8 @@
 #include <Quotient/events/roompowerlevelsevent.h>
 #include <Quotient/events/roomevent.h>
 #include <Quotient/events/simplestateevents.h>
+#include <Quotient/events/stateevent.h>
+#include <Quotient/events/stickerevent.h>
 #include <Quotient/jobs/downloadfilejob.h>
 #include <Quotient/jobs/mediathumbnailjob.h>
 #include <Quotient/room.h>
@@ -61,6 +63,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QSet>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QTimer>
@@ -1254,6 +1257,7 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
                                             eventType == QStringLiteral("m.room.join_rules") ||
                                             eventType == QStringLiteral("m.room.history_visibility") ||
                                             eventType == QStringLiteral("m.room.guest_access") ||
+                                            eventType == QStringLiteral("m.room.canonical_alias") ||
                                             eventType == QStringLiteral("m.room.create") ||
                                             eventType == QStringLiteral("m.room.encryption");
         if (permissionsChanged)
@@ -1475,10 +1479,13 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     const auto content = event.contentJson();
     if (event.isRedacted())
     {
-        item.kind = ChatTimelineItemKind::TextMessage;
+        const auto stateEvent = Quotient::eventCast<const Quotient::StateEvent>(&event);
+        item.kind = stateEvent
+                        ? ChatTimelineItemKind::RoomSettingsChanged
+                        : ChatTimelineItemKind::TextMessage;
         item.state.redacted = true;
         item.state.errorText = event.redactionReason();
-        item.content.plainText = tr("Message removed.");
+        item.content.plainText = stateEvent ? tr("removed a room setting.") : tr("Message removed.");
         return item;
     }
     if (eventType == QStringLiteral("m.room.name"))
@@ -1509,6 +1516,133 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     {
         item.kind = ChatTimelineItemKind::EncryptionEnabled;
         item.content.plainText = tr("enabled end-to-end encryption.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.join_rules"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        const auto joinRule = content.value(QStringLiteral("join_rule")).toString();
+        if (joinRule == QStringLiteral("public"))
+            item.content.plainText = tr("made the room public.");
+        else if (joinRule == QStringLiteral("invite"))
+            item.content.plainText = tr("made the room invite-only.");
+        else if (joinRule == QStringLiteral("knock"))
+            item.content.plainText = tr("allowed users to request an invitation to the room.");
+        else if (joinRule == QStringLiteral("restricted"))
+            item.content.plainText = tr("restricted access to members of selected rooms.");
+        else if (joinRule == QStringLiteral("knock_restricted"))
+            item.content.plainText = tr("restricted access and allowed users to request an invitation.");
+        else if (joinRule == QStringLiteral("private"))
+            item.content.plainText = tr("made the room private.");
+        else
+            item.content.plainText = tr("changed the room access rules.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.guest_access"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        const auto guestAccess = content.value(QStringLiteral("guest_access")).toString();
+        if (guestAccess == QStringLiteral("can_join"))
+            item.content.plainText = tr("allowed guests to join the room.");
+        else if (guestAccess == QStringLiteral("forbidden"))
+            item.content.plainText = tr("prevented guests from joining the room.");
+        else
+            item.content.plainText = tr("changed guest access to the room.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.history_visibility"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        const auto historyVisibility = content.value(QStringLiteral("history_visibility")).toString();
+        if (historyVisibility == QStringLiteral("world_readable"))
+            item.content.plainText = tr("made the room history visible to anyone.");
+        else if (historyVisibility == QStringLiteral("shared"))
+            item.content.plainText = tr("made the full room history visible to members.");
+        else if (historyVisibility == QStringLiteral("invited"))
+            item.content.plainText = tr("made room history visible from the time a user is invited.");
+        else if (historyVisibility == QStringLiteral("joined"))
+            item.content.plainText = tr("made room history visible from the time a user joins.");
+        else
+            item.content.plainText = tr("changed the room history visibility.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.canonical_alias"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        const auto alias = content.value(QStringLiteral("alias")).toString();
+        const auto previousAlias = event.unsignedJson()
+                                       .value(QStringLiteral("prev_content"))
+                                       .toObject()
+                                       .value(QStringLiteral("alias"))
+                                       .toString();
+        if (!alias.isEmpty())
+            item.content.plainText = tr("set the main room address to %1.").arg(alias);
+        else if (!previousAlias.isEmpty())
+            item.content.plainText = tr("removed the main room address.");
+        else
+            item.content.plainText = tr("changed the room addresses.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.aliases"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        item.content.plainText = tr("changed the room addresses.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.power_levels"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        item.content.plainText = tr("changed the room permissions.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.pinned_events"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        const auto pinned = content.value(QStringLiteral("pinned")).toArray();
+        const auto previousPinned = event.unsignedJson()
+                                        .value(QStringLiteral("prev_content"))
+                                        .toObject()
+                                        .value(QStringLiteral("pinned"))
+                                        .toArray();
+        QSet<QString> pinnedIds;
+        QSet<QString> previousPinnedIds;
+        for (const auto &id : pinned)
+            pinnedIds.insert(id.toString());
+        for (const auto &id : previousPinned)
+            previousPinnedIds.insert(id.toString());
+        const auto added = pinnedIds - previousPinnedIds;
+        const auto removed = previousPinnedIds - pinnedIds;
+        if (added.size() == 1 && removed.isEmpty())
+            item.content.plainText = tr("pinned a message.");
+        else if (removed.size() == 1 && added.isEmpty())
+            item.content.plainText = tr("unpinned a message.");
+        else
+            item.content.plainText = tr("changed the pinned messages.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.tombstone"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        item.content.plainText = tr("upgraded the room.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.server_acl"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        item.content.plainText = tr("changed which servers can participate in the room.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.retention"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        item.content.plainText = tr("changed the room message retention policy.");
+        return item;
+    }
+    if (eventType == QStringLiteral("m.room.third_party_invite"))
+    {
+        item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+        item.content.plainText = content.isEmpty() ? tr("revoked a third-party invitation.")
+                                                   : tr("created a third-party invitation.");
         return item;
     }
     if (const auto *memberEvent = Quotient::eventCast<const Quotient::RoomMemberEvent>(&event))
@@ -1574,9 +1708,63 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         return item;
     }
 
+    if (const auto *stickerEvent = Quotient::eventCast<const Quotient::StickerEvent>(&event))
+    {
+        item.kind = ChatTimelineItemKind::ImageMessage;
+        item.content.plainText = stickerEvent->body();
+        appendReactions(item, room, event);
+
+        const auto &imageContent = stickerEvent->image();
+        const auto fileInfo = imageContent.commonInfo();
+        ChatTimelineAttachment attachment;
+        attachment.kind = ChatTimelineAttachmentKind::Image;
+        attachment.fileName = fileInfo.originalName.isEmpty() ? stickerEvent->body() : fileInfo.originalName;
+        if (attachment.fileName.isEmpty())
+            attachment.fileName = tr("Sticker");
+        attachment.mimeType = fileInfo.mimeType.name();
+        attachment.size = fileInfo.payloadSize;
+        attachment.dimensions = imageContent.imageSize;
+        attachment.sourceUri = attachmentUri(eventId);
+        attachment.thumbnailUri = attachmentUri(eventId, true);
+        attachment.localResourceId = eventId;
+        m_attachmentSources.insert(eventId, fileInfo.source);
+        m_attachmentFileNames.insert(eventId, attachment.fileName);
+        m_attachmentKinds.insert(eventId, attachment.kind);
+        if (!m_unavailableAttachmentThumbnails.contains(eventId) && imageContent.thumbnail.isValid())
+        {
+            m_attachmentSources.insert(attachmentResourceId(eventId, true), imageContent.thumbnail.source);
+            m_attachmentPreviewsUsingOriginal.remove(eventId);
+        }
+        else if (!m_unavailableAttachmentThumbnails.contains(eventId) &&
+                 std::holds_alternative<QUrl>(fileInfo.source))
+        {
+            m_attachmentSources.remove(attachmentResourceId(eventId, true));
+            m_attachmentPreviewsUsingOriginal.remove(eventId);
+        }
+        else
+        {
+            m_attachmentSources.insert(attachmentResourceId(eventId, true), fileInfo.source);
+            m_attachmentPreviewsUsingOriginal.insert(eventId);
+        }
+        if (attachment.dimensions.isEmpty() && !m_attachmentImageDimensions.value(eventId).isEmpty())
+            attachment.dimensions = m_attachmentImageDimensions.value(eventId);
+        const auto previewResourceId = attachmentResourceId(eventId, true);
+        attachment.state = m_attachmentStates.value(previewResourceId, ChatTimelineAttachmentState::NotRequested);
+        attachment.progress = m_attachmentProgress.value(previewResourceId, 0.0);
+        attachment.errorText = m_attachmentErrors.value(previewResourceId);
+        item.content.attachments.append(std::move(attachment));
+        return item;
+    }
+
     const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(&event);
     if (!messageEvent)
     {
+        if (Quotient::eventCast<const Quotient::StateEvent>(&event))
+        {
+            item.kind = ChatTimelineItemKind::RoomSettingsChanged;
+            item.content.plainText = tr("changed a room setting (%1).").arg(eventType);
+            return item;
+        }
         item.kind = ChatTimelineItemKind::UnsupportedEvent;
         item.content.plainText = tr("Unsupported Matrix event: %1").arg(eventType);
         return item;
@@ -1990,6 +2178,9 @@ bool MatrixTimelineService::shouldHideEventFromTimeline(const Quotient::RoomEven
         return true;
     if (Quotient::eventCast<const Quotient::ReactionEvent>(&event))
         return true;
+    if (const auto *stateEvent = Quotient::eventCast<const Quotient::StateEvent>(&event);
+        stateEvent && stateEvent->repeatsState())
+        return true;
     if (event.matrixType().startsWith(QStringLiteral("m.key.verification.")))
         return true;
     if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(&event);
@@ -1997,8 +2188,7 @@ bool MatrixTimelineService::shouldHideEventFromTimeline(const Quotient::RoomEven
         return true;
 
     const auto eventType = event.matrixType();
-    return eventType == QStringLiteral("m.room.power_levels") ||
-           eventType == QStringLiteral("m.room.pinned_events");
+    return eventType.startsWith(QStringLiteral("m.space."));
 }
 
 QUrl MatrixTimelineService::attachmentUri(const QString &eventId, bool thumbnail)
