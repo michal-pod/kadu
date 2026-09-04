@@ -13,6 +13,7 @@
 
 #include "chat/chat.h"
 
+#include <QtCore/QHash>
 #include <QtCore/QJsonObject>
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
@@ -20,16 +21,25 @@
 #include <QtCore/QVector>
 #include <QtWidgets/QWidget>
 
+#include <optional>
+
 class MatrixPowerLevelEditor;
+class IconsManager;
 class QCloseEvent;
 class QComboBox;
+class QCompleter;
 class QFormLayout;
 class QLabel;
 class QLineEdit;
+class QModelIndex;
 class QPlainTextEdit;
 class QPixmap;
 class QPushButton;
+class QSortFilterProxyModel;
+class QStandardItemModel;
 class QTabWidget;
+class QTableWidget;
+class QToolButton;
 
 namespace Quotient
 {
@@ -43,13 +53,20 @@ class MatrixRoomSettingsWindow final : public QWidget
 
 public:
     explicit MatrixRoomSettingsWindow(
-        const Chat &chat, Quotient::Connection *connection, Quotient::Room *room, QWidget *parent = nullptr);
+        const Chat &chat, Quotient::Connection *connection, Quotient::Room *room, IconsManager *iconsManager,
+        QWidget *parent = nullptr);
     virtual ~MatrixRoomSettingsWindow() = default;
 
 protected:
     virtual void closeEvent(QCloseEvent *event) override;
 
 private:
+    enum MemberSearchDataRole
+    {
+        MemberIdRole = Qt::UserRole + 1,
+        MemberSearchTextRole
+    };
+
     enum class PowerLevelLocation
     {
         Root,
@@ -67,9 +84,19 @@ private:
         MatrixPowerLevelEditor *editor;
     };
 
+    struct UserPowerLevelSetting
+    {
+        QString userId;
+        QLabel *avatarLabel;
+        QLabel *nameLabel;
+        QLabel *mxidLabel;
+        MatrixPowerLevelEditor *editor;
+    };
+
     Chat m_chat;
     QPointer<Quotient::Connection> m_connection;
     QPointer<Quotient::Room> m_room;
+    QPointer<IconsManager> m_iconsManager;
 
     QTabWidget *m_tabs = nullptr;
     QLineEdit *m_nameEdit = nullptr;
@@ -85,6 +112,12 @@ private:
     QComboBox *m_joinRuleCombo = nullptr;
     QComboBox *m_historyVisibilityCombo = nullptr;
     QComboBox *m_guestAccessCombo = nullptr;
+    QLineEdit *m_memberSearchEdit = nullptr;
+    QToolButton *m_addMemberButton = nullptr;
+    QTableWidget *m_userPowerLevelsTable = nullptr;
+    QStandardItemModel *m_memberSearchModel = nullptr;
+    QSortFilterProxyModel *m_memberSearchProxy = nullptr;
+    QCompleter *m_memberCompleter = nullptr;
     QLabel *m_accessEncryptionLabel = nullptr;
     QLabel *m_roomVersionLabel = nullptr;
     QLabel *m_canonicalAliasLabel = nullptr;
@@ -98,6 +131,7 @@ private:
     int m_communicationTabIndex = -1;
     int m_moderationTabIndex = -1;
     int m_administrationTabIndex = -1;
+    int m_usersTabIndex = -1;
 
     QString m_savedName;
     QString m_savedTopic;
@@ -108,7 +142,13 @@ private:
     QJsonObject m_savedGuestAccess;
     QJsonObject m_savedPowerLevels;
     QVector<PowerLevelSetting> m_powerLevelSettings;
+    QVector<UserPowerLevelSetting> m_userPowerLevelSettings;
+    QHash<QString, QString> m_memberDisplayNames;
+    QHash<QString, QUrl> m_memberAvatarUrls;
+    QString m_selectedMemberId;
     bool m_customPowerLevelsCreated = false;
+    bool m_memberSearchLoading = false;
+    bool m_memberSearchLoaded = false;
     bool m_removeAvatar = false;
     bool m_saving = false;
     bool m_closeAfterSave = false;
@@ -121,11 +161,19 @@ private:
     QWidget *createCommunicationTab();
     QWidget *createModerationTab();
     QWidget *createAdministrationTab();
+    QWidget *createUsersTab();
     QWidget *createAdvancedTab();
     void addPowerLevelSetting(
         QFormLayout *form, const QString &label, const QString &key, PowerLevelLocation location,
         bool stateEvent = false, qint64 specificationDefault = 0);
     void createCustomPowerLevelSettings();
+    void ensureMemberSearchModel();
+    void refreshMemberSearch();
+    void selectMemberSearchResult(const QModelIndex &index);
+    void addSelectedMember();
+    void loadUserPowerLevels();
+    void addUserPowerLevel(const QString &userId, std::optional<qint64> explicitValue, bool selectRow = false);
+    void refreshUserPowerLevel(const QString &userId);
     void connectRoom();
     void loadRoomData();
     void loadPowerLevels();

@@ -32,6 +32,7 @@ class ChatStateServiceRepository;
 class ChatManager;
 class BuddyManager;
 class ContactManager;
+class IconsManager;
 class MatrixAccountAvatarService;
 class MatrixChatService;
 class MatrixChatStateService;
@@ -109,6 +110,7 @@ private:
     QPointer<ChatManager> m_chatManager;
     QPointer<BuddyManager> m_buddyManager;
     QPointer<ContactManager> m_contactManager;
+    QPointer<IconsManager> m_iconsManager;
     QPointer<AggregatedAccountAvatarService> m_aggregatedAccountAvatarService;
     QPointer<AggregatedContactAvatarService> m_aggregatedContactAvatarService;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
@@ -143,6 +145,7 @@ private slots:
     INJEQT_SET void setBuddyManager(BuddyManager *buddyManager);
     INJEQT_SET void setChatManager(ChatManager *chatManager);
     INJEQT_SET void setContactManager(ContactManager *contactManager);
+    INJEQT_SET void setIconsManager(IconsManager *iconsManager);
     INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
     INJEQT_SET void setChatStateServiceRepository(ChatStateServiceRepository *chatStateServiceRepository);
     INJEQT_SET void setAggregatedAccountAvatarService(AggregatedAccountAvatarService *aggregatedAccountAvatarService);

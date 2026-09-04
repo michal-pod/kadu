@@ -13,26 +13,37 @@
 #include "matrix-room-settings-window.moc"
 
 #include "chat/chat-details-room.h"
+#include "icons/icons-manager.h"
+#include "icons/kadu-icon.h"
 #include "matrix-power-level-editor.h"
 
+#include <Quotient/avatar.h>
 #include <Quotient/connection.h>
 #include <Quotient/csapi/list_public_rooms.h>
+#include <Quotient/csapi/rooms.h>
 #include <Quotient/csapi/room_state.h>
 #include <Quotient/jobs/basejob.h>
 #include <Quotient/room.h>
+#include <Quotient/roommember.h>
 
 #include <QtCore/QMimeDatabase>
 #include <QtCore/QSet>
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QSortFilterProxyModel>
 #include <QtGui/QCloseEvent>
+#include <QtGui/QPalette>
 #include <QtGui/QPixmap>
+#include <QtGui/QStandardItemModel>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QCompleter>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QGroupBox>
+#include <QtWidgets/QHeaderView>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
@@ -41,11 +52,17 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QTabWidget>
+#include <QtWidgets/QTableWidget>
+#include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 
+#include <algorithm>
+
 MatrixRoomSettingsWindow::MatrixRoomSettingsWindow(
-    const Chat &chat, Quotient::Connection *connection, Quotient::Room *room, QWidget *parent)
-        : QWidget{parent, Qt::Window}, m_chat{chat}, m_connection{connection}, m_room{room}
+    const Chat &chat, Quotient::Connection *connection, Quotient::Room *room, IconsManager *iconsManager,
+    QWidget *parent)
+        : QWidget{parent, Qt::Window}, m_chat{chat}, m_connection{connection}, m_room{room},
+          m_iconsManager{iconsManager}
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Room Settings - %1").arg(room ? room->displayName() : chat.display()));
@@ -66,6 +83,7 @@ void MatrixRoomSettingsWindow::createGui()
     m_communicationTabIndex = m_tabs->addTab(createCommunicationTab(), tr("Communication"));
     m_moderationTabIndex = m_tabs->addTab(createModerationTab(), tr("Moderation"));
     m_administrationTabIndex = m_tabs->addTab(createAdministrationTab(), tr("Administration"));
+    m_usersTabIndex = m_tabs->addTab(createUsersTab(), tr("Users"));
     m_tabs->addTab(createAdvancedTab(), tr("Advanced"));
     mainLayout->addWidget(m_tabs);
 
@@ -87,6 +105,10 @@ void MatrixRoomSettingsWindow::createGui()
         m_historyVisibilityCombo, &QComboBox::currentIndexChanged, this,
         &MatrixRoomSettingsWindow::refreshState);
     connect(m_guestAccessCombo, &QComboBox::currentIndexChanged, this, &MatrixRoomSettingsWindow::refreshState);
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
+        if (index == m_usersTabIndex)
+            ensureMemberSearchModel();
+    });
     connect(m_okButton, &QPushButton::clicked, this, [this] { save(true); });
     connect(m_applyButton, &QPushButton::clicked, this, [this] { save(false); });
     connect(m_cancelButton, &QPushButton::clicked, this, &QWidget::close);
@@ -257,6 +279,48 @@ QWidget *MatrixRoomSettingsWindow::createAdministrationTab()
     return tab;
 }
 
+QWidget *MatrixRoomSettingsWindow::createUsersTab()
+{
+    auto tab = new QWidget{m_tabs};
+    auto layout = new QVBoxLayout{tab};
+    auto searchLayout = new QHBoxLayout{};
+
+    m_memberSearchEdit = new QLineEdit{tab};
+    m_memberSearchEdit->setPlaceholderText(tr("Search room members..."));
+    m_memberSearchEdit->setClearButtonEnabled(true);
+    searchLayout->addWidget(m_memberSearchEdit, 1);
+
+    m_addMemberButton = new QToolButton{tab};
+    if (m_iconsManager)
+        m_addMemberButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("list-add")}));
+    else
+        m_addMemberButton->setText(QStringLiteral("+"));
+    m_addMemberButton->setToolTip(tr("Add a permission entry for the selected user"));
+    m_addMemberButton->setEnabled(false);
+    searchLayout->addWidget(m_addMemberButton);
+    layout->addLayout(searchLayout);
+
+    m_userPowerLevelsTable = new QTableWidget{0, 3, tab};
+    m_userPowerLevelsTable->setHorizontalHeaderLabels({tr("Avatar"), tr("User"), tr("Role")});
+    m_userPowerLevelsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_userPowerLevelsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_userPowerLevelsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_userPowerLevelsTable->verticalHeader()->setVisible(false);
+    m_userPowerLevelsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_userPowerLevelsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_userPowerLevelsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_userPowerLevelsTable->setShowGrid(false);
+    layout->addWidget(m_userPowerLevelsTable, 1);
+
+    connect(m_memberSearchEdit, &QLineEdit::textChanged, this, &MatrixRoomSettingsWindow::refreshMemberSearch);
+    connect(m_memberSearchEdit, &QLineEdit::textEdited, this, [this] {
+        if (!m_memberSearchLoaded && !m_memberSearchLoading)
+            ensureMemberSearchModel();
+    });
+    connect(m_addMemberButton, &QToolButton::clicked, this, &MatrixRoomSettingsWindow::addSelectedMember);
+    return tab;
+}
+
 QWidget *MatrixRoomSettingsWindow::createAdvancedTab()
 {
     auto tab = new QWidget{m_tabs};
@@ -325,6 +389,252 @@ void MatrixRoomSettingsWindow::createCustomPowerLevelSettings()
             new QLabel{tr("No custom permission entries."), m_customPowerLevelsForm->parentWidget()});
 }
 
+void MatrixRoomSettingsWindow::ensureMemberSearchModel()
+{
+    if (!m_connection || !m_room || m_memberSearchLoading || m_memberSearchLoaded)
+        return;
+
+    if (!m_memberSearchModel)
+    {
+        m_memberSearchModel = new QStandardItemModel{this};
+        m_memberSearchProxy = new QSortFilterProxyModel{this};
+        m_memberSearchProxy->setSourceModel(m_memberSearchModel);
+        m_memberSearchProxy->setFilterRole(MemberSearchTextRole);
+        m_memberSearchProxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        m_memberSearchProxy->setDynamicSortFilter(true);
+
+        m_memberCompleter = new QCompleter{m_memberSearchProxy, m_memberSearchEdit};
+        m_memberCompleter->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+        m_memberCompleter->setCompletionRole(Qt::DisplayRole);
+        m_memberCompleter->setMaxVisibleItems(12);
+        m_memberSearchEdit->setCompleter(m_memberCompleter);
+        connect(
+            m_memberCompleter,
+            static_cast<void (QCompleter::*)(const QModelIndex &)>(&QCompleter::activated), this,
+            &MatrixRoomSettingsWindow::selectMemberSearchResult);
+    }
+
+    m_memberSearchLoading = true;
+    m_memberSearchEdit->setEnabled(false);
+    m_memberSearchEdit->setPlaceholderText(tr("Loading room members..."));
+    m_memberSearchEdit->setToolTip({});
+
+    // Matrix has no paginated room-member search endpoint. Keep the request lazy
+    // by taking this snapshot only after the user opens the permissions tab.
+    m_connection->callApi<Quotient::GetJoinedMembersByRoomJob>(m_room->id())
+        .then(this, [this](Quotient::GetJoinedMembersByRoomJob *job) {
+            const auto joined = job->joined();
+            QStringList memberIds(joined.keyBegin(), joined.keyEnd());
+            std::sort(memberIds.begin(), memberIds.end(), [&joined](const QString &left, const QString &right) {
+                const auto leftName = joined.value(left).displayName;
+                const auto rightName = joined.value(right).displayName;
+                return (leftName.isEmpty() ? left : leftName).localeAwareCompare(
+                           rightName.isEmpty() ? right : rightName) < 0;
+            });
+
+            m_memberDisplayNames.clear();
+            m_memberAvatarUrls.clear();
+            m_memberSearchModel->clear();
+            for (const auto &memberId : memberIds)
+            {
+                const auto member = joined.value(memberId);
+                m_memberDisplayNames.insert(memberId, member.displayName);
+                m_memberAvatarUrls.insert(memberId, member.avatarUrl);
+
+                const auto displayName = member.displayName.isEmpty() ? memberId : member.displayName;
+                const auto completionLabel = member.displayName.isEmpty()
+                                                 ? memberId
+                                                 : QStringLiteral("%1 (%2)").arg(member.displayName, memberId);
+                auto item = new QStandardItem{completionLabel};
+                item->setData(memberId, MemberIdRole);
+                item->setData(displayName + QLatin1Char('\n') + memberId, MemberSearchTextRole);
+                m_memberSearchModel->appendRow(item);
+            }
+
+            m_memberSearchLoading = false;
+            m_memberSearchLoaded = true;
+            m_memberSearchEdit->setPlaceholderText(tr("Search room members..."));
+            for (const auto &setting : m_userPowerLevelSettings)
+                refreshUserPowerLevel(setting.userId);
+            refreshPermissions();
+            refreshMemberSearch();
+        }, [this](Quotient::GetJoinedMembersByRoomJob *job) {
+            m_memberSearchLoading = false;
+            m_memberSearchLoaded = false;
+            m_memberSearchEdit->setPlaceholderText(tr("Room members could not be loaded"));
+            m_memberSearchEdit->setToolTip(job->errorString());
+            refreshPermissions();
+        });
+}
+
+void MatrixRoomSettingsWindow::refreshMemberSearch()
+{
+    m_selectedMemberId.clear();
+    if (!m_memberSearchProxy)
+    {
+        m_addMemberButton->setEnabled(false);
+        return;
+    }
+
+    const auto searchText = m_memberSearchEdit->text().trimmed();
+    m_memberSearchProxy->setFilterFixedString(searchText);
+
+    for (auto row = 0; row < m_memberSearchProxy->rowCount(); ++row)
+    {
+        const auto index = m_memberSearchProxy->index(row, 0);
+        const auto memberId = index.data(MemberIdRole).toString();
+        if (memberId.compare(searchText, Qt::CaseInsensitive) == 0)
+        {
+            m_selectedMemberId = memberId;
+            break;
+        }
+    }
+
+    m_addMemberButton->setEnabled(
+        !m_saving && canSendState(QStringLiteral("m.room.power_levels")) && !m_selectedMemberId.isEmpty());
+}
+
+void MatrixRoomSettingsWindow::selectMemberSearchResult(const QModelIndex &index)
+{
+    const auto memberId = index.data(MemberIdRole).toString();
+    if (memberId.isEmpty())
+        return;
+
+    m_selectedMemberId = memberId;
+    const QSignalBlocker blocker{m_memberSearchEdit};
+    m_memberSearchEdit->setText(memberId);
+    if (m_memberSearchProxy)
+        m_memberSearchProxy->setFilterFixedString(memberId);
+    m_addMemberButton->setEnabled(
+        !m_saving && canSendState(QStringLiteral("m.room.power_levels")));
+}
+
+void MatrixRoomSettingsWindow::addSelectedMember()
+{
+    if (m_selectedMemberId.isEmpty())
+        return;
+
+    addUserPowerLevel(m_selectedMemberId, std::nullopt, true);
+    m_selectedMemberId.clear();
+    m_memberSearchEdit->clear();
+    refreshMemberSearch();
+    refreshState();
+}
+
+void MatrixRoomSettingsWindow::loadUserPowerLevels()
+{
+    m_userPowerLevelSettings.clear();
+    m_userPowerLevelsTable->setRowCount(0);
+
+    const auto users = m_savedPowerLevels.value(QStringLiteral("users")).toObject();
+    for (auto it = users.constBegin(); it != users.constEnd(); ++it)
+        if (!it.key().isEmpty() && it.value().isDouble())
+            addUserPowerLevel(it.key(), it.value().toInteger());
+}
+
+void MatrixRoomSettingsWindow::addUserPowerLevel(
+    const QString &userId, std::optional<qint64> explicitValue, bool selectRow)
+{
+    for (auto row = 0; row < m_userPowerLevelSettings.size(); ++row)
+    {
+        if (m_userPowerLevelSettings.at(row).userId != userId)
+            continue;
+        if (selectRow)
+        {
+            m_userPowerLevelsTable->selectRow(row);
+            m_userPowerLevelsTable->scrollTo(m_userPowerLevelsTable->model()->index(row, 0));
+        }
+        return;
+    }
+
+    const auto row = m_userPowerLevelsTable->rowCount();
+    m_userPowerLevelsTable->insertRow(row);
+    m_userPowerLevelsTable->setRowHeight(row, 56);
+
+    auto avatarLabel = new QLabel{m_userPowerLevelsTable};
+    avatarLabel->setFixedSize(48, 48);
+    avatarLabel->setAlignment(Qt::AlignCenter);
+    m_userPowerLevelsTable->setCellWidget(row, 0, avatarLabel);
+
+    auto identityWidget = new QWidget{m_userPowerLevelsTable};
+    auto identityLayout = new QVBoxLayout{identityWidget};
+    identityLayout->setContentsMargins(4, 2, 4, 2);
+    identityLayout->setSpacing(0);
+    auto nameLabel = new QLabel{identityWidget};
+    nameLabel->setTextFormat(Qt::PlainText);
+    auto nameFont = nameLabel->font();
+    nameFont.setBold(true);
+    nameLabel->setFont(nameFont);
+    auto mxidLabel = new QLabel{identityWidget};
+    mxidLabel->setTextFormat(Qt::PlainText);
+    auto mxidPalette = mxidLabel->palette();
+    mxidPalette.setColor(QPalette::WindowText, mxidPalette.color(QPalette::PlaceholderText));
+    mxidLabel->setPalette(mxidPalette);
+    mxidLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    identityLayout->addWidget(nameLabel);
+    identityLayout->addWidget(mxidLabel);
+    m_userPowerLevelsTable->setCellWidget(row, 1, identityWidget);
+
+    auto editor = new MatrixPowerLevelEditor{m_userPowerLevelsTable};
+    editor->setValue(
+        explicitValue, desiredRootPowerLevel(QStringLiteral("users_default"), 0));
+    editor->setEditorEnabled(canSendState(QStringLiteral("m.room.power_levels")) && !m_saving);
+    m_userPowerLevelsTable->setCellWidget(row, 2, editor);
+
+    m_userPowerLevelSettings.append({userId, avatarLabel, nameLabel, mxidLabel, editor});
+    connect(editor, &MatrixPowerLevelEditor::valueChanged, this, [this] {
+        m_userPowerLevelsTable->resizeColumnToContents(2);
+        refreshState();
+    });
+    refreshUserPowerLevel(userId);
+    if (selectRow)
+    {
+        m_userPowerLevelsTable->selectRow(row);
+        m_userPowerLevelsTable->scrollToBottom();
+    }
+}
+
+void MatrixRoomSettingsWindow::refreshUserPowerLevel(const QString &userId)
+{
+    auto setting = std::find_if(
+        m_userPowerLevelSettings.begin(), m_userPowerLevelSettings.end(),
+        [&userId](const UserPowerLevelSetting &candidate) { return candidate.userId == userId; });
+    if (setting == m_userPowerLevelSettings.end())
+        return;
+
+    auto displayName = m_memberDisplayNames.value(userId);
+    auto avatarUrl = m_memberAvatarUrls.value(userId);
+    QPixmap avatar;
+    if (m_room)
+    {
+        const auto member = m_room->member(userId);
+        if (!member.isEmpty())
+        {
+            displayName = member.name();
+            if (!member.avatarUrl().isEmpty())
+                avatarUrl = member.avatarUrl();
+        }
+    }
+    if (m_connection && !avatarUrl.isEmpty())
+    {
+        const QPointer<MatrixRoomSettingsWindow> window{this};
+        avatar = QPixmap::fromImage(m_connection->userAvatar(avatarUrl).get(48, [window, userId] {
+            if (window)
+                window->refreshUserPowerLevel(userId);
+        }));
+    }
+    else if (m_room)
+        avatar = QPixmap::fromImage(m_room->memberAvatar(userId, 48));
+
+    setting->nameLabel->setText(displayName.isEmpty() ? tr("No display name") : displayName);
+    setting->mxidLabel->setText(userId);
+    setting->mxidLabel->show();
+    if (avatar.isNull() && m_iconsManager)
+        avatar = m_iconsManager->iconByPath(KaduIcon{QStringLiteral("kadu_icons/buddy0")}).pixmap(48, 48);
+    setting->avatarLabel->setPixmap(
+        avatar.isNull() ? QPixmap{} : avatar.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
 void MatrixRoomSettingsWindow::connectRoom()
 {
     if (!m_room)
@@ -353,6 +663,15 @@ void MatrixRoomSettingsWindow::connectRoom()
             loadRoomData();
         else
             refreshPermissions();
+    });
+    connect(m_room, &Quotient::Room::memberNameUpdated, this,
+            [this](const Quotient::RoomMember &member) { refreshUserPowerLevel(member.id()); });
+    connect(m_room, &Quotient::Room::memberAvatarUpdated, this,
+            [this](const Quotient::RoomMember &member) { refreshUserPowerLevel(member.id()); });
+    connect(m_room, &Quotient::Room::memberListChanged, this, [this] {
+        m_memberSearchLoaded = false;
+        if (!m_memberSearchLoading && m_tabs->currentIndex() == m_usersTabIndex)
+            ensureMemberSearchModel();
     });
     connect(m_room, &QObject::destroyed, this, [this] {
         m_room = nullptr;
@@ -445,6 +764,7 @@ void MatrixRoomSettingsWindow::loadPowerLevels()
                                    : setting.specificationDefault;
         setting.editor->setValue(explicitValue, inherited);
     }
+    loadUserPowerLevels();
     refreshPowerLevelDefaults();
 }
 
@@ -504,9 +824,15 @@ void MatrixRoomSettingsWindow::refreshPermissions()
         m_tabs->setTabVisible(m_moderationTabIndex, canSetPowerLevels);
     if (m_administrationTabIndex >= 0)
         m_tabs->setTabVisible(m_administrationTabIndex, canSetPowerLevels);
+    if (m_usersTabIndex >= 0)
+        m_tabs->setTabVisible(m_usersTabIndex, canSetPowerLevels);
     m_customPowerLevelsGroup->setVisible(canSetPowerLevels);
     for (const auto &setting : m_powerLevelSettings)
         setting.editor->setEditorEnabled(canSetPowerLevels && !m_saving);
+    for (const auto &setting : m_userPowerLevelSettings)
+        setting.editor->setEditorEnabled(canSetPowerLevels && !m_saving);
+    m_memberSearchEdit->setEnabled(canSetPowerLevels && !m_saving && !m_memberSearchLoading);
+    m_addMemberButton->setEnabled(canSetPowerLevels && !m_saving && !m_selectedMemberId.isEmpty());
     refreshState();
 }
 
@@ -552,6 +878,9 @@ void MatrixRoomSettingsWindow::refreshPowerLevelDefaults()
             setting.editor->setInheritedValue(setting.stateEvent ? stateDefault : eventsDefault);
         else
             setting.editor->setInheritedValue(setting.specificationDefault);
+    const auto usersDefault = desiredRootPowerLevel(QStringLiteral("users_default"), 0);
+    for (const auto &setting : m_userPowerLevelSettings)
+        setting.editor->setInheritedValue(usersDefault);
 }
 
 bool MatrixRoomSettingsWindow::hasAccessChanges() const
@@ -619,6 +948,7 @@ QJsonObject MatrixRoomSettingsWindow::desiredPowerLevels() const
     auto result = m_savedPowerLevels;
     auto events = result.value(QStringLiteral("events")).toObject();
     auto notifications = result.value(QStringLiteral("notifications")).toObject();
+    auto users = result.value(QStringLiteral("users")).toObject();
 
     for (const auto &setting : m_powerLevelSettings)
     {
@@ -632,6 +962,15 @@ QJsonObject MatrixRoomSettingsWindow::desiredPowerLevels() const
             container->remove(setting.key);
     }
 
+    for (const auto &setting : m_userPowerLevelSettings)
+    {
+        const auto value = setting.editor->explicitValue();
+        if (value)
+            users.insert(setting.userId, QJsonValue{*value});
+        else
+            users.remove(setting.userId);
+    }
+
     if (events.isEmpty())
         result.remove(QStringLiteral("events"));
     else
@@ -640,12 +979,19 @@ QJsonObject MatrixRoomSettingsWindow::desiredPowerLevels() const
         result.remove(QStringLiteral("notifications"));
     else
         result.insert(QStringLiteral("notifications"), notifications);
+    if (users.isEmpty())
+        result.remove(QStringLiteral("users"));
+    else
+        result.insert(QStringLiteral("users"), users);
     return result;
 }
 
 bool MatrixRoomSettingsWindow::powerLevelEditorsValid() const
 {
     for (const auto &setting : m_powerLevelSettings)
+        if (!setting.editor->isValueValid())
+            return false;
+    for (const auto &setting : m_userPowerLevelSettings)
         if (!setting.editor->isValueValid())
             return false;
     return true;
@@ -925,6 +1271,8 @@ void MatrixRoomSettingsWindow::finishOperation(const QString &error)
         QMessageBox::warning(this, tr("Room Settings"), m_errors.join(QStringLiteral("\n")));
         return;
     }
+
+    loadPowerLevels();
 
     if (m_closeAfterSave)
         close();

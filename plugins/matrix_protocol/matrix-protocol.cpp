@@ -30,6 +30,7 @@
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
 #include "contacts/contact-manager.h"
+#include "icons/icons-manager.h"
 
 #include "matrix-account-data.h"
 #include "matrix-chat-service.h"
@@ -97,6 +98,11 @@ void MatrixProtocol::setChatManager(ChatManager *chatManager)
 void MatrixProtocol::setContactManager(ContactManager *contactManager)
 {
     m_contactManager = contactManager;
+}
+
+void MatrixProtocol::setIconsManager(IconsManager *iconsManager)
+{
+    m_iconsManager = iconsManager;
 }
 
 void MatrixProtocol::setChatServiceRepository(ChatServiceRepository *chatServiceRepository)
@@ -189,7 +195,7 @@ QWidget *MatrixProtocol::createChatSettingsWindow(const Chat &chat, QWidget *par
     auto *room = details && m_connection
                      ? m_connection->room(details->room(), Quotient::JoinState::Join)
                      : nullptr;
-    return new MatrixRoomSettingsWindow{chat, m_connection, room, parent};
+    return new MatrixRoomSettingsWindow{chat, m_connection, room, m_iconsManager, parent};
 }
 
 void MatrixProtocol::createConnection()
