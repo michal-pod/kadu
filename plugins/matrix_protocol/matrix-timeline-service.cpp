@@ -776,7 +776,10 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const Ch
     if ((request.mode == ChatTimelineRequestMode::Older || request.mode == ChatTimelineRequestMode::Newer) &&
         request.cursor.startsWith(remoteCursorPrefix))
         return requestPaginatedPage(request, room);
-    if (request.mode != ChatTimelineRequestMode::Latest)
+    // A local page containing only hidden events has a numeric cursor but no
+    // visible anchor. Keep scanning local history until an anchor is available.
+    if (request.mode != ChatTimelineRequestMode::Latest &&
+        !(request.mode == ChatTimelineRequestMode::Older && request.anchorId.isEmpty()))
         return requestContextPage(request, room);
 
     if (room->allHistoryLoaded())
@@ -848,8 +851,8 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestContextPage(const ChatTi
             static const auto remoteCursorPrefix = QByteArrayLiteral("matrix:");
             page.olderCursor = job->begin().isEmpty() ? QByteArray{} : remoteCursorPrefix + job->begin().toUtf8();
             page.newerCursor = job->end().isEmpty() ? QByteArray{} : remoteCursorPrefix + job->end().toUtf8();
-            page.hasOlder = !page.olderCursor.isEmpty() && !before.empty();
-            page.hasNewer = !page.newerCursor.isEmpty() && !after.empty();
+            page.hasOlder = !page.olderCursor.isEmpty();
+            page.hasNewer = !page.newerCursor.isEmpty();
 
             auto appendEvent = [this, &page, watchedRoom](const Quotient::RoomEventPtr &remoteEvent) {
                 if (!remoteEvent)
@@ -925,7 +928,9 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestPaginatedPage(const Chat
             const auto nextCursor = job->end().isEmpty() ? QByteArray{}
                                                          : remoteCursorPrefix + job->end().toUtf8();
             auto events = job->chunk();
-            const auto hasMore = !events.empty() && !nextCursor.isEmpty() && nextCursor != request.cursor;
+            // Filtering/visibility can produce an empty chunk before the end.
+            // Only the pagination token determines whether to keep fetching.
+            const auto hasMore = !nextCursor.isEmpty() && nextCursor != request.cursor;
             auto appendEvent = [this, &page, watchedRoom](const Quotient::RoomEventPtr &remoteEvent) {
                 if (!remoteEvent)
                     return;

@@ -52,6 +52,9 @@ public:
      *
      * Items in the page must retain their stable ID, transaction ID and source
      * order. A page can be empty while still carrying a usable next cursor.
+     * Cursors describe the edges of this page. For Older/Newer requests with
+     * an empty cursor, resume immediately beyond anchorId in that direction;
+     * the controller uses this after trimming its visible window.
      */
     virtual QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) = 0;
 

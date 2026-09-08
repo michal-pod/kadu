@@ -35,6 +35,7 @@ public:
 
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override
     {
+        ++m_requestCount;
         m_lastRequest = request;
         if (m_pages.isEmpty())
             return completedPage({});
@@ -57,6 +58,13 @@ public:
         emit eventReceived(chat, item);
     }
 
+    void update(const Chat &chat, const ChatTimelineItem &item)
+    {
+        emit eventUpdated(chat, item);
+    }
+
+    int requestCount() const { return m_requestCount; }
+
 private:
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const
     {
@@ -70,6 +78,7 @@ private:
 
     ChatTimelineRequest m_lastRequest;
     QList<ChatTimelinePage> m_pages;
+    int m_requestCount = 0;
 };
 
 class ChatTimelineControllerTest : public QObject
@@ -86,6 +95,17 @@ private slots:
     void shouldRetryTheFailedHistoryRequest();
     void shouldLoadContextAroundAnArbitraryMessage();
     void shouldNotInsertLiveEventsIntoAHistoricalWindow();
+    void shouldPreserveTheOppositeWindowCursor_data();
+    void shouldPreserveTheOppositeWindowCursor();
+    void shouldReanchorAfterTrimmingTheWindow_data();
+    void shouldReanchorAfterTrimmingTheWindow();
+    void shouldReanchorAfterLiveEventsTrimTheWindow();
+    void shouldKeepAHistoricalWindowAfterANewerRequestFails();
+    void shouldIgnoreUpdatesOutsideTheWindow();
+    void shouldContinuePagesWithoutBoundaryProgress_data();
+    void shouldContinuePagesWithoutBoundaryProgress();
+    void shouldCancelQueuedPagination();
+    void shouldKeepFollowingLiveEventsWhenOlderPagesDoNotTrimTheWindow();
 
 private:
     ChatTimelineItem makeItem(const QString &stableId, const QByteArray &sourceOrder) const;
@@ -157,6 +177,9 @@ void ChatTimelineControllerTest::shouldKeepABoundedWindowWhenLoadingOlderMessage
     timelineService.enqueue(initialPage);
     controller.loadInitial(100);
     QTRY_COMPARE(controller.timeline()->rowCount(), 100);
+    controller.setActive(true);
+    controller.setAtNewest(true);
+    QCOMPARE(controller.readMarkerId(), QStringLiteral("$149"));
 
     ChatTimelinePage olderPage;
     for (auto index = 0; index < 50; ++index)
@@ -175,6 +198,7 @@ void ChatTimelineControllerTest::shouldKeepABoundedWindowWhenLoadingOlderMessage
     QCOMPARE(controller.timeline()->rowForStableId(QStringLiteral("$100")), -1);
     QVERIFY(controller.hasOlder());
     QVERIFY(controller.hasNewer());
+    QCOMPARE(controller.readMarkerId(), QStringLiteral("$149"));
 }
 
 void ChatTimelineControllerTest::shouldKeepOlderRequestActiveWhileApplyingItsPage()
@@ -250,7 +274,7 @@ void ChatTimelineControllerTest::shouldRetryTheFailedHistoryRequest()
     timelineService.enqueue(failedPage);
     controller.loadOlder(17);
     QTRY_COMPARE(controller.historyError(), QStringLiteral("network error"));
-    QVERIFY(!controller.hasOlder());
+    QVERIFY(controller.hasOlder());
 
     ChatTimelinePage retriedPage;
     retriedPage.items.append(makeItem(QStringLiteral("$older"), QByteArrayLiteral("001")));
@@ -331,5 +355,267 @@ void ChatTimelineControllerTest::shouldTrackNewEventsOutsideTheNewestViewport()
     QCOMPARE(controller.readMarkerId(), QStringLiteral("$new"));
 }
 
-QTEST_APPLESS_MAIN(ChatTimelineControllerTest)
+void ChatTimelineControllerTest::shouldPreserveTheOppositeWindowCursor_data()
+{
+    QTest::addColumn<bool>("older");
+    QTest::newRow("older") << true;
+    QTest::newRow("newer") << false;
+}
+
+void ChatTimelineControllerTest::shouldPreserveTheOppositeWindowCursor()
+{
+    QFETCH(bool, older);
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    initial.items = {makeItem("$50", "050")};
+    initial.hasOlder = initial.hasNewer = true;
+    initial.olderCursor = "window-older";
+    initial.newerCursor = "window-newer";
+    service.enqueue(initial);
+    controller.jumpTo("$50");
+    QTRY_VERIFY(!controller.isLoadingInitial());
+
+    ChatTimelinePage page;
+    page.items = {makeItem(older ? "$49" : "$51", older ? "049" : "051")};
+    page.hasOlder = page.hasNewer = true;
+    page.olderCursor = "page-older";
+    page.newerCursor = "page-newer";
+    service.enqueue(page);
+    if (older)
+        controller.loadOlder();
+    else
+        controller.loadNewer();
+    QTRY_VERIFY(!controller.isLoadingOlder() && !controller.isLoadingNewer());
+
+    if (older)
+        controller.loadNewer();
+    else
+        controller.loadOlder();
+    QCOMPARE(service.lastRequest().cursor, older ? QByteArray{"window-newer"} : QByteArray{"window-older"});
+    QCOMPARE(service.lastRequest().anchorId, QString{"$50"});
+}
+
+void ChatTimelineControllerTest::shouldReanchorAfterTrimmingTheWindow_data()
+{
+    QTest::addColumn<bool>("older");
+    QTest::newRow("older") << true;
+    QTest::newRow("newer") << false;
+}
+
+void ChatTimelineControllerTest::shouldReanchorAfterTrimmingTheWindow()
+{
+    QFETCH(bool, older);
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    for (int i = 50; i < 150; ++i)
+        initial.items.append(makeItem(QString{"$%1"}.arg(i), QByteArray::number(i).rightJustified(3, '0')));
+    initial.hasOlder = initial.hasNewer = true;
+    initial.olderCursor = "window-older";
+    initial.newerCursor = "window-newer";
+    service.enqueue(initial);
+    controller.jumpTo("$100");
+    QTRY_VERIFY(!controller.isLoadingInitial());
+
+    ChatTimelinePage page;
+    for (int i = older ? 0 : 150; i < (older ? 50 : 200); ++i)
+        page.items.append(makeItem(QString{"$%1"}.arg(i), QByteArray::number(i).rightJustified(3, '0')));
+    page.hasOlder = page.hasNewer = true;
+    page.olderCursor = "page-older";
+    page.newerCursor = "page-newer";
+    service.enqueue(page);
+    if (older)
+        controller.loadOlder();
+    else
+        controller.loadNewer();
+    QTRY_VERIFY(!controller.isLoadingOlder() && !controller.isLoadingNewer());
+    QCOMPARE(controller.timeline()->rowCount(), 100);
+
+    ChatTimelinePage returningPage;
+    for (int i = older ? 100 : 50; i < (older ? 150 : 100); ++i)
+        returningPage.items.append(makeItem(QString{"$%1"}.arg(i), QByteArray::number(i).rightJustified(3, '0')));
+    service.enqueue(returningPage);
+    if (older)
+        controller.loadNewer();
+    else
+        controller.loadOlder();
+    QVERIFY(service.lastRequest().cursor.isEmpty());
+    QCOMPARE(service.lastRequest().anchorId, older ? QString{"$99"} : QString{"$100"});
+    QTRY_VERIFY(!controller.isLoadingOlder() && !controller.isLoadingNewer());
+    for (int i = 50; i < 150; ++i)
+        QCOMPARE(controller.timeline()->rowForStableId(QString{"$%1"}.arg(i)), i - 50);
+}
+
+void ChatTimelineControllerTest::shouldReanchorAfterLiveEventsTrimTheWindow()
+{
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    for (int i = 0; i < 100; ++i)
+        initial.items.append(makeItem(QString{"$%1"}.arg(i), QByteArray::number(i).rightJustified(3, '0')));
+    initial.hasOlder = true;
+    initial.olderCursor = "before-zero";
+    service.enqueue(initial);
+    controller.loadInitial(100);
+    QTRY_VERIFY(!controller.isLoadingInitial());
+    service.receive(Chat::null, makeItem("$100", "100"));
+    QCOMPARE(controller.timeline()->rowCount(), 100);
+    controller.loadOlder();
+    QVERIFY(service.lastRequest().cursor.isEmpty());
+    QCOMPARE(service.lastRequest().anchorId, QString{"$1"});
+}
+
+void ChatTimelineControllerTest::shouldKeepAHistoricalWindowAfterANewerRequestFails()
+{
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    initial.items = {makeItem("$old", "001")};
+    initial.hasNewer = true;
+    initial.newerCursor = "newer";
+    service.enqueue(initial);
+    controller.jumpTo("$old");
+    QTRY_VERIFY(!controller.isLoadingInitial());
+
+    ChatTimelinePage failed;
+    failed.error = "network error";
+    service.enqueue(failed);
+    controller.loadNewer(17);
+    QTRY_VERIFY(!controller.isLoadingNewer());
+    QVERIFY(controller.hasNewer());
+    const auto requests = service.requestCount();
+    controller.loadNewer();
+    QCOMPARE(service.requestCount(), requests);
+    service.receive(Chat::null, makeItem("$live", "999"));
+    QCOMPARE(controller.timeline()->rowCount(), 1);
+    controller.setActive(true);
+    controller.setAtNewest(true);
+    QVERIFY(controller.readMarkerId().isEmpty());
+
+    ChatTimelinePage middle;
+    middle.items = {makeItem("$middle", "500")};
+    service.enqueue(middle);
+    controller.retryHistory();
+    QCOMPARE(service.lastRequest().cursor, QByteArray{"newer"});
+    QCOMPARE(service.lastRequest().limit, 17);
+    QTRY_VERIFY(!controller.isLoadingNewer());
+    QCOMPARE(controller.timeline()->rowForStableId("$middle"), 1);
+    QCOMPARE(controller.timeline()->rowForStableId("$live"), 2);
+}
+
+void ChatTimelineControllerTest::shouldIgnoreUpdatesOutsideTheWindow()
+{
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    service.receive(Chat::null, makeItem("$visible", "500"));
+    service.update(Chat::null, makeItem("$old-decrypted", "001"));
+    QCOMPARE(controller.timeline()->rowCount(), 1);
+    auto edited = makeItem("$visible", "500");
+    edited.content.plainText = "edited";
+    service.update(Chat::null, edited);
+    QCOMPARE(controller.timeline()->item("$visible").content.plainText, QString{"edited"});
+}
+
+void ChatTimelineControllerTest::shouldContinuePagesWithoutBoundaryProgress_data()
+{
+    QTest::addColumn<bool>("older");
+    QTest::addColumn<bool>("overlapping");
+    QTest::newRow("older-empty") << true << false;
+    QTest::newRow("older-overlapping") << true << true;
+    QTest::newRow("newer-empty") << false << false;
+    QTest::newRow("newer-overlapping") << false << true;
+}
+
+void ChatTimelineControllerTest::shouldContinuePagesWithoutBoundaryProgress()
+{
+    QFETCH(bool, older);
+    QFETCH(bool, overlapping);
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    initial.items = {makeItem("$middle", "500")};
+    initial.hasOlder = initial.hasNewer = true;
+    initial.olderCursor = "older";
+    initial.newerCursor = "newer";
+    service.enqueue(initial);
+    controller.jumpTo("$middle");
+    QTRY_VERIFY(!controller.isLoadingInitial());
+
+    auto page = initial;
+    if (!overlapping)
+        page.items.clear();
+    page.olderCursor = "next-older";
+    page.newerCursor = "next-newer";
+    service.enqueue(page);
+    ChatTimelinePage last;
+    last.items = {makeItem(older ? "$old" : "$new", older ? "001" : "999")};
+    service.enqueue(last);
+    if (older)
+        controller.loadOlder(17);
+    else
+        controller.loadNewer(17);
+    QTRY_COMPARE(service.requestCount(), 3);
+    QTRY_COMPARE(controller.timeline()->rowCount(), 2);
+    QCOMPARE(service.lastRequest().limit, 17);
+    QCOMPARE(service.lastRequest().cursor, older ? QByteArray{"next-older"} : QByteArray{"next-newer"});
+}
+
+void ChatTimelineControllerTest::shouldCancelQueuedPagination()
+{
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    initial.items = {makeItem("$middle", "500")};
+    initial.hasOlder = true;
+    initial.olderCursor = "older";
+    service.enqueue(initial);
+    controller.loadInitial();
+    QTRY_VERIFY(!controller.isLoadingInitial());
+    connect(&controller, &ChatTimelineController::loadingOlderChanged, &controller, [&controller] {
+        if (!controller.isLoadingOlder())
+            controller.cancelRequests();
+    });
+    ChatTimelinePage empty;
+    empty.hasOlder = true;
+    empty.olderCursor = "next-older";
+    service.enqueue(empty);
+    controller.loadOlder();
+    QTRY_VERIFY(!controller.isLoadingOlder());
+    QCoreApplication::processEvents();
+    QCOMPARE(service.requestCount(), 2);
+}
+
+void ChatTimelineControllerTest::shouldKeepFollowingLiveEventsWhenOlderPagesDoNotTrimTheWindow()
+{
+    Account account{new AccountShared{}};
+    TimelineServiceStub service{account};
+    ChatTimelineController controller{Chat::null, &service};
+    ChatTimelinePage initial;
+    initial.items = {makeItem("$latest", "500")};
+    initial.hasOlder = true;
+    initial.olderCursor = "older";
+    service.enqueue(initial);
+    controller.loadInitial();
+    QTRY_VERIFY(!controller.isLoadingInitial());
+    ChatTimelinePage older;
+    older.items = {makeItem("$older", "001")};
+    older.hasNewer = true;
+    older.newerCursor = "after-older-page";
+    service.enqueue(older);
+    controller.loadOlder();
+    QTRY_VERIFY(!controller.isLoadingOlder());
+    QVERIFY(!controller.hasNewer());
+    service.receive(Chat::null, makeItem("$live", "999"));
+    QCOMPARE(controller.timeline()->rowForStableId("$live"), 2);
+}
+
+QTEST_GUILESS_MAIN(ChatTimelineControllerTest)
 #include "chat-timeline-controller.test.moc"

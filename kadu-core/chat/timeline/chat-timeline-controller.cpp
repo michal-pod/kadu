@@ -128,7 +128,8 @@ void ChatTimelineController::loadLatest(int limit)
 
 void ChatTimelineController::loadOlder(int limit)
 {
-    if (!m_timelineService || m_loadingInitial || m_loadingOlder || m_loadingNewer || !m_hasOlder)
+    if (!m_timelineService || m_loadingInitial || m_loadingOlder || m_loadingNewer || !m_hasOlder ||
+        m_hasFailedRequest)
         return;
 
     setHistoryError({});
@@ -138,7 +139,8 @@ void ChatTimelineController::loadOlder(int limit)
 
 void ChatTimelineController::loadNewer(int limit)
 {
-    if (!m_timelineService || m_loadingInitial || m_loadingOlder || m_loadingNewer || !m_hasNewer)
+    if (!m_timelineService || m_loadingInitial || m_loadingOlder || m_loadingNewer || !m_hasNewer ||
+        m_hasFailedRequest)
         return;
 
     setHistoryError({});
@@ -170,8 +172,20 @@ void ChatTimelineController::retryHistory()
         return;
 
     const auto requestKind = m_failedRequestKind;
-    const auto cursor = m_failedRequestCursor;
-    const auto anchor = m_failedRequestAnchor;
+    auto cursor = m_failedRequestCursor;
+    auto anchor = m_failedRequestAnchor;
+    // Live events may have trimmed the window since an edge request failed.
+    const auto items = m_timeline->items();
+    if (requestKind == RequestKind::Older)
+    {
+        cursor = m_olderCursor;
+        anchor = items.isEmpty() ? QString{} : items.constFirst().stableId;
+    }
+    else if (requestKind == RequestKind::Newer)
+    {
+        cursor = m_newerCursor;
+        anchor = items.isEmpty() ? QString{} : items.constLast().stableId;
+    }
     const auto limit = m_failedRequestLimit;
     clearFailedRequest();
     setHistoryError({});
@@ -284,10 +298,8 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
         m_failedRequestLimit = requestedLimit;
         m_hasFailedRequest = true;
         setHistoryError(page.error);
-        if (requestKind == RequestKind::Older)
-            setHasOlder(false);
-        else if (requestKind == RequestKind::Newer)
-            setHasNewer(false);
+        // A failed request says nothing about the end of history. In particular,
+        // keep historical windows isolated from live events until retry succeeds.
         if (requestKind == RequestKind::Latest || requestKind == RequestKind::Around)
             setLoadingInitial(false);
         else if (requestKind == RequestKind::Older)
@@ -327,19 +339,18 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
             m_timeline->removeFirst(overflow);
     }
 
-    if (m_active && m_atNewest && !m_hasNewer)
-        markNewestEventVisible();
-
     const auto usableOlder = page.hasOlder && !page.olderCursor.isEmpty() &&
                              (requestKind != RequestKind::Older || page.olderCursor != requestedCursor);
     const auto usableNewer = page.hasNewer && !page.newerCursor.isEmpty() &&
                              (requestKind != RequestKind::Newer || page.newerCursor != requestedCursor);
-    if (requestKind != RequestKind::Newer || !page.olderCursor.isEmpty())
+    // Page cursors describe that page, not the entire merged window. The
+    // opposite edge still belongs to the previously loaded window.
+    if (requestKind != RequestKind::Newer)
     {
         m_olderCursor = usableOlder ? page.olderCursor : QByteArray{};
         setHasOlder(usableOlder);
     }
-    if (requestKind != RequestKind::Older || !page.newerCursor.isEmpty())
+    if (requestKind != RequestKind::Older)
     {
         m_newerCursor = usableNewer ? page.newerCursor : QByteArray{};
         setHasNewer(usableNewer);
@@ -348,9 +359,17 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
     if (windowTrimmed)
     {
         if (requestKind == RequestKind::Older)
+        {
+            // Trimming moved the edge inside the old page. Re-anchor the next
+            // request on the last retained item instead of reusing a page token.
+            m_newerCursor.clear();
             setHasNewer(true);
+        }
         else
+        {
+            m_olderCursor.clear();
             setHasOlder(true);
+        }
     }
 
     if (requestKind == RequestKind::Newer && !m_hasNewer && !m_deferredLiveItems.isEmpty())
@@ -363,12 +382,19 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
         if (liveOverflow > 0)
         {
             m_timeline->removeFirst(liveOverflow);
+            m_olderCursor.clear();
             setHasOlder(true);
         }
         else if (deferredTrimmed)
+        {
+            m_olderCursor.clear();
             setHasOlder(true);
+        }
         setNewEventsBelow(0);
     }
+
+    if (m_active && m_atNewest && !m_hasNewer)
+        markNewestEventVisible();
 
     if (requestKind == RequestKind::Latest)
         setNewEventsBelow(0);
@@ -385,12 +411,21 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
     else
         setLoadingNewer(false);
 
-    // Servers can return a page containing only state events already merged
-    // from live sync. Continue transparently while their cursor advances.
-    if (page.items.isEmpty() && requestKind == RequestKind::Older && m_hasOlder)
-        QTimer::singleShot(0, this, [this] { loadOlder(); });
-    else if (page.items.isEmpty() && requestKind == RequestKind::Newer && m_hasNewer)
-        QTimer::singleShot(0, this, [this] { loadNewer(); });
+    // Empty or overlapping pages need no scroll event to continue. A queued
+    // continuation must not outlive cancellation or a jump to another window.
+    const auto items = m_timeline->items();
+    const auto boundary = items.isEmpty() ? QString{} :
+                          requestKind == RequestKind::Older ? items.constFirst().stableId : items.constLast().stableId;
+    if ((page.items.isEmpty() || boundary == requestedAnchor) &&
+        ((requestKind == RequestKind::Older && m_hasOlder) || (requestKind == RequestKind::Newer && m_hasNewer)))
+        QTimer::singleShot(0, this, [this, generation, requestKind, requestedLimit] {
+            if (generation != m_requestGeneration)
+                return;
+            if (requestKind == RequestKind::Older)
+                loadOlder(requestedLimit);
+            else
+                loadNewer(requestedLimit);
+        });
 }
 
 void ChatTimelineController::setLoadingInitial(bool loading)
@@ -496,7 +531,10 @@ void ChatTimelineController::eventReceived(const Chat &chat, const ChatTimelineI
         ChatTimelinePage livePage;
         livePage.items = {item};
         if (m_timeline->append(livePage, MaximumWindowSize))
+        {
+            m_olderCursor.clear();
             setHasOlder(true);
+        }
     }
     else
     {
@@ -528,8 +566,10 @@ void ChatTimelineController::eventUpdated(const Chat &chat, const ChatTimelineIt
     if (chat != m_chat)
         return;
 
+    // Updates can concern any cached event, including messages outside this
+    // window (decryption, reactions, member details). They must not extend it.
     if (m_timeline->rowForStableId(item.stableId) >= 0 ||
-        m_timeline->rowForTransactionId(item.transactionId) >= 0 || !m_hasNewer)
+        m_timeline->rowForTransactionId(item.transactionId) >= 0)
         m_timeline->upsert(item);
     else
     {

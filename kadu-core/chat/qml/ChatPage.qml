@@ -51,6 +51,9 @@ Item {
     property int attachmentImageRevision: 0
     property string olderAnchorId: ""
     property real olderAnchorOffset: 0
+    property bool restoringTimelineAnchor: false
+    property int historyRequestDirection: 0
+    property int timelinePositionGeneration: 0
     property string highlightedStableId: ""
     property var defaultComposerContextComponent: null
     property var defaultComposerOverlayComponent: null
@@ -72,6 +75,7 @@ Item {
 
     onChatViewModelChanged: {
         timelineActionsCache = ({})
+        cancelTimelineAnchor()
     }
 
     // These values also make the fallback renderer readable when a selected
@@ -176,6 +180,7 @@ Item {
     function jumpToTimelineItem(stableId) {
         if (!chatViewModel || !stableId)
             return
+        cancelTimelineAnchor()
         followingTail = false
         chatViewModel.setTimelineAtNewest(false)
         chatViewModel.jumpToTimelineItem(stableId)
@@ -437,6 +442,7 @@ Item {
     }
 
     function jumpToLatest() {
+        cancelTimelineAnchor()
         if (chatViewModel && chatViewModel.hasNewer) {
             followingTail = true
             scheduleScrollToBottom(4)
@@ -500,25 +506,29 @@ Item {
 
     function requestOlder() {
         if (!chatViewModel || !chatViewModel.hasOlder || chatViewModel.loadingInitial ||
-                chatViewModel.loadingOlder || chatViewModel.loadingNewer)
+                chatViewModel.loadingOlder || chatViewModel.loadingNewer ||
+                chatViewModel.historyError.length > 0 || restoringTimelineAnchor || olderAnchorId.length > 0)
             return
 
         const row = timeline.indexAt(timeline.width / 2, Math.max(timeline.contentY, timeline.originY) + 2)
         const item = timeline.itemAtIndex(Math.max(0, row))
         olderAnchorId = item ? item.stableId : ""
         olderAnchorOffset = item ? timeline.contentY - item.y : 0
+        historyRequestDirection = -1
         chatViewModel.loadOlder()
     }
 
     function requestNewer() {
         if (!chatViewModel || !chatViewModel.hasNewer || chatViewModel.loadingInitial ||
-                chatViewModel.loadingOlder || chatViewModel.loadingNewer)
+                chatViewModel.loadingOlder || chatViewModel.loadingNewer ||
+                chatViewModel.historyError.length > 0 || restoringTimelineAnchor || olderAnchorId.length > 0)
             return
 
         const row = timeline.indexAt(timeline.width / 2, timeline.contentY + timeline.height - 2)
         const item = timeline.itemAtIndex(Math.max(0, row))
         olderAnchorId = item ? item.stableId : ""
         olderAnchorOffset = item ? timeline.contentY - item.y : 0
+        historyRequestDirection = 1
         chatViewModel.loadNewer()
     }
 
@@ -534,19 +544,48 @@ Item {
         revealScrollBar()
     }
 
-    function restoreOlderAnchor() {
-        if (!chatViewModel || olderAnchorId.length === 0)
-            return
-        const index = chatViewModel.timeline.rowForStableId(olderAnchorId)
-        if (index >= 0) {
-            timeline.positionViewAtIndex(index, ListView.Beginning)
-            Qt.callLater(function() {
-                const item = timeline.itemAtIndex(index)
-                if (item)
-                    timeline.contentY = item.y + olderAnchorOffset
-            })
-        }
+    function cancelTimelineAnchor() {
+        ++timelinePositionGeneration
         olderAnchorId = ""
+        historyRequestDirection = 0
+    }
+
+    function restoreOlderAnchor() {
+        if (!chatViewModel || chatViewModel.loadingInitial || chatViewModel.loadingOlder ||
+                chatViewModel.loadingNewer || restoringTimelineAnchor || historyRequestDirection === 0)
+            return
+        const stableId = olderAnchorId
+        const offset = olderAnchorOffset
+        const direction = historyRequestDirection
+        const viewModel = chatViewModel
+        const generation = timelinePositionGeneration
+        olderAnchorId = ""
+        historyRequestDirection = 0
+        restoringTimelineAnchor = true
+        const index = viewModel.timeline.rowForStableId(stableId)
+        if (index >= 0)
+            timeline.positionViewAtIndex(index, ListView.Beginning)
+        Qt.callLater(function() {
+            if (generation === root.timelinePositionGeneration && root.chatViewModel === viewModel && !viewModel.loadingInitial &&
+                    !viewModel.loadingOlder && !viewModel.loadingNewer) {
+                // Row numbers can change before layout completes. Keep the
+                // saved event and offset, and resolve its row again.
+                const row = viewModel.timeline.rowForStableId(stableId)
+                const item = row >= 0 ? timeline.itemAtIndex(row) : null
+                if (item)
+                    timeline.contentY = item.y + offset
+            }
+            root.restoringTimelineAnchor = false
+            if (generation !== root.timelinePositionGeneration || root.chatViewModel !== viewModel)
+                return
+            // Short/overlapping pages may leave us at the same edge without
+            // another contentY change. Resume only the requested direction.
+            if (direction < 0 && timeline.contentY <= timeline.originY + 64)
+                root.requestOlder()
+            else if (direction > 0 && timeline.contentY + timeline.height >=
+                     timeline.originY + timeline.contentHeight - 64)
+                root.requestNewer()
+        })
     }
 
     Loader {
