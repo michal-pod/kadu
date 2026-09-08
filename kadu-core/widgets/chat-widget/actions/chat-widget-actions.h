@@ -28,6 +28,7 @@
 class MenuInventory;
 class OpenChatAction;
 class ChatNotificationsAction;
+class MarkChatReadAction;
 
 class ChatWidgetActions : public QObject
 {
@@ -42,10 +43,12 @@ private:
     QPointer<MenuInventory> m_menuInventory;
     QPointer<OpenChatAction> m_openChatAction;
     QPointer<ChatNotificationsAction> m_chatNotificationsAction;
+    QPointer<MarkChatReadAction> m_markChatReadAction;
 
 private slots:
     INJEQT_SET void setMenuInventory(MenuInventory *menuInventory);
     INJEQT_SET void setOpenChatAction(OpenChatAction *openChatAction);
     INJEQT_SET void setChatNotificationsAction(ChatNotificationsAction *chatNotificationsAction);
+    INJEQT_SET void setMarkChatReadAction(MarkChatReadAction *markChatReadAction);
     INJEQT_INIT void init();
 };

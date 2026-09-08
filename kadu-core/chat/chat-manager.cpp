@@ -40,6 +40,7 @@ void ChatManager::itemAboutToBeAdded(Chat item)
 
 void ChatManager::itemAdded(Chat item)
 {
+    updateUnreadMessagesCount(item);
     emit chatAdded(item);
 }
 
@@ -50,5 +51,31 @@ void ChatManager::itemAboutToBeRemoved(Chat item)
 
 void ChatManager::itemRemoved(Chat item)
 {
+    const auto previousCount = m_unreadMessagesCounts.take(item.uuid());
+    if (previousCount > 0)
+    {
+        m_unreadMessagesCount -= previousCount;
+        emit unreadMessagesCountChanged(m_unreadMessagesCount);
+    }
     emit chatRemoved(item);
+}
+
+quint64 ChatManager::unreadMessagesCount() const
+{
+    return m_unreadMessagesCount;
+}
+
+void ChatManager::updateUnreadMessagesCount(const Chat &chat)
+{
+    if (!chat)
+        return;
+
+    const auto previousCount = m_unreadMessagesCounts.value(chat.uuid());
+    const auto currentCount = chat.unreadMessagesCount();
+    m_unreadMessagesCounts.insert(chat.uuid(), currentCount);
+    if (previousCount == currentCount)
+        return;
+
+    m_unreadMessagesCount = m_unreadMessagesCount - previousCount + currentCount;
+    emit unreadMessagesCountChanged(m_unreadMessagesCount);
 }

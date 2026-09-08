@@ -68,6 +68,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 
@@ -163,6 +164,24 @@ bool MatrixChatService::setChatNotificationMode(const Chat &chat, ChatNotificati
         return false;
 
     replaceNotificationModeRules(chat, mode);
+    return true;
+}
+
+bool MatrixChatService::markChatRead(const Chat &chat)
+{
+    if (chat.isNull() || !m_connection || !m_connection->isLoggedIn())
+        return false;
+
+    const auto id = roomId(chat);
+    if (id.isEmpty())
+        return false;
+
+    auto *room = m_connection->room(id, Quotient::JoinState::Join);
+    if (!isSupportedRoom(room))
+        return false;
+
+    room->markAllMessagesAsRead();
+    chat.setUnreadMessagesCount(0);
     return true;
 }
 
@@ -723,6 +742,7 @@ Chat MatrixChatService::roomChat(Quotient::Room *room) const
     if (!chat)
         return Chat::null;
 
+    chat.setUnreadCountSource(ChatUnreadCountSource::ProtocolManaged);
     chat.addProperty(
         QStringLiteral("chat-widget:show-contacts-list"), !m_connection->isDirectChat(room->id()),
         CustomProperties::NonStorable);
@@ -763,6 +783,7 @@ void MatrixChatService::synchronizeRoom(Quotient::Room *room)
 
     synchronizeRoomDetails(room);
     synchronizeRoomMembers(room);
+    synchronizeRoomUnreadCount(room);
 }
 
 void MatrixChatService::synchronizeRoomDetails(Quotient::Room *room)
@@ -836,6 +857,24 @@ void MatrixChatService::synchronizeRoomMembers(Quotient::Room *room)
         details->addContact(contact);
 }
 
+void MatrixChatService::synchronizeRoomUnreadCount(Quotient::Room *room)
+{
+    if (!m_initialSyncFinished || !isSupportedRoom(room))
+        return;
+
+    const auto chat = roomChat(room);
+    if (!chat)
+        return;
+
+    const auto notificationCount = room->notificationCount();
+    const auto unreadMessagesCount = notificationCount <= 0
+                                         ? 0
+                                         : static_cast<quint32>(qMin<quint64>(
+                                               static_cast<quint64>(notificationCount),
+                                               std::numeric_limits<quint32>::max()));
+    chat.setUnreadMessagesCount(unreadMessagesCount);
+}
+
 void MatrixChatService::watchRoom(Quotient::Room *room)
 {
     if (!room || m_watchedRooms.contains(room))
@@ -862,6 +901,10 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
             [this, room](Quotient::JoinState, Quotient::JoinState) { synchronizeRoom(room); });
     connect(room, &Quotient::Room::topicChanged, this, [this, room] { synchronizeRoomDetails(room); });
     connect(room, &Quotient::Room::avatarChanged, this, [this, room] { synchronizeRoomDetails(room); });
+    connect(room, &Quotient::Room::notificationCountChanged, this,
+            [this, room] { synchronizeRoomUnreadCount(room); });
+    connect(room, &Quotient::Room::unreadStatsChanged, this,
+            [this, room] { synchronizeRoomUnreadCount(room); });
     connect(room, &Quotient::Room::memberAvatarUpdated, this,
             [this, room](const Quotient::RoomMember &member) {
                 if (member.id() == directPeerId(room))

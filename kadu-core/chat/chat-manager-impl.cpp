@@ -32,6 +32,8 @@
 #include "chat-manager-impl.h"
 #include "chat-manager-impl.moc"
 
+#include <limits>
+
 ChatManagerImpl::ChatManagerImpl(QObject *parent) : ChatManager{parent}
 {
 }
@@ -136,7 +138,10 @@ void ChatManagerImpl::chatDataUpdated()
 {
     Chat chat(sender());
     if (!chat.isNull())
+    {
+        updateUnreadMessagesCount(chat);
         emit chatUpdated(chat);
+    }
 }
 
 void ChatManagerImpl::chatOpened()
@@ -156,13 +161,21 @@ void ChatManagerImpl::chatClosed()
 void ChatManagerImpl::unreadMessageAdded(const Message &message)
 {
     const Chat &chat = message.messageChat();
-    chat.setUnreadMessagesCount(chat.unreadMessagesCount() + 1);
+    if (chat.unreadCountSource() != ChatUnreadCountSource::CoreManaged)
+        return;
+
+    const auto unreadMessagesCount = chat.unreadMessagesCount();
+    if (unreadMessagesCount < std::numeric_limits<quint32>::max())
+        chat.setUnreadMessagesCount(unreadMessagesCount + 1);
 }
 
 void ChatManagerImpl::unreadMessageRemoved(const Message &message)
 {
     const Chat &chat = message.messageChat();
-    quint16 unreadMessagesCount = chat.unreadMessagesCount();
+    if (chat.unreadCountSource() != ChatUnreadCountSource::CoreManaged)
+        return;
+
+    const auto unreadMessagesCount = chat.unreadMessagesCount();
     if (unreadMessagesCount > 0)
         chat.setUnreadMessagesCount(unreadMessagesCount - 1);
 }

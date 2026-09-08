@@ -52,7 +52,8 @@
  */
 ChatShared::ChatShared(const QUuid &uuid)
         : Shared(uuid), ChatAccount{nullptr}, Details(0), IgnoreAllMessages(false),
-          NotificationMode(ChatNotificationMode::Default), UnreadMessagesCount(0), Open(false)
+          NotificationMode(ChatNotificationMode::Default), UnreadCountSource(ChatUnreadCountSource::CoreManaged),
+          UnreadMessagesCount(0), Open(false)
 {
 }
 

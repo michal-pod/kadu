@@ -82,6 +82,14 @@ public:
      */
     virtual bool setChatNotificationMode(const Chat &chat, ChatNotificationMode mode);
 
+    /**
+     * Mark all messages in a chat as read.
+     *
+     * The default implementation clears the local chat counter. Protocols
+     * with server-side read markers should override this method.
+     */
+    virtual bool markChatRead(const Chat &chat);
+
 public slots:
     /**
      * @short Send new message to given chat.

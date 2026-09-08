@@ -45,6 +45,15 @@ bool ChatService::setChatNotificationMode(const Chat &chat, ChatNotificationMode
     return true;
 }
 
+bool ChatService::markChatRead(const Chat &chat)
+{
+    if (chat.isNull())
+        return false;
+
+    chat.setUnreadMessagesCount(0);
+    return true;
+}
+
 void ChatService::setRawMessageTransformerService(RawMessageTransformerService *rawMessageTransformerService)
 {
     m_rawMessageTransformerService = rawMessageTransformerService;

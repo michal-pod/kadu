@@ -25,6 +25,7 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QHash>
 #include <QtCore/QUuid>
 #include <QtCore/QVector>
 #include <injeqt/injeqt.h>
@@ -89,6 +90,10 @@ class UnreadMessageRepository;
 class KADUAPI ChatManager : public Manager<Chat>
 {
     Q_OBJECT
+    Q_PROPERTY(quint64 unreadMessagesCount READ unreadMessagesCount NOTIFY unreadMessagesCountChanged)
+
+    QHash<QUuid, quint32> m_unreadMessagesCounts;
+    quint64 m_unreadMessagesCount = 0;
 
 public:
     explicit ChatManager(QObject *parent = nullptr);
@@ -104,7 +109,11 @@ public:
 
     virtual Chat byDisplay(const QString &display) = 0;
 
+    quint64 unreadMessagesCount() const;
+
 protected:
+    void updateUnreadMessagesCount(const Chat &chat);
+
     virtual void itemAboutToBeAdded(Chat item) override;
     virtual void itemAdded(Chat item) override;
     virtual void itemAboutToBeRemoved(Chat item) override;
@@ -168,6 +177,9 @@ signals:
      * @param chat closed chat
      */
     void chatClosed(const Chat &chat);
+
+    /** Emitted when the sum of unread counts across all chats changes. */
+    void unreadMessagesCountChanged(quint64 unreadMessagesCount);
 };
 
 /**

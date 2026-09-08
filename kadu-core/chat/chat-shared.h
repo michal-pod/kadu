@@ -24,6 +24,7 @@
 #pragma once
 
 #include "chat/chat-notification-mode.h"
+#include "chat/chat-unread-count-source.h"
 #include "contacts/contact.h"
 #include "storage/shared.h"
 
@@ -72,8 +73,9 @@ class KADUAPI ChatShared : public Shared
     QString Type;
     bool IgnoreAllMessages;
     ChatNotificationMode NotificationMode;
+    ChatUnreadCountSource UnreadCountSource;
     QSet<Group> Groups;
-    quint16 UnreadMessagesCount;
+    quint32 UnreadMessagesCount;
     bool Open;
 
     void loadDetails();
@@ -144,7 +146,10 @@ public:
 
             KaduShared_Property(ChatNotificationMode, notificationMode, NotificationMode)
 
-            KaduShared_Property(quint16, unreadMessagesCount, UnreadMessagesCount)
+            // Runtime policy selected by the protocol; it is deliberately not stored.
+            KaduShared_Property(ChatUnreadCountSource, unreadCountSource, UnreadCountSource)
+
+                KaduShared_Property(quint32, unreadMessagesCount, UnreadMessagesCount)
 
         /**
          * @short Return true when chat is connected.

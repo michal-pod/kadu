@@ -114,8 +114,12 @@ KaduSharedBase_PropertyReadDef(Chat, ContactSet, contacts, Contacts, ContactSet(
                             KaduSharedBase_PropertyDef(
                                 Chat, ChatNotificationMode, notificationMode, NotificationMode,
                                 ChatNotificationMode::Default)
-                            KaduSharedBase_PropertyDefCRW(Chat, QSet<Group>, groups, Groups, QSet<Group>())
-                                KaduSharedBase_PropertyDef(Chat, quint16, unreadMessagesCount, UnreadMessagesCount, 0)
+                            KaduSharedBase_PropertyDef(
+                                Chat, ChatUnreadCountSource, unreadCountSource, UnreadCountSource,
+                                ChatUnreadCountSource::CoreManaged)
+                                KaduSharedBase_PropertyDefCRW(Chat, QSet<Group>, groups, Groups, QSet<Group>())
+                                    KaduSharedBase_PropertyDef(
+                                        Chat, quint32, unreadMessagesCount, UnreadMessagesCount, 0)
 
                                     bool Chat::isConnected() const
 {
