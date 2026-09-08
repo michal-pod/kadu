@@ -25,7 +25,9 @@
 #include <Quotient/events/eventrelation.h>
 
 #include <QtCore/QPointer>
+#include <QtCore/QPair>
 #include <QtCore/QSet>
+#include <QtCore/QVector>
 
 #include <optional>
 
@@ -52,6 +54,7 @@ public:
     virtual ~MatrixChatService() = default;
 
     virtual int maxMessageLength() const override;
+    virtual bool setChatNotificationMode(const Chat &chat, ChatNotificationMode mode) override;
 
     void setConnection(Quotient::Connection *connection);
     void setContactAvatarService(MatrixContactAvatarService *contactAvatarService);
@@ -78,6 +81,8 @@ private:
     QSet<QString> m_historicalEventIds;
     QSet<QString> m_localTransactionIds;
     bool m_initialSyncFinished = false;
+    bool m_notificationRulesLoaded = false;
+    bool m_notificationRulesLoading = false;
 
     QString roomId(const Chat &chat) const;
     bool sendText(const Chat &chat, const QString &text, Message message = {},
@@ -100,6 +105,12 @@ private:
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,
                                 const QString &eventId);
+    void refreshNotificationModes();
+    void replaceNotificationModeRules(const Chat &chat, ChatNotificationMode mode);
+    void deleteNotificationModeRules(
+        const Chat &chat, ChatNotificationMode mode, const QVector<QPair<QString, QString>> &rules, int index);
+    void createNotificationModeRule(const Chat &chat, ChatNotificationMode mode);
+    void failNotificationModeChange(const Chat &chat, const QString &details = {});
 
 private slots:
     INJEQT_SET void setChatManager(ChatManager *chatManager);

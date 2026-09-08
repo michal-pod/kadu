@@ -24,6 +24,8 @@
 #include <optional>
 
 class MatrixPowerLevelEditor;
+class ChatPersonalSettingsWidget;
+class ChatService;
 class IconsManager;
 class QCloseEvent;
 class QComboBox;
@@ -53,8 +55,8 @@ class MatrixRoomSettingsWindow final : public QWidget
 
 public:
     explicit MatrixRoomSettingsWindow(
-        const Chat &chat, Quotient::Connection *connection, Quotient::Room *room, IconsManager *iconsManager,
-        QWidget *parent = nullptr);
+        const Chat &chat, ChatService *chatService, Quotient::Connection *connection, Quotient::Room *room,
+        IconsManager *iconsManager, QWidget *parent = nullptr);
     virtual ~MatrixRoomSettingsWindow() = default;
 
 protected:
@@ -94,11 +96,13 @@ private:
     };
 
     Chat m_chat;
+    QPointer<ChatService> m_chatService;
     QPointer<Quotient::Connection> m_connection;
     QPointer<Quotient::Room> m_room;
     QPointer<IconsManager> m_iconsManager;
 
     QTabWidget *m_tabs = nullptr;
+    ChatPersonalSettingsWidget *m_personalSettings = nullptr;
     QLineEdit *m_nameEdit = nullptr;
     QPlainTextEdit *m_topicEdit = nullptr;
     QLabel *m_avatarPreview = nullptr;
@@ -135,6 +139,7 @@ private:
 
     QString m_savedName;
     QString m_savedTopic;
+    ChatNotificationMode m_savedNotificationMode = ChatNotificationMode::Default;
     QUrl m_savedAvatarUrl;
     QString m_avatarFileName;
     QJsonObject m_savedJoinRules;
@@ -152,6 +157,7 @@ private:
     bool m_removeAvatar = false;
     bool m_saving = false;
     bool m_closeAfterSave = false;
+    bool m_notificationModeUpdatePending = false;
     int m_pendingOperations = 0;
     QStringList m_errors;
 

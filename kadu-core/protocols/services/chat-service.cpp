@@ -35,6 +35,16 @@ ChatService::~ChatService()
 {
 }
 
+bool ChatService::setChatNotificationMode(const Chat &chat, ChatNotificationMode mode)
+{
+    if (chat.isNull())
+        return false;
+
+    chat.setNotificationMode(mode);
+    emit chatNotificationModeChanged(chat, mode);
+    return true;
+}
+
 void ChatService::setRawMessageTransformerService(RawMessageTransformerService *rawMessageTransformerService)
 {
     m_rawMessageTransformerService = rawMessageTransformerService;

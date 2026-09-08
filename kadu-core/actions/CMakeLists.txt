@@ -1,5 +1,6 @@
 set (actions_SRCS
 	chat/leave-chat-action.cpp
+	chat/chat-notifications-action.cpp
 	chat/add-conference-action.cpp
 	chat/add-room-chat-action.cpp
 

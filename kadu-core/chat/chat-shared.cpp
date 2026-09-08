@@ -51,7 +51,8 @@
  * created.
  */
 ChatShared::ChatShared(const QUuid &uuid)
-        : Shared(uuid), ChatAccount{nullptr}, Details(0), IgnoreAllMessages(false), UnreadMessagesCount(0), Open(false)
+        : Shared(uuid), ChatAccount{nullptr}, Details(0), IgnoreAllMessages(false),
+          NotificationMode(ChatNotificationMode::Default), UnreadMessagesCount(0), Open(false)
 {
 }
 
@@ -163,6 +164,11 @@ void ChatShared::load()
 
     *ChatAccount = m_accountManager->byUuid(QUuid(loadValue<QString>("Account")));
     Display = loadValue<QString>("Display");
+    const auto notificationMode = loadValue<int>("NotificationMode", 0);
+    NotificationMode = notificationMode >= static_cast<int>(ChatNotificationMode::Default) &&
+                               notificationMode <= static_cast<int>(ChatNotificationMode::NoNotifications)
+                           ? static_cast<ChatNotificationMode>(notificationMode)
+                           : ChatNotificationMode::Default;
     auto type = loadValue<QString>("Type");
 
     // import from alias to new name of chat type
@@ -196,6 +202,7 @@ void ChatShared::store()
 
     storeValue("Account", ChatAccount->uuid().toString());
     storeValue("Display", Display);
+    storeValue("NotificationMode", static_cast<int>(NotificationMode));
 
     // import from alias to new name of chat type
     ChatType *chatType = m_chatTypeManager->chatType(Type);
@@ -235,6 +242,9 @@ bool ChatShared::shouldStore()
         return true;
 
     if (customProperties()->shouldStore())
+        return true;
+
+    if (NotificationMode != ChatNotificationMode::Default)
         return true;
 
     return UuidStorableObject::shouldStore() && !ChatAccount->uuid().isNull() && (!Details || Details->shouldStore()) &&

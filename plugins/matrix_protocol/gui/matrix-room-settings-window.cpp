@@ -16,6 +16,8 @@
 #include "icons/icons-manager.h"
 #include "icons/kadu-icon.h"
 #include "matrix-power-level-editor.h"
+#include "protocols/services/chat-service.h"
+#include "widgets/chat-personal-settings-widget.h"
 
 #include <Quotient/avatar.h>
 #include <Quotient/connection.h>
@@ -59,10 +61,10 @@
 #include <algorithm>
 
 MatrixRoomSettingsWindow::MatrixRoomSettingsWindow(
-    const Chat &chat, Quotient::Connection *connection, Quotient::Room *room, IconsManager *iconsManager,
-    QWidget *parent)
-        : QWidget{parent, Qt::Window}, m_chat{chat}, m_connection{connection}, m_room{room},
-          m_iconsManager{iconsManager}
+    const Chat &chat, ChatService *chatService, Quotient::Connection *connection, Quotient::Room *room,
+    IconsManager *iconsManager, QWidget *parent)
+        : QWidget{parent, Qt::Window}, m_chat{chat}, m_chatService{chatService}, m_connection{connection},
+          m_room{room}, m_iconsManager{iconsManager}
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Room Settings - %1").arg(room ? room->displayName() : chat.display()));
@@ -79,6 +81,8 @@ void MatrixRoomSettingsWindow::createGui()
     auto mainLayout = new QVBoxLayout{this};
     m_tabs = new QTabWidget{this};
     m_tabs->addTab(createGeneralTab(), tr("General"));
+    m_personalSettings = new ChatPersonalSettingsWidget{m_tabs};
+    m_tabs->addTab(m_personalSettings, m_personalSettings->tabTitle());
     m_tabs->addTab(createAccessTab(), tr("Access and privacy"));
     m_communicationTabIndex = m_tabs->addTab(createCommunicationTab(), tr("Communication"));
     m_moderationTabIndex = m_tabs->addTab(createModerationTab(), tr("Moderation"));
@@ -98,6 +102,8 @@ void MatrixRoomSettingsWindow::createGui()
 
     connect(m_nameEdit, &QLineEdit::textChanged, this, &MatrixRoomSettingsWindow::refreshState);
     connect(m_topicEdit, &QPlainTextEdit::textChanged, this, &MatrixRoomSettingsWindow::refreshState);
+    connect(m_personalSettings, &ChatPersonalSettingsWidget::changed, this,
+            &MatrixRoomSettingsWindow::refreshState);
     connect(m_changeAvatarButton, &QPushButton::clicked, this, &MatrixRoomSettingsWindow::chooseAvatar);
     connect(m_removeAvatarButton, &QPushButton::clicked, this, &MatrixRoomSettingsWindow::removeAvatar);
     connect(m_joinRuleCombo, &QComboBox::currentIndexChanged, this, &MatrixRoomSettingsWindow::refreshState);
@@ -112,6 +118,42 @@ void MatrixRoomSettingsWindow::createGui()
     connect(m_okButton, &QPushButton::clicked, this, [this] { save(true); });
     connect(m_applyButton, &QPushButton::clicked, this, [this] { save(false); });
     connect(m_cancelButton, &QPushButton::clicked, this, &QWidget::close);
+
+    if (m_chatService)
+    {
+        connect(m_chatService, &ChatService::chatNotificationModeChanged, this,
+                [this](const Chat &chat, ChatNotificationMode mode) {
+                    if (chat != m_chat)
+                        return;
+
+                    if (m_notificationModeUpdatePending)
+                    {
+                        if (mode != m_personalSettings->notificationMode())
+                            return;
+                        m_notificationModeUpdatePending = false;
+                        m_savedNotificationMode = mode;
+                        m_personalSettings->setNotificationMode(mode);
+                        finishOperation();
+                        return;
+                    }
+
+                    if (!m_saving && m_personalSettings->notificationMode() == m_savedNotificationMode)
+                    {
+                        m_savedNotificationMode = mode;
+                        m_personalSettings->setNotificationMode(mode);
+                        refreshState();
+                    }
+                });
+        connect(m_chatService, &ChatService::chatNotificationModeChangeFailed, this,
+                [this](const Chat &chat, const QString &error) {
+                    if (chat != m_chat || !m_notificationModeUpdatePending)
+                        return;
+
+                    m_notificationModeUpdatePending = false;
+                    m_personalSettings->setNotificationMode(m_savedNotificationMode);
+                    finishOperation(error);
+                });
+    }
 }
 
 QWidget *MatrixRoomSettingsWindow::createGeneralTab()
@@ -681,6 +723,9 @@ void MatrixRoomSettingsWindow::connectRoom()
 
 void MatrixRoomSettingsWindow::loadRoomData()
 {
+    m_savedNotificationMode = m_chat.notificationMode();
+    m_personalSettings->setNotificationMode(m_savedNotificationMode);
+
     if (!m_room)
     {
         const auto *details = qobject_cast<ChatDetailsRoom *>(m_chat.details());
@@ -801,6 +846,8 @@ void MatrixRoomSettingsWindow::refreshPermissions()
     const auto canSetPowerLevels = canSendState(QStringLiteral("m.room.power_levels"));
     const auto deniedToolTip = tr("You do not have permission to change this room property.");
 
+    m_personalSettings->setEditingEnabled(!m_saving && m_chatService);
+
     m_nameEdit->setReadOnly(!canSetName);
     m_nameEdit->setToolTip(canSetName ? QString{} : deniedToolTip);
     m_topicEdit->setReadOnly(!canSetTopic);
@@ -901,7 +948,8 @@ bool MatrixRoomSettingsWindow::hasPowerLevelChanges() const
 bool MatrixRoomSettingsWindow::hasChanges() const
 {
     return m_nameEdit->text() != m_savedName || m_topicEdit->toPlainText() != m_savedTopic ||
-           !m_avatarFileName.isEmpty() || m_removeAvatar || hasAccessChanges() || hasPowerLevelChanges();
+           !m_avatarFileName.isEmpty() || m_removeAvatar || hasAccessChanges() || hasPowerLevelChanges() ||
+           m_personalSettings->notificationMode() != m_savedNotificationMode;
 }
 
 void MatrixRoomSettingsWindow::refreshState()
@@ -1097,6 +1145,7 @@ void MatrixRoomSettingsWindow::setSaving(bool saving)
     m_saving = saving;
     m_nameEdit->setEnabled(!saving);
     m_topicEdit->setEnabled(!saving);
+    m_personalSettings->setEditingEnabled(!saving && m_chatService);
     refreshPermissions();
 }
 
@@ -1183,6 +1232,24 @@ void MatrixRoomSettingsWindow::save(bool closeAfterSave)
             startStateUpdate(QStringLiteral("m.room.power_levels"), powerLevels, tr("Permissions"));
         else
             m_errors.append(tr("Permissions could not be changed because your permission has changed."));
+    }
+
+    const auto notificationMode = m_personalSettings->notificationMode();
+    if (notificationMode != m_savedNotificationMode)
+    {
+        if (m_chatService)
+        {
+            ++m_pendingOperations;
+            m_notificationModeUpdatePending = true;
+            if (!m_chatService->setChatNotificationMode(m_chat, notificationMode))
+            {
+                m_notificationModeUpdatePending = false;
+                --m_pendingOperations;
+                m_errors.append(tr("The notification setting could not be changed."));
+            }
+        }
+        else
+            m_errors.append(tr("The notification setting is unavailable."));
     }
 
     if (m_pendingOperations == 0)

@@ -56,6 +56,7 @@ set (widgets_SRCS
 	chat-configuration-widget-factory.cpp
 	chat-configuration-widget-factory-repository.cpp
 	chat-configuration-widget-group-boxes-adapter.cpp
+	chat-personal-settings-widget.cpp
 	chat-edit-box.cpp
 	chat-edit-box-size-manager.cpp
 	chat-edit-widget.cpp

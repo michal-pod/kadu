@@ -195,7 +195,7 @@ QWidget *MatrixProtocol::createChatSettingsWindow(const Chat &chat, QWidget *par
     auto *room = details && m_connection
                      ? m_connection->room(details->room(), Quotient::JoinState::Join)
                      : nullptr;
-    return new MatrixRoomSettingsWindow{chat, m_connection, room, m_iconsManager, parent};
+    return new MatrixRoomSettingsWindow{chat, m_chatService, m_connection, room, m_iconsManager, parent};
 }
 
 void MatrixProtocol::createConnection()

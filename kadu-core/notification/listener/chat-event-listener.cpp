@@ -60,6 +60,12 @@ void ChatEventListener::setNotificationConfiguration(NotificationConfiguration *
 
 void ChatEventListener::messageReceived(const Message &message)
 {
+    if (message.messageChat().notificationMode() == ChatNotificationMode::NoNotifications)
+        return;
+
+    // MentionsOnly is intentionally a stored protocol-facing mode for now.
+    // Local mention classification will narrow these notifications when mention support is added.
+
     if (message.messageChat().isOpen())
     {
         auto chatWidget = m_chatWidgetRepository->widgetForChat(message.messageChat());

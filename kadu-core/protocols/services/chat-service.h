@@ -26,6 +26,7 @@
 
 #include "buddies/buddy-list.h"
 #include "chat/chat.h"
+#include "chat/chat-notification-mode.h"
 #include "exports.h"
 
 #include "protocols/services/account-service.h"
@@ -72,6 +73,14 @@ public:
      * @return max message length for this implementation
      */
     virtual int maxMessageLength() const = 0;
+
+    /**
+     * Per-chat notification modes have a common UI and local storage model.
+     * The default implementation updates the local Chat object immediately.
+     * Protocols with server-side support may override this method and
+     * confirm the value only after it has been synchronized.
+     */
+    virtual bool setChatNotificationMode(const Chat &chat, ChatNotificationMode mode);
 
 public slots:
     /**
@@ -179,6 +188,9 @@ signals:
      * This signal is emitted every message is received and not ignored.
      */
     void messageReceived(const Message &message);
+
+    void chatNotificationModeChanged(const Chat &chat, ChatNotificationMode mode);
+    void chatNotificationModeChangeFailed(const Chat &chat, const QString &error);
 
 private:
     QPointer<RawMessageTransformerService> m_rawMessageTransformerService;

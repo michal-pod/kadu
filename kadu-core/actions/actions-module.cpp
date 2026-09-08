@@ -35,6 +35,7 @@
 #include "actions/chat/add-conference-action.h"
 #include "actions/chat/add-room-chat-action.h"
 #include "actions/chat/leave-chat-action.h"
+#include "actions/chat/chat-notifications-action.h"
 #include "actions/main/change-status-action.h"
 #include "actions/main/default-proxy-action.h"
 #include "actions/main/exit-action.h"
@@ -84,6 +85,7 @@ ActionsModule::ActionsModule()
     add_type<AddConferenceAction>();
     add_type<AddRoomChatAction>();
     add_type<LeaveChatAction>();
+    add_type<ChatNotificationsAction>();
 
     // chat-widget
     add_type<AutoSendAction>();

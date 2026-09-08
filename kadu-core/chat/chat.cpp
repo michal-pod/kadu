@@ -111,6 +111,9 @@ KaduSharedBase_PropertyReadDef(Chat, ContactSet, contacts, Contacts, ContactSet(
                 KaduSharedBase_PropertyDefCRW(Chat, QString, type, Type, QString())
                     KaduSharedBase_PropertyDefCRW(Chat, QString, display, Display, QString())
                         KaduSharedBase_PropertyBoolDef(Chat, IgnoreAllMessages, false)
+                            KaduSharedBase_PropertyDef(
+                                Chat, ChatNotificationMode, notificationMode, NotificationMode,
+                                ChatNotificationMode::Default)
                             KaduSharedBase_PropertyDefCRW(Chat, QSet<Group>, groups, Groups, QSet<Group>())
                                 KaduSharedBase_PropertyDef(Chat, quint16, unreadMessagesCount, UnreadMessagesCount, 0)
 

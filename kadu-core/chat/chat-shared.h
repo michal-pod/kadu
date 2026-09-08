@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include "chat/chat-notification-mode.h"
 #include "contacts/contact.h"
 #include "storage/shared.h"
 
@@ -70,6 +71,7 @@ class KADUAPI ChatShared : public Shared
     QString Display;
     QString Type;
     bool IgnoreAllMessages;
+    ChatNotificationMode NotificationMode;
     QSet<Group> Groups;
     quint16 UnreadMessagesCount;
     bool Open;
@@ -139,6 +141,8 @@ public:
 
         // temporary, not stored, lost after program close
         KaduShared_PropertyBool(IgnoreAllMessages)
+
+            KaduShared_Property(ChatNotificationMode, notificationMode, NotificationMode)
 
             KaduShared_Property(quint16, unreadMessagesCount, UnreadMessagesCount)
 

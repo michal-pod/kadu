@@ -40,6 +40,7 @@
 
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
+#include <Quotient/csapi/pushrules.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
@@ -59,13 +60,93 @@
 #include <QtCore/QSize>
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QUrl>
+#include <QtCore/QVariant>
+#include <QtCore/QVariantMap>
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
+#include <iostream>
 #include <memory>
 #include <optional>
-#include <iostream>
+
+namespace MatrixNotificationRules
+{
+class GetPushRulesJob final : public Quotient::BaseJob
+{
+public:
+    GetPushRulesJob()
+            : Quotient::BaseJob{
+                  Quotient::HttpVerb::Get, QStringLiteral("MatrixGetPushRulesJob"),
+                  makePath("/_matrix/client/v3", "/pushrules/")}
+    {
+        addExpectedKey(QStringLiteral("global"));
+    }
+
+    Quotient::PushRuleset global() const
+    {
+        return loadFromJson<Quotient::PushRuleset>(QStringLiteral("global"));
+    }
+};
+
+bool isMuteRule(const QVector<QVariant> &actions)
+{
+    return actions.isEmpty() ||
+           (actions.size() == 1 && actions.constFirst().toString() == QStringLiteral("dont_notify"));
+}
+
+bool hasSoundTweak(const QVector<QVariant> &actions)
+{
+    return std::any_of(actions.cbegin(), actions.cend(), [](const QVariant &action) {
+        return action.toMap().value(QStringLiteral("set_tweak")).toString() == QStringLiteral("sound");
+    });
+}
+
+bool isOverrideMuteRule(const Quotient::PushRule &rule, const QString &roomId)
+{
+    if (!rule.enabled || !isMuteRule(rule.actions) || rule.conditions.size() != 1)
+        return false;
+
+    const auto &condition = rule.conditions.constFirst();
+    return condition.kind == QStringLiteral("event_match") && condition.key == QStringLiteral("room_id") &&
+           condition.pattern == roomId;
+}
+
+void appendNotificationRulesToDelete(
+    QVector<QPair<QString, QString>> &result, const Quotient::PushRuleset &rules, const QString &roomId)
+{
+    for (const auto &rule : rules.override)
+        if (!rule.isDefault && isOverrideMuteRule(rule, roomId))
+            result.append(qMakePair(QStringLiteral("override"), rule.ruleId));
+
+    for (const auto &rule : rules.room)
+        if (!rule.isDefault && rule.ruleId == roomId)
+            result.append(qMakePair(QStringLiteral("room"), rule.ruleId));
+}
+
+std::optional<ChatNotificationMode> modeForRoom(const Quotient::PushRuleset &rules, const QString &roomId)
+{
+    for (const auto &rule : rules.override)
+        if (isOverrideMuteRule(rule, roomId))
+            return ChatNotificationMode::NoNotifications;
+
+    const auto roomRule = std::find_if(rules.room.cbegin(), rules.room.cend(), [&roomId](const auto &rule) {
+        return rule.ruleId == roomId;
+    });
+    if (roomRule == rules.room.cend() || !roomRule->enabled)
+        return ChatNotificationMode::Default;
+
+    if (isMuteRule(roomRule->actions))
+        return ChatNotificationMode::MentionsOnly;
+    if (hasSoundTweak(roomRule->actions))
+        return ChatNotificationMode::AllMessages;
+
+    // Preserve an unrecognised custom rule until the user explicitly replaces it.
+    return std::nullopt;
+}
+
+}
 
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
@@ -74,6 +155,15 @@ MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatSer
 int MatrixChatService::maxMessageLength() const
 {
     return -1;
+}
+
+bool MatrixChatService::setChatNotificationMode(const Chat &chat, ChatNotificationMode mode)
+{
+    if (chat.isNull() || !m_connection || !m_connection->isLoggedIn() || roomId(chat).isEmpty())
+        return false;
+
+    replaceNotificationModeRules(chat, mode);
+    return true;
 }
 
 void MatrixChatService::setConnection(Quotient::Connection *connection)
@@ -90,22 +180,37 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
     m_historicalEventIds.clear();
     m_localTransactionIds.clear();
     m_initialSyncFinished = false;
+    m_notificationRulesLoaded = false;
+    m_notificationRulesLoading = false;
 
     if (!m_connection)
         return;
 
-    connect(m_connection, &Quotient::Connection::newRoom, this, &MatrixChatService::watchRoom);
+    connect(m_connection, &Quotient::Connection::newRoom, this, [this](Quotient::Room *room) {
+        watchRoom(room);
+        m_notificationRulesLoaded = false;
+    });
     connect(m_connection, &Quotient::Connection::joinedRoom, this,
-            [this](Quotient::Room *room, Quotient::Room *) { watchRoom(room); });
+            [this](Quotient::Room *room, Quotient::Room *) {
+                watchRoom(room);
+                m_notificationRulesLoaded = false;
+            });
     connect(m_connection, &Quotient::Connection::syncDone, this, [this] {
         m_initialSyncFinished = true;
         for (auto *room : m_connection->allRooms())
             synchronizeRoom(room);
+        if (!m_notificationRulesLoaded)
+            refreshNotificationModes();
+    });
+    connect(m_connection, &Quotient::Connection::accountDataChanged, this, [this](const QString &type) {
+        if (type == QStringLiteral("m.push_rules"))
+            refreshNotificationModes();
     });
     connect(m_connection, &Quotient::Connection::directChatsListChanged, this,
             [this](const Quotient::DirectChatsMap &, const Quotient::DirectChatsMap &) {
                 for (auto *room : m_connection->allRooms())
                     synchronizeRoom(room);
+                m_notificationRulesLoaded = false;
             });
 
     for (auto *room : m_connection->allRooms())
@@ -115,6 +220,137 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
 void MatrixChatService::setContactAvatarService(MatrixContactAvatarService *contactAvatarService)
 {
     m_contactAvatarService = contactAvatarService;
+}
+
+void MatrixChatService::refreshNotificationModes()
+{
+    if (!m_connection || !m_connection->isLoggedIn() || !m_initialSyncFinished || m_notificationRulesLoading)
+        return;
+
+    m_notificationRulesLoading = true;
+    auto job = m_connection->callApi<MatrixNotificationRules::GetPushRulesJob>();
+    connect(job, &Quotient::BaseJob::success, this, [this, job] {
+        m_notificationRulesLoading = false;
+        if (!m_connection)
+            return;
+
+        const auto rules = job->global();
+        m_notificationRulesLoaded = true;
+        for (auto *room : m_connection->allRooms())
+        {
+            const auto chat = roomChat(room);
+            if (!chat)
+                continue;
+
+            const auto mode = MatrixNotificationRules::modeForRoom(rules, room->id());
+            if (!mode || chat.notificationMode() == *mode)
+                continue;
+
+            chat.setNotificationMode(*mode);
+            emit chatNotificationModeChanged(chat, *mode);
+        }
+    });
+    connect(job, &Quotient::BaseJob::failure, this, [this] { m_notificationRulesLoading = false; });
+}
+
+void MatrixChatService::replaceNotificationModeRules(const Chat &chat, ChatNotificationMode mode)
+{
+    if (!m_connection)
+    {
+        failNotificationModeChange(chat);
+        return;
+    }
+
+    const auto id = roomId(chat);
+    auto job = m_connection->callApi<MatrixNotificationRules::GetPushRulesJob>();
+    connect(job, &Quotient::BaseJob::success, this, [this, job, chat, mode, id] {
+        const auto rules = job->global();
+        QVector<QPair<QString, QString>> rulesToDelete;
+        MatrixNotificationRules::appendNotificationRulesToDelete(rulesToDelete, rules, id);
+        deleteNotificationModeRules(chat, mode, rulesToDelete, 0);
+    });
+    connect(job, &Quotient::BaseJob::failure, this,
+            [this, job, chat] { failNotificationModeChange(chat, job->errorString()); });
+}
+
+void MatrixChatService::deleteNotificationModeRules(
+    const Chat &chat, ChatNotificationMode mode, const QVector<QPair<QString, QString>> &rules, int index)
+{
+    if (!m_connection)
+    {
+        failNotificationModeChange(chat);
+        return;
+    }
+    if (index >= rules.size())
+    {
+        createNotificationModeRule(chat, mode);
+        return;
+    }
+
+    const auto rule = rules.at(index);
+    auto job = m_connection->callApi<Quotient::DeletePushRuleJob>(rule.first, rule.second);
+    connect(job, &Quotient::BaseJob::success, this,
+            [this, chat, mode, rules, index] { deleteNotificationModeRules(chat, mode, rules, index + 1); });
+    connect(job, &Quotient::BaseJob::failure, this, [this, job, chat, mode, rules, index] {
+        if (job->error() == Quotient::BaseJob::NotFound)
+            deleteNotificationModeRules(chat, mode, rules, index + 1);
+        else
+            failNotificationModeChange(chat, job->errorString());
+    });
+}
+
+void MatrixChatService::createNotificationModeRule(const Chat &chat, ChatNotificationMode mode)
+{
+    if (!m_connection)
+    {
+        failNotificationModeChange(chat);
+        return;
+    }
+
+    if (mode == ChatNotificationMode::Default)
+    {
+        chat.setNotificationMode(mode);
+        emit chatNotificationModeChanged(chat, mode);
+        refreshNotificationModes();
+        return;
+    }
+
+    const auto id = roomId(chat);
+    QVector<QVariant> actions;
+    QVector<Quotient::PushCondition> conditions;
+    auto kind = QStringLiteral("room");
+    if (mode == ChatNotificationMode::AllMessages)
+    {
+        // Element recognises an explicit all-messages room rule only when it also enables the default sound.
+        actions.append(QVariant{QStringLiteral("notify")});
+        actions.append(QVariantMap{{QStringLiteral("set_tweak"), QStringLiteral("sound")},
+                                   {QStringLiteral("value"), QStringLiteral("default")}});
+    }
+    else if (mode == ChatNotificationMode::MentionsOnly)
+        actions.append(QVariant{QStringLiteral("dont_notify")});
+    else if (mode == ChatNotificationMode::NoNotifications)
+    {
+        kind = QStringLiteral("override");
+        actions.append(QVariant{QStringLiteral("dont_notify")});
+        conditions.append(Quotient::PushCondition{
+            QStringLiteral("event_match"), QStringLiteral("room_id"), id, {}, {}});
+    }
+
+    auto job = m_connection->callApi<Quotient::SetPushRuleJob>(kind, id, actions, QString{}, QString{}, conditions);
+    connect(job, &Quotient::BaseJob::success, this, [this, chat, mode] {
+        chat.setNotificationMode(mode);
+        emit chatNotificationModeChanged(chat, mode);
+        refreshNotificationModes();
+    });
+    connect(job, &Quotient::BaseJob::failure, this,
+            [this, job, chat] { failNotificationModeChange(chat, job->errorString()); });
+}
+
+void MatrixChatService::failNotificationModeChange(const Chat &chat, const QString &details)
+{
+    emit chatNotificationModeChangeFailed(
+        chat, details.isEmpty() ? tr("The Matrix server rejected the notification setting.")
+                                : tr("The Matrix notification setting could not be changed: %1").arg(details));
 }
 
 void MatrixChatService::setChatManager(ChatManager *chatManager)
@@ -631,7 +867,10 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
                 if (member.id() == directPeerId(room))
                     synchronizeRoomDetails(room);
             });
-    connect(room, &Quotient::Room::encryption, this, [this, room] { synchronizeRoom(room); });
+    connect(room, &Quotient::Room::encryption, this, [this, room] {
+        synchronizeRoom(room);
+        m_notificationRulesLoaded = false;
+    });
     connect(room, &QObject::destroyed, this, [this, room] {
         m_watchedRooms.remove(room);
         m_loadedRooms.remove(room);

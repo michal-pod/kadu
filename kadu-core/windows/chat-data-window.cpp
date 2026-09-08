@@ -31,6 +31,7 @@
 #include "activate.h"
 #include "buddies/group.h"
 #include "chat/chat-manager.h"
+#include "chat/chat-service-repository.h"
 #include "chat/type/chat-type-manager.h"
 #include "configuration/config-file-variant-wrapper.h"
 #include "core/injected-factory.h"
@@ -38,12 +39,14 @@
 #include "misc/change-notifier-lock.h"
 #include "misc/change-notifier.h"
 #include "os/generic/window-geometry-manager.h"
+#include "protocols/services/chat-service.h"
 #include "widgets/chat-configuration-widget-factory-repository.h"
 #include "widgets/chat-configuration-widget-factory.h"
 #include "widgets/chat-configuration-widget-group-boxes-adapter.h"
 #include "widgets/chat-configuration-widget.h"
 #include "widgets/chat-edit-widget.h"
 #include "widgets/chat-groups-configuration-widget.h"
+#include "widgets/chat-personal-settings-widget.h"
 #include "widgets/composite-configuration-value-state-notifier.h"
 #include "widgets/group-list.h"
 #include "widgets/simple-configuration-value-state-notifier.h"
@@ -71,6 +74,11 @@ void ChatDataWindow::setChatConfigurationWidgetFactoryRepository(
 void ChatDataWindow::setChatManager(ChatManager *chatManager)
 {
     m_chatManager = chatManager;
+}
+
+void ChatDataWindow::setChatServiceRepository(ChatServiceRepository *chatServiceRepository)
+{
+    m_chatServiceRepository = chatServiceRepository;
 }
 
 void ChatDataWindow::setChatTypeManager(ChatTypeManager *chatTypeManager)
@@ -192,6 +200,10 @@ void ChatDataWindow::createGui()
 
     TabWidget->addTab(GeneralTab, tr("General"));
 
+    PersonalSettingsTab = new ChatPersonalSettingsWidget{TabWidget};
+    PersonalSettingsTab->setNotificationMode(MyChat.notificationMode());
+    TabWidget->addTab(PersonalSettingsTab, PersonalSettingsTab->tabTitle());
+
     auto chatType = m_chatTypeManager->chatType(MyChat.type());
     if (chatType)
     {
@@ -265,6 +277,16 @@ void ChatDataWindow::updateChat()
     GroupsTab->save();
 
     applyChatConfigurationWidgets();
+
+    if (PersonalSettingsTab && PersonalSettingsTab->notificationMode() != MyChat.notificationMode())
+    {
+        auto *chatService = m_chatServiceRepository ? m_chatServiceRepository->chatService(MyChat.chatAccount())
+                                                    : nullptr;
+        if (chatService)
+            chatService->setChatNotificationMode(MyChat, PersonalSettingsTab->notificationMode());
+        else
+            MyChat.setNotificationMode(PersonalSettingsTab->notificationMode());
+    }
 
     MyChat.setDisplay(DisplayEdit->text());
 

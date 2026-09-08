@@ -22,6 +22,7 @@
 #include "chat-widget-actions.moc"
 
 #include "actions/chat-widget/open-chat-action.h"
+#include "actions/chat/chat-notifications-action.h"
 #include "menu/menu-inventory.h"
 
 ChatWidgetActions::ChatWidgetActions(QObject *parent) : QObject(parent)
@@ -42,7 +43,13 @@ void ChatWidgetActions::setOpenChatAction(OpenChatAction *openChatAction)
     m_openChatAction = openChatAction;
 }
 
+void ChatWidgetActions::setChatNotificationsAction(ChatNotificationsAction *chatNotificationsAction)
+{
+    m_chatNotificationsAction = chatNotificationsAction;
+}
+
 void ChatWidgetActions::init()
 {
     m_menuInventory->menu("buddy-list")->addAction(m_openChatAction, KaduMenu::SectionChat, 1000);
+    m_menuInventory->menu("buddy-list")->addAction(m_chatNotificationsAction, KaduMenu::SectionView, -100);
 }
