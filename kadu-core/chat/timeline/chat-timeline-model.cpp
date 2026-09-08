@@ -64,7 +64,9 @@ bool ChatTimelineModel::attachmentsEqual(const QVector<ChatTimelineAttachment> &
             leftAttachment.sourceUri != rightAttachment.sourceUri ||
             leftAttachment.thumbnailUri != rightAttachment.thumbnailUri ||
             leftAttachment.encryptedFileMetadata != rightAttachment.encryptedFileMetadata ||
-            leftAttachment.state != rightAttachment.state || leftAttachment.progress != rightAttachment.progress ||
+            leftAttachment.state != rightAttachment.state ||
+            leftAttachment.sourceState != rightAttachment.sourceState ||
+            leftAttachment.progress != rightAttachment.progress ||
             leftAttachment.localResourceId != rightAttachment.localResourceId ||
             leftAttachment.errorText != rightAttachment.errorText)
             return false;
@@ -662,6 +664,7 @@ QVariantList ChatTimelineModel::attachmentData(const QVector<ChatTimelineAttachm
         data.insert(QStringLiteral("sourceUri"), attachment.sourceUri);
         data.insert(QStringLiteral("thumbnailUri"), attachment.thumbnailUri);
         data.insert(QStringLiteral("state"), static_cast<int>(attachment.state));
+        data.insert(QStringLiteral("sourceState"), static_cast<int>(attachment.sourceState));
         data.insert(QStringLiteral("progress"), attachment.progress);
         data.insert(QStringLiteral("localResourceId"), attachment.localResourceId);
         data.insert(QStringLiteral("errorText"), attachment.errorText);

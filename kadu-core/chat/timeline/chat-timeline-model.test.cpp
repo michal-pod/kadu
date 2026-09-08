@@ -32,6 +32,7 @@ private slots:
     void shouldIgnoreAnOlderRevision();
     void shouldEmitDataChangedOnlyForUpdatedItem();
     void shouldEmitOnlyChangedRoles();
+    void shouldExposeOriginalAttachmentStateChanges();
     void shouldInsertTimelinePagesInSingleBatches();
     void shouldKeepNewestRevisionWhenResetting();
     void shouldRedactExistingItem();
@@ -142,6 +143,25 @@ void ChatTimelineModelTest::shouldEmitOnlyChangedRoles()
 
     QCOMPARE(changes.size(), 1);
     QCOMPARE(changes.constFirst().at(2).value<QList<int>>(), QList<int>{ChatTimelineModel::ReactionsRole});
+}
+
+void ChatTimelineModelTest::shouldExposeOriginalAttachmentStateChanges()
+{
+    ChatTimelineModel model;
+    auto item = makeItem(QStringLiteral("$event"), QByteArrayLiteral("001"), 1);
+    item.content.attachments.append(ChatTimelineAttachment{});
+    model.upsert(item);
+    QSignalSpy changes{&model, &QAbstractItemModel::dataChanged};
+
+    item.revision = 2;
+    item.content.attachments[0].sourceState = ChatTimelineAttachmentState::Available;
+    model.upsert(item);
+
+    QCOMPARE(changes.size(), 1);
+    QCOMPARE(changes.constFirst().at(2).value<QList<int>>(), QList<int>{ChatTimelineModel::AttachmentsRole});
+    const auto attachments = model.data(model.index(0, 0), ChatTimelineModel::AttachmentsRole).toList();
+    QCOMPARE(attachments.constFirst().toMap().value(QStringLiteral("sourceState")).toInt(),
+             static_cast<int>(ChatTimelineAttachmentState::Available));
 }
 
 void ChatTimelineModelTest::shouldInsertTimelinePagesInSingleBatches()

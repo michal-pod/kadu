@@ -1755,6 +1755,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
             attachment.dimensions = m_attachmentImageDimensions.value(eventId);
         const auto previewResourceId = attachmentResourceId(eventId, true);
         attachment.state = m_attachmentStates.value(previewResourceId, ChatTimelineAttachmentState::NotRequested);
+        attachment.sourceState = m_attachmentStates.value(eventId, ChatTimelineAttachmentState::NotRequested);
         attachment.progress = m_attachmentProgress.value(previewResourceId, 0.0);
         attachment.errorText = m_attachmentErrors.value(previewResourceId);
         item.content.attachments.append(std::move(attachment));
@@ -1883,6 +1884,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
         m_attachmentKinds.insert(eventId, attachment.kind);
         const auto previewResourceId = attachmentResourceId(eventId, !attachment.thumbnailUri.isEmpty());
         attachment.state = m_attachmentStates.value(previewResourceId, ChatTimelineAttachmentState::NotRequested);
+        attachment.sourceState = m_attachmentStates.value(eventId, ChatTimelineAttachmentState::NotRequested);
         attachment.progress = m_attachmentProgress.value(previewResourceId, 0.0);
         attachment.errorText = m_attachmentErrors.value(previewResourceId);
         item.content.attachments.append(std::move(attachment));

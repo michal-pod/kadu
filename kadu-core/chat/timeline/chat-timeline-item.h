@@ -124,7 +124,9 @@ struct KADUAPI ChatTimelineAttachment
     QUrl sourceUri;
     QUrl thumbnailUri;
     QString encryptedFileMetadata;
+    // The timeline preview and the original resource can be loaded independently.
     ChatTimelineAttachmentState state = ChatTimelineAttachmentState::NotRequested;
+    ChatTimelineAttachmentState sourceState = ChatTimelineAttachmentState::NotRequested;
     qreal progress = 0.0;
     QString localResourceId;
     QString errorText;

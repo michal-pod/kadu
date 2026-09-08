@@ -102,7 +102,7 @@ Item {
             if (root.openImage)
                 root.openImage(root.attachment.sourceUri, root.attachment.fileName,
                                root.imageWidth, root.imageHeight,
-                               root.attachment.state)
+                               root.attachment.sourceState)
         }
     }
 }
