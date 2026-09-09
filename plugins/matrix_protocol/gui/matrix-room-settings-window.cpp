@@ -153,6 +153,15 @@ void MatrixRoomSettingsWindow::createGui()
                     m_personalSettings->setNotificationMode(m_savedNotificationMode);
                     finishOperation(error);
                 });
+        connect(m_chatService, &ChatService::chatPriorityChanged, this,
+                [this](const Chat &chat, ChatPriority priority) {
+                    if (chat != m_chat || m_saving || m_personalSettings->priority() != m_savedPriority)
+                        return;
+
+                    m_savedPriority = priority;
+                    m_personalSettings->setPriority(priority);
+                    refreshState();
+                });
     }
 }
 
@@ -725,6 +734,8 @@ void MatrixRoomSettingsWindow::loadRoomData()
 {
     m_savedNotificationMode = m_chat.notificationMode();
     m_personalSettings->setNotificationMode(m_savedNotificationMode);
+    m_savedPriority = m_chat.priority();
+    m_personalSettings->setPriority(m_savedPriority);
 
     if (!m_room)
     {
@@ -949,7 +960,8 @@ bool MatrixRoomSettingsWindow::hasChanges() const
 {
     return m_nameEdit->text() != m_savedName || m_topicEdit->toPlainText() != m_savedTopic ||
            !m_avatarFileName.isEmpty() || m_removeAvatar || hasAccessChanges() || hasPowerLevelChanges() ||
-           m_personalSettings->notificationMode() != m_savedNotificationMode;
+           m_personalSettings->notificationMode() != m_savedNotificationMode ||
+           m_personalSettings->priority() != m_savedPriority;
 }
 
 void MatrixRoomSettingsWindow::refreshState()
@@ -1250,6 +1262,18 @@ void MatrixRoomSettingsWindow::save(bool closeAfterSave)
         }
         else
             m_errors.append(tr("The notification setting is unavailable."));
+    }
+
+    const auto priority = m_personalSettings->priority();
+    if (priority != m_savedPriority)
+    {
+        if (m_chatService && m_chatService->setChatPriority(m_chat, priority))
+        {
+            m_savedPriority = m_chat.priority();
+            m_personalSettings->setPriority(m_savedPriority);
+        }
+        else
+            m_errors.append(tr("The room priority could not be changed."));
     }
 
     if (m_pendingOperations == 0)

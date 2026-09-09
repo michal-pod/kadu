@@ -34,10 +34,17 @@ ChatPersonalSettingsWidget::ChatPersonalSettingsWidget(QWidget *parent) : QWidge
     m_notificationModeCombo->addItem(
         tr("No notifications"), static_cast<int>(ChatNotificationMode::NoNotifications));
     form->addRow(tr("Notifications:"), m_notificationModeCombo);
+
+    m_priorityCombo = new QComboBox{this};
+    m_priorityCombo->addItem(tr("Favorite"), static_cast<qint32>(ChatPriority::Favorite));
+    m_priorityCombo->addItem(tr("Default"), static_cast<qint32>(ChatPriority::Default));
+    m_priorityCombo->addItem(tr("Low priority"), static_cast<qint32>(ChatPriority::LowPriority));
+    form->addRow(tr("Priority:"), m_priorityCombo);
     form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 
     connect(m_notificationModeCombo, &QComboBox::currentIndexChanged, this,
             &ChatPersonalSettingsWidget::changed);
+    connect(m_priorityCombo, &QComboBox::currentIndexChanged, this, &ChatPersonalSettingsWidget::changed);
 }
 
 QString ChatPersonalSettingsWidget::tabTitle() const
@@ -56,7 +63,19 @@ void ChatPersonalSettingsWidget::setNotificationMode(ChatNotificationMode mode)
     m_notificationModeCombo->setCurrentIndex(m_notificationModeCombo->findData(static_cast<int>(mode)));
 }
 
+ChatPriority ChatPersonalSettingsWidget::priority() const
+{
+    return static_cast<ChatPriority>(m_priorityCombo->currentData().toInt());
+}
+
+void ChatPersonalSettingsWidget::setPriority(ChatPriority priority)
+{
+    const QSignalBlocker blocker{m_priorityCombo};
+    m_priorityCombo->setCurrentIndex(m_priorityCombo->findData(static_cast<qint32>(priority)));
+}
+
 void ChatPersonalSettingsWidget::setEditingEnabled(bool enabled)
 {
     m_notificationModeCombo->setEnabled(enabled);
+    m_priorityCombo->setEnabled(enabled);
 }

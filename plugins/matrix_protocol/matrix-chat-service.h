@@ -55,6 +55,7 @@ public:
 
     virtual int maxMessageLength() const override;
     virtual bool setChatNotificationMode(const Chat &chat, ChatNotificationMode mode) override;
+    virtual bool setChatPriority(const Chat &chat, ChatPriority priority) override;
     virtual bool markChatRead(const Chat &chat) override;
 
     void setConnection(Quotient::Connection *connection);
@@ -102,6 +103,7 @@ private:
     void synchronizeRoom(Quotient::Room *room);
     void synchronizeRoomDetails(Quotient::Room *room);
     void synchronizeRoomMembers(Quotient::Room *room);
+    void synchronizeRoomPriority(Quotient::Room *room);
     void synchronizeRoomUnreadCount(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);

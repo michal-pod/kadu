@@ -23,6 +23,7 @@
 
 #include "actions/chat-widget/open-chat-action.h"
 #include "actions/chat/chat-notifications-action.h"
+#include "actions/chat/chat-priority-action.h"
 #include "actions/chat/mark-chat-read-action.h"
 #include "menu/menu-inventory.h"
 
@@ -49,6 +50,11 @@ void ChatWidgetActions::setChatNotificationsAction(ChatNotificationsAction *chat
     m_chatNotificationsAction = chatNotificationsAction;
 }
 
+void ChatWidgetActions::setChatPriorityAction(ChatPriorityAction *chatPriorityAction)
+{
+    m_chatPriorityAction = chatPriorityAction;
+}
+
 void ChatWidgetActions::setMarkChatReadAction(MarkChatReadAction *markChatReadAction)
 {
     m_markChatReadAction = markChatReadAction;
@@ -58,5 +64,6 @@ void ChatWidgetActions::init()
 {
     m_menuInventory->menu("buddy-list")->addAction(m_openChatAction, KaduMenu::SectionChat, 1000);
     m_menuInventory->menu("buddy-list")->addAction(m_markChatReadAction, KaduMenu::SectionChat, 900);
+    m_menuInventory->menu("buddy-list")->addAction(m_chatPriorityAction, KaduMenu::SectionView, -90);
     m_menuInventory->menu("buddy-list")->addAction(m_chatNotificationsAction, KaduMenu::SectionView, -100);
 }

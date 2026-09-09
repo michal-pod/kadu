@@ -36,6 +36,7 @@
 #include "actions/chat/add-room-chat-action.h"
 #include "actions/chat/leave-chat-action.h"
 #include "actions/chat/chat-notifications-action.h"
+#include "actions/chat/chat-priority-action.h"
 #include "actions/chat/mark-chat-read-action.h"
 #include "actions/main/change-status-action.h"
 #include "actions/main/default-proxy-action.h"
@@ -87,6 +88,7 @@ ActionsModule::ActionsModule()
     add_type<AddRoomChatAction>();
     add_type<LeaveChatAction>();
     add_type<ChatNotificationsAction>();
+    add_type<ChatPriorityAction>();
     add_type<MarkChatReadAction>();
 
     // chat-widget

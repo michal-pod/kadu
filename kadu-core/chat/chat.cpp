@@ -114,14 +114,21 @@ KaduSharedBase_PropertyReadDef(Chat, ContactSet, contacts, Contacts, ContactSet(
                             KaduSharedBase_PropertyDef(
                                 Chat, ChatNotificationMode, notificationMode, NotificationMode,
                                 ChatNotificationMode::Default)
-                            KaduSharedBase_PropertyDef(
-                                Chat, ChatUnreadCountSource, unreadCountSource, UnreadCountSource,
-                                ChatUnreadCountSource::CoreManaged)
-                                KaduSharedBase_PropertyDefCRW(Chat, QSet<Group>, groups, Groups, QSet<Group>())
+                            KaduSharedBase_PropertyDef(Chat, ChatPriority, priority, Priority, ChatPriority::Default)
+                                KaduSharedBase_PropertyDef(Chat, quint32, priorityOrder, PriorityOrder, 0)
                                     KaduSharedBase_PropertyDef(
-                                        Chat, quint32, unreadMessagesCount, UnreadMessagesCount, 0)
+                                        Chat, ChatUnreadCountSource, unreadCountSource, UnreadCountSource,
+                                        ChatUnreadCountSource::CoreManaged)
+                                        KaduSharedBase_PropertyDefCRW(Chat, QSet<Group>, groups, Groups, QSet<Group>())
+                                            KaduSharedBase_PropertyDef(
+                                                Chat, quint32, unreadMessagesCount, UnreadMessagesCount, 0)
 
-                                    bool Chat::isConnected() const
+qint64 Chat::sortingPriority() const
+{
+    return chatSortingPriority(priority(), priorityOrder());
+}
+
+bool Chat::isConnected() const
 {
     if (!isNull())
         return data()->isConnected();

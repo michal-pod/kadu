@@ -19,33 +19,35 @@
 
 #pragma once
 
-#include "chat/chat-notification-mode.h"
+#include "actions/action-description.h"
 #include "chat/chat-priority.h"
-#include "exports.h"
+#include "injeqt-type-roles.h"
 
-#include <QtWidgets/QWidget>
+#include <QtCore/QPointer>
+#include <injeqt/injeqt.h>
 
-class QComboBox;
+class ChatServiceRepository;
+class QMenu;
 
-class KADUAPI ChatPersonalSettingsWidget final : public QWidget
+class ChatPriorityAction final : public ActionDescription
 {
     Q_OBJECT
+    INJEQT_TYPE_ROLE(ACTION)
 
 public:
-    explicit ChatPersonalSettingsWidget(QWidget *parent = nullptr);
-    virtual ~ChatPersonalSettingsWidget() = default;
+    Q_INVOKABLE explicit ChatPriorityAction(QObject *parent = nullptr);
+    virtual ~ChatPriorityAction() = default;
 
-    QString tabTitle() const;
-    ChatNotificationMode notificationMode() const;
-    void setNotificationMode(ChatNotificationMode mode);
-    ChatPriority priority() const;
-    void setPriority(ChatPriority priority);
-    void setEditingEnabled(bool enabled);
-
-signals:
-    void changed();
+protected:
+    virtual QMenu *menuForAction(Action *action) override;
+    virtual void updateActionState(Action *action) override;
 
 private:
-    QComboBox *m_notificationModeCombo = nullptr;
-    QComboBox *m_priorityCombo = nullptr;
+    QPointer<ChatServiceRepository> m_chatServiceRepository;
+
+    void populateMenu(QMenu *menu, Action *action);
+    void setPriority(Action *action, ChatPriority priority);
+
+private slots:
+    INJEQT_SET void setChatServiceRepository(ChatServiceRepository *chatServiceRepository);
 };

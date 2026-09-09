@@ -202,6 +202,7 @@ void ChatDataWindow::createGui()
 
     PersonalSettingsTab = new ChatPersonalSettingsWidget{TabWidget};
     PersonalSettingsTab->setNotificationMode(MyChat.notificationMode());
+    PersonalSettingsTab->setPriority(MyChat.priority());
     TabWidget->addTab(PersonalSettingsTab, PersonalSettingsTab->tabTitle());
 
     auto chatType = m_chatTypeManager->chatType(MyChat.type());
@@ -240,6 +241,7 @@ void ChatDataWindow::createGui()
     createButtons(layout);
 
     connect(DisplayEdit, SIGNAL(textChanged(QString)), this, SLOT(displayEditChanged()));
+    connect(PersonalSettingsTab, &ChatPersonalSettingsWidget::changed, this, &ChatDataWindow::displayEditChanged);
 }
 
 void ChatDataWindow::createButtons(QVBoxLayout *layout)
@@ -288,6 +290,19 @@ void ChatDataWindow::updateChat()
             MyChat.setNotificationMode(PersonalSettingsTab->notificationMode());
     }
 
+    if (PersonalSettingsTab && PersonalSettingsTab->priority() != MyChat.priority())
+    {
+        auto *chatService = m_chatServiceRepository ? m_chatServiceRepository->chatService(MyChat.chatAccount())
+                                                    : nullptr;
+        if (chatService)
+            chatService->setChatPriority(MyChat, PersonalSettingsTab->priority());
+        else
+        {
+            MyChat.setPriority(PersonalSettingsTab->priority());
+            MyChat.setPriorityOrder(0);
+        }
+    }
+
     MyChat.setDisplay(DisplayEdit->text());
 
     emit save();
@@ -318,17 +333,19 @@ void ChatDataWindow::keyPressEvent(QKeyEvent *event)
 
 void ChatDataWindow::displayEditChanged()
 {
-    if (MyChat.display() == DisplayEdit->text())
+    if (MyChat.display() != DisplayEdit->text())
     {
-        SimpleStateNotifier->setState(StateNotChanged);
+        const Chat &chat = m_chatManager->byDisplay(DisplayEdit->text());
+        SimpleStateNotifier->setState(chat ? StateChangedDataInvalid : StateChangedDataValid);
         return;
     }
 
-    const Chat &chat = m_chatManager->byDisplay(DisplayEdit->text());
-    if (chat)
-        SimpleStateNotifier->setState(StateChangedDataInvalid);
-    else
+    if (PersonalSettingsTab &&
+        (PersonalSettingsTab->notificationMode() != MyChat.notificationMode() ||
+         PersonalSettingsTab->priority() != MyChat.priority()))
         SimpleStateNotifier->setState(StateChangedDataValid);
+    else
+        SimpleStateNotifier->setState(StateNotChanged);
 }
 
 void ChatDataWindow::stateChangedSlot(ConfigurationValueState state)

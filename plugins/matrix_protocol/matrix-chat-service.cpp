@@ -41,6 +41,7 @@
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
 #include <Quotient/csapi/pushrules.h>
+#include <Quotient/events/accountdataevents.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
@@ -67,6 +68,7 @@
 #include <QtGui/QPixmap>
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -149,6 +151,76 @@ std::optional<ChatNotificationMode> modeForRoom(const Quotient::PushRuleset &rul
 
 }
 
+namespace MatrixRoomTags
+{
+struct Priority
+{
+    ChatPriority value;
+    quint32 order;
+};
+
+quint32 priorityOrder(const Quotient::Tag &tag)
+{
+    if (!tag.order || !std::isfinite(*tag.order))
+        return 0;
+
+    const auto order = std::clamp(static_cast<double>(*tag.order), 0.0, 1.0);
+    return static_cast<quint32>(
+               std::lround((1.0 - order) * static_cast<double>(CHAT_PRIORITY_ORDER_MAXIMUM - 1))) +
+           1;
+}
+
+Priority priority(const Quotient::TagsMap &tags)
+{
+    const auto favorite = tags.constFind(QStringLiteral("m.favourite"));
+    if (favorite != tags.cend())
+        return {ChatPriority::Favorite, priorityOrder(*favorite)};
+
+    const auto lowPriority = tags.constFind(QStringLiteral("m.lowpriority"));
+    if (lowPriority != tags.cend())
+        return {ChatPriority::LowPriority, priorityOrder(*lowPriority)};
+
+    return {ChatPriority::Default, 0};
+}
+
+QString tagName(ChatPriority priority)
+{
+    switch (priority)
+    {
+    case ChatPriority::Favorite:
+        return QStringLiteral("m.favourite");
+    case ChatPriority::LowPriority:
+        return QStringLiteral("m.lowpriority");
+    case ChatPriority::Default:
+        return {};
+    }
+
+    return {};
+}
+
+std::optional<Quotient::TagsMap> replacePriority(Quotient::TagsMap tags, ChatPriority newPriority)
+{
+    const auto oldPriority = priority(tags).value;
+    if (oldPriority == newPriority)
+        return std::nullopt;
+
+    const auto oldTagName = tagName(oldPriority);
+    const auto newTagName = tagName(newPriority);
+    std::optional<Quotient::Tag> preservedTag;
+    if (!newTagName.isEmpty() && tags.contains(newTagName))
+        preservedTag = tags.value(newTagName);
+    else if (!oldTagName.isEmpty() && tags.contains(oldTagName))
+        preservedTag = tags.value(oldTagName);
+
+    tags.remove(QStringLiteral("m.favourite"));
+    tags.remove(QStringLiteral("m.lowpriority"));
+    if (!newTagName.isEmpty())
+        tags.insert(newTagName, preservedTag.value_or(Quotient::Tag{}));
+
+    return tags;
+}
+}
+
 MatrixChatService::MatrixChatService(Account account, QObject *parent) : ChatService{account, parent}
 {
 }
@@ -164,6 +236,29 @@ bool MatrixChatService::setChatNotificationMode(const Chat &chat, ChatNotificati
         return false;
 
     replaceNotificationModeRules(chat, mode);
+    return true;
+}
+
+bool MatrixChatService::setChatPriority(const Chat &chat, ChatPriority priority)
+{
+    if (chat.isNull() || !m_connection || !m_connection->isLoggedIn())
+        return false;
+
+    if (priority != ChatPriority::Favorite && priority != ChatPriority::Default &&
+        priority != ChatPriority::LowPriority)
+        return false;
+
+    const auto id = roomId(chat);
+    auto *room = id.isEmpty() ? nullptr : m_connection->room(id, Quotient::JoinState::Join);
+    if (!isSupportedRoom(room))
+        return false;
+
+    const auto tags = MatrixRoomTags::replacePriority(room->tags(), priority);
+    if (tags)
+    {
+        room->setTags(*tags);
+        synchronizeRoomPriority(room);
+    }
     return true;
 }
 
@@ -783,6 +878,7 @@ void MatrixChatService::synchronizeRoom(Quotient::Room *room)
 
     synchronizeRoomDetails(room);
     synchronizeRoomMembers(room);
+    synchronizeRoomPriority(room);
     synchronizeRoomUnreadCount(room);
 }
 
@@ -857,6 +953,24 @@ void MatrixChatService::synchronizeRoomMembers(Quotient::Room *room)
         details->addContact(contact);
 }
 
+void MatrixChatService::synchronizeRoomPriority(Quotient::Room *room)
+{
+    if (!m_initialSyncFinished || !isSupportedRoom(room))
+        return;
+
+    const auto chat = roomChat(room);
+    if (!chat)
+        return;
+
+    const auto priority = MatrixRoomTags::priority(room->tags());
+    if (chat.priority() == priority.value && chat.priorityOrder() == priority.order)
+        return;
+
+    chat.setPriority(priority.value);
+    chat.setPriorityOrder(priority.order);
+    emit chatPriorityChanged(chat, priority.value);
+}
+
 void MatrixChatService::synchronizeRoomUnreadCount(Quotient::Room *room)
 {
     if (!m_initialSyncFinished || !isSupportedRoom(room))
@@ -895,6 +1009,7 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
     });
     connect(room, &Quotient::Room::memberListChanged, this,
             [this, room] { synchronizeRoomMembers(room); });
+    connect(room, &Quotient::Room::tagsChanged, this, [this, room] { synchronizeRoomPriority(room); });
     connect(room, &Quotient::Room::displaynameChanged, this,
             [this, room](Quotient::Room *, const QString &) { synchronizeRoom(room); });
     connect(room, &Quotient::Room::joinStateChanged, this,

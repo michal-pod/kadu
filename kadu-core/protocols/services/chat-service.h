@@ -83,6 +83,14 @@ public:
     virtual bool setChatNotificationMode(const Chat &chat, ChatNotificationMode mode);
 
     /**
+     * Set the protocol-independent priority of a chat.
+     *
+     * The default implementation stores the value locally. Protocols that
+     * expose an equivalent server-side setting may override this method.
+     */
+    virtual bool setChatPriority(const Chat &chat, ChatPriority priority);
+
+    /**
      * Mark all messages in a chat as read.
      *
      * The default implementation clears the local chat counter. Protocols
@@ -199,6 +207,7 @@ signals:
 
     void chatNotificationModeChanged(const Chat &chat, ChatNotificationMode mode);
     void chatNotificationModeChangeFailed(const Chat &chat, const QString &error);
+    void chatPriorityChanged(const Chat &chat, ChatPriority priority);
 
 private:
     QPointer<RawMessageTransformerService> m_rawMessageTransformerService;

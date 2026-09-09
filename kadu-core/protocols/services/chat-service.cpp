@@ -45,6 +45,17 @@ bool ChatService::setChatNotificationMode(const Chat &chat, ChatNotificationMode
     return true;
 }
 
+bool ChatService::setChatPriority(const Chat &chat, ChatPriority priority)
+{
+    if (chat.isNull())
+        return false;
+
+    chat.setPriority(priority);
+    chat.setPriorityOrder(0);
+    emit chatPriorityChanged(chat, priority);
+    return true;
+}
+
 bool ChatService::markChatRead(const Chat &chat)
 {
     if (chat.isNull())

@@ -19,33 +19,26 @@
 
 #pragma once
 
-#include "chat/chat-notification-mode.h"
-#include "chat/chat-priority.h"
-#include "exports.h"
+#include <QtCore/QMetaType>
+#include <QtCore/QtGlobal>
 
-#include <QtWidgets/QWidget>
-
-class QComboBox;
-
-class KADUAPI ChatPersonalSettingsWidget final : public QWidget
+enum class ChatPriority : qint32
 {
-    Q_OBJECT
-
-public:
-    explicit ChatPersonalSettingsWidget(QWidget *parent = nullptr);
-    virtual ~ChatPersonalSettingsWidget() = default;
-
-    QString tabTitle() const;
-    ChatNotificationMode notificationMode() const;
-    void setNotificationMode(ChatNotificationMode mode);
-    ChatPriority priority() const;
-    void setPriority(ChatPriority priority);
-    void setEditingEnabled(bool enabled);
-
-signals:
-    void changed();
-
-private:
-    QComboBox *m_notificationModeCombo = nullptr;
-    QComboBox *m_priorityCombo = nullptr;
+    LowPriority = -100,
+    Default = 0,
+    Favorite = 100
 };
+
+// Priority levels intentionally leave room for future protocol mappings.
+// The order component is a descending tie-breaker within one level; zero
+// means that a protocol did not provide an explicit order.
+constexpr qint64 CHAT_PRIORITY_ORDER_SCALE = 1'000'000;
+constexpr quint32 CHAT_PRIORITY_ORDER_MAXIMUM = 999'999;
+
+inline qint64 chatSortingPriority(ChatPriority priority, quint32 priorityOrder)
+{
+    return static_cast<qint64>(priority) * CHAT_PRIORITY_ORDER_SCALE +
+           qMin(priorityOrder, CHAT_PRIORITY_ORDER_MAXIMUM);
+}
+
+Q_DECLARE_METATYPE(ChatPriority)

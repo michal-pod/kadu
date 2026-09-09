@@ -52,8 +52,8 @@
  */
 ChatShared::ChatShared(const QUuid &uuid)
         : Shared(uuid), ChatAccount{nullptr}, Details(0), IgnoreAllMessages(false),
-          NotificationMode(ChatNotificationMode::Default), UnreadCountSource(ChatUnreadCountSource::CoreManaged),
-          UnreadMessagesCount(0), Open(false)
+          NotificationMode(ChatNotificationMode::Default), Priority(ChatPriority::Default), PriorityOrder(0),
+          UnreadCountSource(ChatUnreadCountSource::CoreManaged), UnreadMessagesCount(0), Open(false)
 {
 }
 
@@ -170,6 +170,8 @@ void ChatShared::load()
                                notificationMode <= static_cast<int>(ChatNotificationMode::NoNotifications)
                            ? static_cast<ChatNotificationMode>(notificationMode)
                            : ChatNotificationMode::Default;
+    Priority = static_cast<ChatPriority>(loadValue<qint32>("Priority", static_cast<qint32>(ChatPriority::Default)));
+    PriorityOrder = qMin(loadValue<quint32>("PriorityOrder", 0), CHAT_PRIORITY_ORDER_MAXIMUM);
     auto type = loadValue<QString>("Type");
 
     // import from alias to new name of chat type
@@ -204,6 +206,8 @@ void ChatShared::store()
     storeValue("Account", ChatAccount->uuid().toString());
     storeValue("Display", Display);
     storeValue("NotificationMode", static_cast<int>(NotificationMode));
+    storeValue("Priority", static_cast<qint32>(Priority));
+    storeValue("PriorityOrder", PriorityOrder);
 
     // import from alias to new name of chat type
     ChatType *chatType = m_chatTypeManager->chatType(Type);
@@ -246,6 +250,9 @@ bool ChatShared::shouldStore()
         return true;
 
     if (NotificationMode != ChatNotificationMode::Default)
+        return true;
+
+    if (Priority != ChatPriority::Default || PriorityOrder != 0)
         return true;
 
     return UuidStorableObject::shouldStore() && !ChatAccount->uuid().isNull() && (!Details || Details->shouldStore()) &&

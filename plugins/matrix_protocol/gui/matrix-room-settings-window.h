@@ -140,6 +140,7 @@ private:
     QString m_savedName;
     QString m_savedTopic;
     ChatNotificationMode m_savedNotificationMode = ChatNotificationMode::Default;
+    ChatPriority m_savedPriority = ChatPriority::Default;
     QUrl m_savedAvatarUrl;
     QString m_avatarFileName;
     QJsonObject m_savedJoinRules;

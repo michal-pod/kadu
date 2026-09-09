@@ -100,9 +100,13 @@ class KADUAPI Chat : public SharedBase<ChatShared>
     KaduSharedBase_PropertyCRW(QString, display, Display);
     KaduSharedBase_PropertyBool(IgnoreAllMessages);
     KaduSharedBase_Property(ChatNotificationMode, notificationMode, NotificationMode);
+    KaduSharedBase_Property(ChatPriority, priority, Priority);
+    KaduSharedBase_Property(quint32, priorityOrder, PriorityOrder);
     KaduSharedBase_Property(ChatUnreadCountSource, unreadCountSource, UnreadCountSource);
     KaduSharedBase_PropertyCRW(QSet<Group>, groups, Groups);
     KaduSharedBase_Property(quint32, unreadMessagesCount, UnreadMessagesCount);
+
+    qint64 sortingPriority() const;
 
     /**
      * @short Return true when chat is connected.
