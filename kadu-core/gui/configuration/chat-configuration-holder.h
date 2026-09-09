@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "chat/chat-timeline-details.h"
 #include "configuration/configuration-holder.h"
 #include "exports.h"
 
@@ -110,6 +111,10 @@ public:
     {
         return UseTransparency;
     }
+    ChatTimelineDetails timelineDetails() const
+    {
+        return TimelineDetails;
+    }
 
     bool contactStateChats() const
     {
@@ -149,6 +154,7 @@ private:
     bool ChatBgFilled;
     QColor ChatBgColor;
     bool UseTransparency;
+    ChatTimelineDetails TimelineDetails;
 
     bool ContactStateChats;
     bool ContactStateWindowTitle;

@@ -25,6 +25,7 @@
 
 #include "chat/chat-notification-mode.h"
 #include "chat/chat-priority.h"
+#include "chat/chat-timeline-details.h"
 #include "chat/chat-unread-count-source.h"
 #include "contacts/contact.h"
 #include "storage/shared.h"
@@ -76,6 +77,7 @@ class KADUAPI ChatShared : public Shared
     ChatNotificationMode NotificationMode;
     ChatPriority Priority;
     quint32 PriorityOrder;
+    ChatTimelineDetails TimelineDetails;
     ChatUnreadCountSource UnreadCountSource;
     QSet<Group> Groups;
     quint32 UnreadMessagesCount;
@@ -153,10 +155,12 @@ public:
 
                     KaduShared_Property(quint32, priorityOrder, PriorityOrder)
 
-                        // Runtime policy selected by the protocol; it is deliberately not stored.
-                        KaduShared_Property(ChatUnreadCountSource, unreadCountSource, UnreadCountSource)
+                        KaduShared_Property(ChatTimelineDetails, timelineDetails, TimelineDetails)
 
-                            KaduShared_Property(quint32, unreadMessagesCount, UnreadMessagesCount)
+                            // Runtime policy selected by the protocol; it is deliberately not stored.
+                            KaduShared_Property(ChatUnreadCountSource, unreadCountSource, UnreadCountSource)
+
+                                KaduShared_Property(quint32, unreadMessagesCount, UnreadMessagesCount)
 
         /**
          * @short Return true when chat is connected.

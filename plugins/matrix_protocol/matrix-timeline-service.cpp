@@ -85,6 +85,56 @@
 #include <utility>
 #include <variant>
 
+namespace MatrixTimelineClassification
+{
+ChatTimelineItemLevel levelForEvent(const Quotient::RoomEvent &event)
+{
+    const auto eventType = event.matrixType();
+    if (eventType == QStringLiteral("m.room.message") || eventType == QStringLiteral("m.sticker") ||
+        Quotient::eventCast<const Quotient::RoomMessageEvent>(&event) ||
+        Quotient::eventCast<const Quotient::StickerEvent>(&event) ||
+        eventType == QStringLiteral("m.room.encrypted"))
+        return ChatTimelineItemLevel::Chat;
+
+    if (const auto *memberEvent = Quotient::eventCast<const Quotient::RoomMemberEvent>(&event))
+    {
+        const auto removedByAnotherUser = memberEvent->isLeave() && event.senderId() != memberEvent->userId();
+        if (memberEvent->isInvite() || memberEvent->isBan() || removedByAnotherUser)
+            return ChatTimelineItemLevel::Important;
+        return ChatTimelineItemLevel::Informational;
+    }
+
+    if (Quotient::eventCast<const Quotient::RedactionEvent>(&event))
+        return ChatTimelineItemLevel::Important;
+
+    static const QSet<QString> importantEventTypes{
+        QStringLiteral("m.room.encryption"),
+        QStringLiteral("m.room.join_rules"),
+        QStringLiteral("m.room.guest_access"),
+        QStringLiteral("m.room.history_visibility"),
+        QStringLiteral("m.room.power_levels"),
+        QStringLiteral("m.room.tombstone"),
+        QStringLiteral("m.room.server_acl"),
+        QStringLiteral("m.room.retention")};
+    if (importantEventTypes.contains(eventType))
+        return ChatTimelineItemLevel::Important;
+
+    static const QSet<QString> informationalEventTypes{
+        QStringLiteral("m.room.name"),
+        QStringLiteral("m.room.topic"),
+        QStringLiteral("m.room.avatar"),
+        QStringLiteral("m.room.create"),
+        QStringLiteral("m.room.canonical_alias"),
+        QStringLiteral("m.room.aliases"),
+        QStringLiteral("m.room.pinned_events"),
+        QStringLiteral("m.room.third_party_invite")};
+    if (informationalEventTypes.contains(eventType))
+        return ChatTimelineItemLevel::Informational;
+
+    return ChatTimelineItemLevel::Debug;
+}
+}
+
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
         : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
 {
@@ -1479,6 +1529,7 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
                                               ? ChatTimelineDecryptionState::Pending
                                               : ChatTimelineDecryptionState::Decrypted)
                                        : ChatTimelineDecryptionState::NotEncrypted;
+    item.level = MatrixTimelineClassification::levelForEvent(event);
 
     const auto eventType = event.matrixType();
     const auto content = event.contentJson();

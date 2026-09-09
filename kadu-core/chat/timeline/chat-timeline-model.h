@@ -42,6 +42,7 @@ public:
         TransactionIdRole,
         ProtocolEventTypeRole,
         KindRole,
+        LevelRole,
         TimestampRole,
         DateRole,
         OwnEventRole,
@@ -89,6 +90,7 @@ public:
 
     QVector<ChatTimelineItem> items() const;
     ChatTimelineItem item(const QString &stableId) const;
+    const ChatTimelineItem *itemAtRow(int row) const;
     /**
      * Convert a timeline entry to the QML-facing data contract without exposing
      * protocol objects. Auxiliary views, such as pinned messages, use this to

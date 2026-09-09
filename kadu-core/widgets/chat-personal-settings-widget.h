@@ -21,6 +21,7 @@
 
 #include "chat/chat-notification-mode.h"
 #include "chat/chat-priority.h"
+#include "chat/chat-timeline-details.h"
 #include "exports.h"
 
 #include <QtWidgets/QWidget>
@@ -40,6 +41,8 @@ public:
     void setNotificationMode(ChatNotificationMode mode);
     ChatPriority priority() const;
     void setPriority(ChatPriority priority);
+    ChatTimelineDetails timelineDetails() const;
+    void setTimelineDetails(ChatTimelineDetails details);
     void setEditingEnabled(bool enabled);
 
 signals:
@@ -48,4 +51,5 @@ signals:
 private:
     QComboBox *m_notificationModeCombo = nullptr;
     QComboBox *m_priorityCombo = nullptr;
+    QComboBox *m_timelineDetailsCombo = nullptr;
 };

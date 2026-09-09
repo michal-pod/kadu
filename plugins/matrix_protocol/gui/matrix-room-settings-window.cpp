@@ -736,6 +736,8 @@ void MatrixRoomSettingsWindow::loadRoomData()
     m_personalSettings->setNotificationMode(m_savedNotificationMode);
     m_savedPriority = m_chat.priority();
     m_personalSettings->setPriority(m_savedPriority);
+    m_savedTimelineDetails = m_chat.timelineDetails();
+    m_personalSettings->setTimelineDetails(m_savedTimelineDetails);
 
     if (!m_room)
     {
@@ -961,7 +963,8 @@ bool MatrixRoomSettingsWindow::hasChanges() const
     return m_nameEdit->text() != m_savedName || m_topicEdit->toPlainText() != m_savedTopic ||
            !m_avatarFileName.isEmpty() || m_removeAvatar || hasAccessChanges() || hasPowerLevelChanges() ||
            m_personalSettings->notificationMode() != m_savedNotificationMode ||
-           m_personalSettings->priority() != m_savedPriority;
+           m_personalSettings->priority() != m_savedPriority ||
+           m_personalSettings->timelineDetails() != m_savedTimelineDetails;
 }
 
 void MatrixRoomSettingsWindow::refreshState()
@@ -1274,6 +1277,13 @@ void MatrixRoomSettingsWindow::save(bool closeAfterSave)
         }
         else
             m_errors.append(tr("The room priority could not be changed."));
+    }
+
+    const auto timelineDetails = m_personalSettings->timelineDetails();
+    if (timelineDetails != m_savedTimelineDetails)
+    {
+        m_chat.setTimelineDetails(timelineDetails);
+        m_savedTimelineDetails = timelineDetails;
     }
 
     if (m_pendingOperations == 0)

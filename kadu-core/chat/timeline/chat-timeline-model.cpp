@@ -95,6 +95,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
     case TransactionIdRole: return timelineItem.transactionId;
     case ProtocolEventTypeRole: return timelineItem.protocolEventType;
     case KindRole: return static_cast<int>(timelineItem.kind);
+    case LevelRole: return static_cast<int>(timelineItem.level);
     case TimestampRole: return timelineItem.timestamp;
     case DateRole: return timelineItem.timestamp.date();
     case OwnEventRole: return sender.own;
@@ -130,7 +131,7 @@ QVariant ChatTimelineModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ChatTimelineModel::roleNames() const
 {
     return {{StableIdRole, "stableId"}, {TransactionIdRole, "transactionId"},
-            {ProtocolEventTypeRole, "protocolEventType"}, {KindRole, "kind"},
+            {ProtocolEventTypeRole, "protocolEventType"}, {KindRole, "kind"}, {LevelRole, "level"},
             {TimestampRole, "timestamp"}, {DateRole, "date"}, {OwnEventRole, "ownEvent"},
             {SenderIdRole, "senderId"}, {SenderDisplayNameRole, "senderDisplayName"},
             {SenderAvatarSourceRole, "senderAvatarSource"}, {SenderColorRole, "senderColor"},
@@ -152,12 +153,18 @@ ChatTimelineItem ChatTimelineModel::item(const QString &stableId) const
     return row < 0 ? ChatTimelineItem{} : m_items.at(row);
 }
 
+const ChatTimelineItem *ChatTimelineModel::itemAtRow(int row) const
+{
+    return row >= 0 && row < m_items.size() ? &m_items.at(row) : nullptr;
+}
+
 QVariantMap ChatTimelineModel::itemData(const ChatTimelineItem &item, bool showSender, bool showAvatar,
                                         bool showTimestamp, bool startsNewDay)
 {
     return {{QStringLiteral("stableId"), item.stableId},
             {QStringLiteral("protocolEventType"), item.protocolEventType},
             {QStringLiteral("kind"), static_cast<int>(item.kind)},
+            {QStringLiteral("level"), static_cast<int>(item.level)},
             {QStringLiteral("timestamp"), item.timestamp},
             {QStringLiteral("ownEvent"), item.sender.own},
             {QStringLiteral("senderId"), item.sender.id},
@@ -417,6 +424,8 @@ QList<int> ChatTimelineModel::changedItemDataRoles(const ChatTimelineItem &curre
         addRole(SystemEventRole);
         addRole(EmoteRole);
     }
+    if (current.level != replacement.level)
+        addRole(LevelRole);
     if (current.timestamp != replacement.timestamp)
     {
         addRole(TimestampRole);

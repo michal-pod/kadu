@@ -20,6 +20,7 @@
 #pragma once
 
 #include "chat/chat.h"
+#include "chat/timeline/chat-timeline-filter-model.h"
 #include "chat/timeline/chat-timeline-model.h"
 #include "exports.h"
 
@@ -41,7 +42,7 @@ class KADUAPI ChatTimelineController : public QObject
 {
     Q_OBJECT
 
-    Q_PROPERTY(ChatTimelineModel *timeline READ timeline CONSTANT)
+    Q_PROPERTY(ChatTimelineFilterModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(bool loadingInitial READ isLoadingInitial NOTIFY loadingInitialChanged)
     Q_PROPERTY(bool loadingOlder READ isLoadingOlder NOTIFY loadingOlderChanged)
     Q_PROPERTY(bool loadingNewer READ isLoadingNewer NOTIFY loadingNewerChanged)
@@ -58,7 +59,7 @@ public:
     virtual ~ChatTimelineController();
 
     Chat chat() const;
-    ChatTimelineModel *timeline() const;
+    ChatTimelineFilterModel *timeline() const;
     bool isLoadingInitial() const;
     bool isLoadingOlder() const;
     bool isLoadingNewer() const;
@@ -107,6 +108,7 @@ private:
     Chat m_chat;
     QPointer<ProtocolTimelineService> m_timelineService;
     ChatTimelineModel *m_timeline = nullptr;
+    ChatTimelineFilterModel *m_filteredTimeline = nullptr;
     QByteArray m_olderCursor;
     QByteArray m_newerCursor;
     QVector<ChatTimelineItem> m_deferredLiveItems;
@@ -114,6 +116,7 @@ private:
     QByteArray m_failedRequestCursor;
     QString m_failedRequestAnchor;
     QString m_readMarkerId;
+    QString m_protocolReadMarkerId;
     QFuture<void> m_pageContinuation;
     quint64 m_requestGeneration = 0;
     int m_newEventsBelow = 0;
@@ -141,6 +144,7 @@ private:
     void setHistoryError(const QString &error);
     void clearFailedRequest();
     void setReadMarkerId(const QString &stableId);
+    void markProtocolRead(const QString &stableId);
     void setNewEventsBelow(int count);
     void markNewestEventVisible();
 

@@ -29,9 +29,11 @@
 
 ChatTimelineController::ChatTimelineController(Chat chat, ProtocolTimelineService *timelineService, QObject *parent)
         : QObject{parent}, m_chat{chat}, m_timelineService{timelineService},
-          m_timeline{new ChatTimelineModel{this}}
+          m_timeline{new ChatTimelineModel{this}},
+          m_filteredTimeline{new ChatTimelineFilterModel{m_timeline, this}}
 {
     Q_ASSERT(m_timelineService);
+    m_timeline->setParent(m_filteredTimeline);
 
     connect(m_timelineService, &ProtocolTimelineService::eventReceived, this, &ChatTimelineController::eventReceived);
     connect(m_timelineService, &ProtocolTimelineService::eventUpdated, this, &ChatTimelineController::eventUpdated);
@@ -48,9 +50,9 @@ Chat ChatTimelineController::chat() const
     return m_chat;
 }
 
-ChatTimelineModel *ChatTimelineController::timeline() const
+ChatTimelineFilterModel *ChatTimelineController::timeline() const
 {
-    return m_timeline;
+    return m_filteredTimeline;
 }
 
 bool ChatTimelineController::isLoadingInitial() const
@@ -157,7 +159,8 @@ void ChatTimelineController::jumpTo(const QString &stableId, int limit)
     setAtNewest(false);
     if (m_timeline->rowForStableId(stableId) >= 0)
     {
-        emit timelinePositionRequested(stableId);
+        if (m_filteredTimeline->rowForStableId(stableId) >= 0)
+            emit timelinePositionRequested(stableId);
         return;
     }
 
@@ -235,14 +238,19 @@ void ChatTimelineController::markVisible(const QString &stableId)
     if (row < 0)
         return;
 
+    auto protocolReadMarkerId = stableId;
+    const auto items = m_timeline->items();
+    for (auto nextRow = row + 1; nextRow < items.size(); ++nextRow)
+    {
+        if (m_filteredTimeline->acceptsItem(items.at(nextRow)))
+            break;
+        protocolReadMarkerId = items.at(nextRow).stableId;
+    }
     const auto currentReadRow = m_timeline->rowForStableId(m_readMarkerId);
-    if (currentReadRow >= row)
-        return;
-
-    setReadMarkerId(stableId);
-    if (m_timelineService)
-        m_timelineService->markTimelineItemRead(m_chat, stableId);
-    if (row == m_timeline->rowCount() - 1 && !m_hasNewer)
+    if (currentReadRow < row)
+        setReadMarkerId(stableId);
+    markProtocolRead(protocolReadMarkerId);
+    if (m_timeline->rowForStableId(protocolReadMarkerId) == m_timeline->rowCount() - 1 && !m_hasNewer)
         setNewEventsBelow(0);
 }
 
@@ -399,7 +407,10 @@ void ChatTimelineController::pageAvailable(RequestKind requestKind, quint64 gene
     if (requestKind == RequestKind::Latest)
         setNewEventsBelow(0);
     if (requestKind == RequestKind::Around)
-        emit timelinePositionRequested(requestedAnchor);
+    {
+        if (m_filteredTimeline->rowForStableId(requestedAnchor) >= 0)
+            emit timelinePositionRequested(requestedAnchor);
+    }
 
     // Keep the request marked as active until the model and both cursors are
     // consistent. ListView reacts synchronously to row changes; clearing this
@@ -499,6 +510,20 @@ void ChatTimelineController::setReadMarkerId(const QString &stableId)
     emit readMarkerIdChanged();
 }
 
+void ChatTimelineController::markProtocolRead(const QString &stableId)
+{
+    const auto row = m_timeline->rowForStableId(stableId);
+    if (row < 0)
+        return;
+    const auto currentRow = m_timeline->rowForStableId(m_protocolReadMarkerId);
+    if (currentRow >= row)
+        return;
+
+    m_protocolReadMarkerId = stableId;
+    if (m_timelineService)
+        m_timelineService->markTimelineItemRead(m_chat, stableId);
+}
+
 void ChatTimelineController::setNewEventsBelow(int count)
 {
     if (m_newEventsBelow == count)
@@ -510,11 +535,21 @@ void ChatTimelineController::setNewEventsBelow(int count)
 
 void ChatTimelineController::markNewestEventVisible()
 {
-    const auto lastRow = m_timeline->rowCount() - 1;
-    if (lastRow < 0)
+    const auto lastVisibleRow = m_filteredTimeline->rowCount() - 1;
+    if (lastVisibleRow >= 0)
+    {
+        markVisible(m_filteredTimeline
+                        ->data(m_filteredTimeline->index(lastVisibleRow, 0), ChatTimelineModel::StableIdRole)
+                        .toString());
+        return;
+    }
+
+    const auto items = m_timeline->items();
+    if (items.isEmpty())
         return;
 
-    markVisible(m_timeline->data(m_timeline->index(lastRow, 0), ChatTimelineModel::StableIdRole).toString());
+    markProtocolRead(items.constLast().stableId);
+    setNewEventsBelow(0);
 }
 
 void ChatTimelineController::eventReceived(const Chat &chat, const ChatTimelineItem &item)
@@ -557,7 +592,7 @@ void ChatTimelineController::eventReceived(const Chat &chat, const ChatTimelineI
 
     if (m_active && m_atNewest && !m_hasNewer)
         markNewestEventVisible();
-    else
+    else if (m_filteredTimeline->acceptsItem(item))
         setNewEventsBelow(m_newEventsBelow + 1);
 }
 

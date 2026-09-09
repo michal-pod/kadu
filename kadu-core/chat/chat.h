@@ -102,6 +102,7 @@ class KADUAPI Chat : public SharedBase<ChatShared>
     KaduSharedBase_Property(ChatNotificationMode, notificationMode, NotificationMode);
     KaduSharedBase_Property(ChatPriority, priority, Priority);
     KaduSharedBase_Property(quint32, priorityOrder, PriorityOrder);
+    KaduSharedBase_Property(ChatTimelineDetails, timelineDetails, TimelineDetails);
     KaduSharedBase_Property(ChatUnreadCountSource, unreadCountSource, UnreadCountSource);
     KaduSharedBase_PropertyCRW(QSet<Group>, groups, Groups);
     KaduSharedBase_Property(quint32, unreadMessagesCount, UnreadMessagesCount);

@@ -203,6 +203,7 @@ void ChatDataWindow::createGui()
     PersonalSettingsTab = new ChatPersonalSettingsWidget{TabWidget};
     PersonalSettingsTab->setNotificationMode(MyChat.notificationMode());
     PersonalSettingsTab->setPriority(MyChat.priority());
+    PersonalSettingsTab->setTimelineDetails(MyChat.timelineDetails());
     TabWidget->addTab(PersonalSettingsTab, PersonalSettingsTab->tabTitle());
 
     auto chatType = m_chatTypeManager->chatType(MyChat.type());
@@ -303,6 +304,9 @@ void ChatDataWindow::updateChat()
         }
     }
 
+    if (PersonalSettingsTab && PersonalSettingsTab->timelineDetails() != MyChat.timelineDetails())
+        MyChat.setTimelineDetails(PersonalSettingsTab->timelineDetails());
+
     MyChat.setDisplay(DisplayEdit->text());
 
     emit save();
@@ -342,7 +346,8 @@ void ChatDataWindow::displayEditChanged()
 
     if (PersonalSettingsTab &&
         (PersonalSettingsTab->notificationMode() != MyChat.notificationMode() ||
-         PersonalSettingsTab->priority() != MyChat.priority()))
+         PersonalSettingsTab->priority() != MyChat.priority() ||
+         PersonalSettingsTab->timelineDetails() != MyChat.timelineDetails()))
         SimpleStateNotifier->setState(StateChangedDataValid);
     else
         SimpleStateNotifier->setState(StateNotChanged);

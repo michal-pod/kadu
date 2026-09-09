@@ -37,6 +37,8 @@ ChatTimelineItem LegacyMessageTimelineAdapter::item(const Message &message) cons
     timelineItem.timestamp = message.receiveDate().isValid() ? message.receiveDate() : message.sendDate();
     timelineItem.kind = message.type() == MessageTypeSystem ? ChatTimelineItemKind::LocalNotice
                                                             : ChatTimelineItemKind::TextMessage;
+    timelineItem.level = message.type() == MessageTypeSystem ? ChatTimelineItemLevel::Important
+                                                             : ChatTimelineItemLevel::Chat;
     timelineItem.content.formattedText = sanitizeHtml(HtmlString{message.content().string()}).string();
     timelineItem.content.plainText = htmlToPlain(message.content());
 

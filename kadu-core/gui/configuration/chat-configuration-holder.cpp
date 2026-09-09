@@ -29,8 +29,9 @@
 #include "chat-configuration-holder.moc"
 
 ChatConfigurationHolder::ChatConfigurationHolder(QObject *parent)
-        : ConfigurationHolder{parent}, AutoSend{}, NiceDateFormat{}, CustomColors{}, ChatTextCustomColors{}, ForceCustomChatFont{},
-          ChatBgFilled{}, UseTransparency{}, ContactStateChats{}, ContactStateWindowTitle{},
+        : ConfigurationHolder{parent}, AutoSend{}, NiceDateFormat{}, CustomColors{}, ChatTextCustomColors{},
+          ForceCustomChatFont{}, ChatBgFilled{}, UseTransparency{},
+          TimelineDetails{ChatTimelineDetails::AllEvents}, ContactStateChats{}, ContactStateWindowTitle{},
           ContactStateWindowTitlePosition{}
 {
 }
@@ -107,6 +108,11 @@ void ChatConfigurationHolder::configurationUpdated()
                                : palette.base().color();
 
     UseTransparency = m_configuration->deprecatedApi()->readBoolEntry("Chat", "UseTransparency");
+    const auto timelineDetails = m_configuration->deprecatedApi()->readNumEntry(
+        "Chat", "TimelineDetails", static_cast<int>(ChatTimelineDetails::AllEvents));
+    const auto loadedTimelineDetails = static_cast<ChatTimelineDetails>(timelineDetails);
+    TimelineDetails = isConcreteChatTimelineDetails(loadedTimelineDetails) ? loadedTimelineDetails
+                                                                           : ChatTimelineDetails::AllEvents;
 
     emit chatConfigurationUpdated();
 }

@@ -141,6 +141,7 @@ private:
     QString m_savedTopic;
     ChatNotificationMode m_savedNotificationMode = ChatNotificationMode::Default;
     ChatPriority m_savedPriority = ChatPriority::Default;
+    ChatTimelineDetails m_savedTimelineDetails = ChatTimelineDetails::InheritGlobal;
     QUrl m_savedAvatarUrl;
     QString m_avatarFileName;
     QJsonObject m_savedJoinRules;

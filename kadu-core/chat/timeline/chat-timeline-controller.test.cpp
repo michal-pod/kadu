@@ -63,7 +63,13 @@ public:
         emit eventUpdated(chat, item);
     }
 
+    void markTimelineItemRead(const Chat &, const QString &stableId) override
+    {
+        m_lastReadMarkerId = stableId;
+    }
+
     int requestCount() const { return m_requestCount; }
+    QString lastReadMarkerId() const { return m_lastReadMarkerId; }
 
 private:
     QFuture<ChatTimelinePage> completedPage(ChatTimelinePage page) const
@@ -78,6 +84,7 @@ private:
 
     ChatTimelineRequest m_lastRequest;
     QList<ChatTimelinePage> m_pages;
+    QString m_lastReadMarkerId;
     int m_requestCount = 0;
 };
 
@@ -106,6 +113,8 @@ private slots:
     void shouldContinuePagesWithoutBoundaryProgress();
     void shouldCancelQueuedPagination();
     void shouldKeepFollowingLiveEventsWhenOlderPagesDoNotTrimTheWindow();
+    void shouldAdvanceTheProtocolReadMarkerAcrossHiddenEvents();
+    void shouldNotCountHiddenLiveEventsBelowTheViewport();
 
 private:
     ChatTimelineItem makeItem(const QString &stableId, const QByteArray &sourceOrder) const;
@@ -615,6 +624,51 @@ void ChatTimelineControllerTest::shouldKeepFollowingLiveEventsWhenOlderPagesDoNo
     QVERIFY(!controller.hasNewer());
     service.receive(Chat::null, makeItem("$live", "999"));
     QCOMPARE(controller.timeline()->rowForStableId("$live"), 2);
+}
+
+void ChatTimelineControllerTest::shouldAdvanceTheProtocolReadMarkerAcrossHiddenEvents()
+{
+    Account account{new AccountShared{}};
+    const auto chat = Chat::null;
+    TimelineServiceStub timelineService{account};
+    ChatTimelineController controller{chat, &timelineService};
+    controller.timeline()->setDetails(ChatTimelineDetails::ChatOnly);
+
+    auto visible = makeItem(QStringLiteral("$visible"), QByteArrayLiteral("001"));
+    ChatTimelinePage page;
+    page.items = {visible};
+    timelineService.enqueue(page);
+
+    controller.setActive(true);
+    controller.setAtNewest(true);
+    controller.loadInitial();
+
+    QTRY_COMPARE(controller.timeline()->rowCount(), 1);
+    QTRY_COMPARE(timelineService.lastReadMarkerId(), QStringLiteral("$visible"));
+
+    auto hidden = makeItem(QStringLiteral("$hidden"), QByteArrayLiteral("002"));
+    hidden.level = ChatTimelineItemLevel::Debug;
+    timelineService.receive(chat, hidden);
+
+    QTRY_COMPARE(timelineService.lastReadMarkerId(), QStringLiteral("$hidden"));
+    QCOMPARE(controller.readMarkerId(), QStringLiteral("$visible"));
+}
+
+void ChatTimelineControllerTest::shouldNotCountHiddenLiveEventsBelowTheViewport()
+{
+    Account account{new AccountShared{}};
+    const auto chat = Chat::null;
+    TimelineServiceStub timelineService{account};
+    ChatTimelineController controller{chat, &timelineService};
+    controller.timeline()->setDetails(ChatTimelineDetails::ChatOnly);
+
+    auto hidden = makeItem(QStringLiteral("$hidden"), QByteArrayLiteral("001"));
+    hidden.level = ChatTimelineItemLevel::Debug;
+    timelineService.receive(chat, hidden);
+
+    QCOMPARE(controller.timeline()->rowCount(), 0);
+    QCOMPARE(controller.newEventsBelow(), 0);
+    QCOMPARE(controller.timeline()->item(QStringLiteral("$hidden")).stableId, QStringLiteral("$hidden"));
 }
 
 QTEST_GUILESS_MAIN(ChatTimelineControllerTest)

@@ -136,8 +136,9 @@ public:
     /**
      * @short Mark a timeline event as read in the native protocol.
      *
-     * The controller calls this only while the event is visibly read.  A
-     * protocol without read receipts can retain the default no-op behaviour.
+     * The controller calls this only for an event at or before the visible read
+     * boundary. Presentation-only filters may hide the event itself. A protocol
+     * without read receipts can retain the default no-op behaviour.
      */
     virtual void markTimelineItemRead(const Chat &chat, const QString &stableId);
 

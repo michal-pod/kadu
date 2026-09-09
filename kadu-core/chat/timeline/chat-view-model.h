@@ -20,7 +20,7 @@
 #pragma once
 
 #include "chat/chat.h"
-#include "chat/timeline/chat-timeline-model.h"
+#include "chat/timeline/chat-timeline-filter-model.h"
 #include "chat/timeline/legacy-message-timeline-adapter.h"
 #include "emoji/emoji-model.h"
 #include "exports.h"
@@ -50,7 +50,7 @@ class KADUAPI ChatViewModel : public QObject
 {
     Q_OBJECT
 
-    Q_PROPERTY(ChatTimelineModel *timeline READ timeline CONSTANT)
+    Q_PROPERTY(ChatTimelineFilterModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString ownDisplayName READ ownDisplayName NOTIFY titleChanged)
     Q_PROPERTY(QUrl themeSource READ themeSource NOTIFY themeSourceChanged)
@@ -95,7 +95,7 @@ public:
     virtual ~ChatViewModel();
 
     Chat chat() const;
-    ChatTimelineModel *timeline() const;
+    ChatTimelineFilterModel *timeline() const;
     QString title() const;
     QString ownDisplayName() const;
     QUrl themeSource() const;
@@ -175,7 +175,7 @@ signals:
 private:
     Chat m_chat;
     ChatTimelineController *m_timelineController = nullptr;
-    ChatTimelineModel *m_timeline = nullptr;
+    ChatTimelineFilterModel *m_timeline = nullptr;
     LegacyMessageTimelineAdapter m_legacyAdapter;
     ChatStyleManager *m_chatStyleManager = nullptr;
     QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
@@ -195,6 +195,7 @@ private:
     void refreshChatHeader();
     void setComposerContext(ComposerMode mode, const ChatTimelineItem &item);
     void recordReactionEmojiUse(const QString &key);
+    void applyTimelineDetails();
 
 private slots:
     void chatUpdated();

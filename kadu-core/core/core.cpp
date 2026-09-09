@@ -35,6 +35,7 @@
 #include "activate.h"
 #include "chat-style/chat-style-configuration-ui-handler.h"
 #include "chat/chat-manager.h"
+#include "chat/chat-timeline-details.h"
 #include "configuration/configuration-manager.h"
 #include "configuration/deprecated-configuration-api.h"
 #include "configuration/gui/configuration-ui-handler-repository.h"
@@ -167,6 +168,8 @@ void Core::createDefaultConfiguration()
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "ReceiveMessages", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "RememberPosition", true);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "ShowEditWindowLabel", true);
+    m_injector.get<Configuration>()->deprecatedApi()->addVariable(
+        "Chat", "TimelineDetails", static_cast<int>(ChatTimelineDetails::AllEvents));
 
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("General", "AllowExecutingFromParser", false);
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("General", "CheckUpdates", true);

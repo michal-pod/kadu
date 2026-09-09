@@ -149,6 +149,13 @@
 					tool-tip="Shorten ugly, long links to save space in chat window" />
 				<check-box caption="Use descriptive date format" config-section="Look" config-item="NiceDateFormat"
 					tool-tip="Display dates like Today, Yesterday or Friday, 2:30PM" />
+				<combo-box caption="Timeline details" config-section="Chat" config-item="TimelineDetails"
+					tool-tip="Choose which kinds of activity are visible in chat timelines">
+					<item value="0" caption="Chat only" />
+					<item value="100" caption="Important events" />
+					<item value="200" caption="All events" />
+					<item value="300" caption="Debug" />
+				</combo-box>
 			</group-box>
 		</tab>
 	</section>

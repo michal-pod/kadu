@@ -40,11 +40,23 @@ ChatPersonalSettingsWidget::ChatPersonalSettingsWidget(QWidget *parent) : QWidge
     m_priorityCombo->addItem(tr("Default"), static_cast<qint32>(ChatPriority::Default));
     m_priorityCombo->addItem(tr("Low priority"), static_cast<qint32>(ChatPriority::LowPriority));
     form->addRow(tr("Priority:"), m_priorityCombo);
+
+    m_timelineDetailsCombo = new QComboBox{this};
+    m_timelineDetailsCombo->addItem(
+        tr("Use global setting"), static_cast<int>(ChatTimelineDetails::InheritGlobal));
+    m_timelineDetailsCombo->addItem(tr("Chat only"), static_cast<int>(ChatTimelineDetails::ChatOnly));
+    m_timelineDetailsCombo->addItem(
+        tr("Important events"), static_cast<int>(ChatTimelineDetails::Important));
+    m_timelineDetailsCombo->addItem(tr("All events"), static_cast<int>(ChatTimelineDetails::AllEvents));
+    m_timelineDetailsCombo->addItem(tr("Debug"), static_cast<int>(ChatTimelineDetails::Debug));
+    form->addRow(tr("Timeline details:"), m_timelineDetailsCombo);
     form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 
     connect(m_notificationModeCombo, &QComboBox::currentIndexChanged, this,
             &ChatPersonalSettingsWidget::changed);
     connect(m_priorityCombo, &QComboBox::currentIndexChanged, this, &ChatPersonalSettingsWidget::changed);
+    connect(m_timelineDetailsCombo, &QComboBox::currentIndexChanged, this,
+            &ChatPersonalSettingsWidget::changed);
 }
 
 QString ChatPersonalSettingsWidget::tabTitle() const
@@ -74,8 +86,20 @@ void ChatPersonalSettingsWidget::setPriority(ChatPriority priority)
     m_priorityCombo->setCurrentIndex(m_priorityCombo->findData(static_cast<qint32>(priority)));
 }
 
+ChatTimelineDetails ChatPersonalSettingsWidget::timelineDetails() const
+{
+    return static_cast<ChatTimelineDetails>(m_timelineDetailsCombo->currentData().toInt());
+}
+
+void ChatPersonalSettingsWidget::setTimelineDetails(ChatTimelineDetails details)
+{
+    const QSignalBlocker blocker{m_timelineDetailsCombo};
+    m_timelineDetailsCombo->setCurrentIndex(m_timelineDetailsCombo->findData(static_cast<int>(details)));
+}
+
 void ChatPersonalSettingsWidget::setEditingEnabled(bool enabled)
 {
     m_notificationModeCombo->setEnabled(enabled);
     m_priorityCombo->setEnabled(enabled);
+    m_timelineDetailsCombo->setEnabled(enabled);
 }

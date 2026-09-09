@@ -63,6 +63,14 @@ enum class ChatTimelineItemKind
     RoomSettingsChanged
 };
 
+enum class ChatTimelineItemLevel
+{
+    Chat = 0,
+    Important = 100,
+    Informational = 200,
+    Debug = 300
+};
+
 enum class ChatTimelineDeliveryState
 {
     Unknown,
@@ -161,6 +169,7 @@ struct KADUAPI ChatTimelineItem
     QDateTime timestamp;
     quint64 revision = 0;
     ChatTimelineItemKind kind = ChatTimelineItemKind::TextMessage;
+    ChatTimelineItemLevel level = ChatTimelineItemLevel::Chat;
     ChatTimelineSender sender;
     ChatTimelineContent content;
     ChatTimelineState state;

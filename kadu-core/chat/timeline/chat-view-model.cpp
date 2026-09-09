@@ -116,7 +116,11 @@ ChatViewModel::ChatViewModel(
                 });
     }
     else
-        m_timeline = new ChatTimelineModel{this};
+    {
+        auto *timelineSource = new ChatTimelineModel{this};
+        m_timeline = new ChatTimelineFilterModel{timelineSource, this};
+        timelineSource->setParent(m_timeline);
+    }
 
     if (m_chat)
     {
@@ -132,6 +136,7 @@ ChatViewModel::ChatViewModel(
             m_chatConfigurationHolder, &ChatConfigurationHolder::chatConfigurationUpdated, this,
             &ChatViewModel::customColorsChangedSlot);
 
+    applyTimelineDetails();
     refreshChatHeader();
 }
 
@@ -145,7 +150,7 @@ Chat ChatViewModel::chat() const
     return m_chat;
 }
 
-ChatTimelineModel *ChatViewModel::timeline() const
+ChatTimelineFilterModel *ChatViewModel::timeline() const
 {
     return m_timeline;
 }
@@ -584,6 +589,14 @@ void ChatViewModel::markTimelineItemVisible(const QString &stableId)
 
 void ChatViewModel::jumpToTimelineItem(const QString &stableId)
 {
+    if (m_timeline->contains(stableId) && m_timeline->rowForStableId(stableId) < 0)
+    {
+        emit timelineWarningRequested(
+            stableId, tr("Timeline event hidden"),
+            tr("This event is hidden by the current timeline detail setting."));
+        return;
+    }
+
     if (m_timelineController)
         m_timelineController->jumpTo(stableId);
 }
@@ -671,6 +684,7 @@ ProtocolTimelineService *ChatViewModel::timelineService(ProtocolTimelineService 
 
 void ChatViewModel::chatUpdated()
 {
+    applyTimelineDetails();
     emit titleChanged();
     refreshChatHeader();
 }
@@ -682,8 +696,18 @@ void ChatViewModel::styleChanged()
 
 void ChatViewModel::customColorsChangedSlot()
 {
+    applyTimelineDetails();
     emit customColorsChanged();
     emit chatFontChanged();
+}
+
+void ChatViewModel::applyTimelineDetails()
+{
+    auto details = m_chat.timelineDetails();
+    if (details == ChatTimelineDetails::InheritGlobal)
+        details = m_chatConfigurationHolder ? m_chatConfigurationHolder->timelineDetails()
+                                            : ChatTimelineDetails::AllEvents;
+    m_timeline->setDetails(details);
 }
 
 void ChatViewModel::timelineStateChangedSlot()

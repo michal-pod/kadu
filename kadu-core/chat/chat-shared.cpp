@@ -53,7 +53,8 @@
 ChatShared::ChatShared(const QUuid &uuid)
         : Shared(uuid), ChatAccount{nullptr}, Details(0), IgnoreAllMessages(false),
           NotificationMode(ChatNotificationMode::Default), Priority(ChatPriority::Default), PriorityOrder(0),
-          UnreadCountSource(ChatUnreadCountSource::CoreManaged), UnreadMessagesCount(0), Open(false)
+          TimelineDetails(ChatTimelineDetails::InheritGlobal), UnreadCountSource(ChatUnreadCountSource::CoreManaged),
+          UnreadMessagesCount(0), Open(false)
 {
 }
 
@@ -172,6 +173,14 @@ void ChatShared::load()
                            : ChatNotificationMode::Default;
     Priority = static_cast<ChatPriority>(loadValue<qint32>("Priority", static_cast<qint32>(ChatPriority::Default)));
     PriorityOrder = qMin(loadValue<quint32>("PriorityOrder", 0), CHAT_PRIORITY_ORDER_MAXIMUM);
+    const auto timelineDetails =
+        loadValue<int>("TimelineDetails", static_cast<int>(ChatTimelineDetails::InheritGlobal));
+    const auto loadedTimelineDetails = static_cast<ChatTimelineDetails>(timelineDetails);
+    if (loadedTimelineDetails == ChatTimelineDetails::InheritGlobal ||
+        isConcreteChatTimelineDetails(loadedTimelineDetails))
+        TimelineDetails = loadedTimelineDetails;
+    else
+        TimelineDetails = ChatTimelineDetails::InheritGlobal;
     auto type = loadValue<QString>("Type");
 
     // import from alias to new name of chat type
@@ -208,6 +217,7 @@ void ChatShared::store()
     storeValue("NotificationMode", static_cast<int>(NotificationMode));
     storeValue("Priority", static_cast<qint32>(Priority));
     storeValue("PriorityOrder", PriorityOrder);
+    storeValue("TimelineDetails", static_cast<int>(TimelineDetails));
 
     // import from alias to new name of chat type
     ChatType *chatType = m_chatTypeManager->chatType(Type);
@@ -253,6 +263,9 @@ bool ChatShared::shouldStore()
         return true;
 
     if (Priority != ChatPriority::Default || PriorityOrder != 0)
+        return true;
+
+    if (TimelineDetails != ChatTimelineDetails::InheritGlobal)
         return true;
 
     return UuidStorableObject::shouldStore() && !ChatAccount->uuid().isNull() && (!Details || Details->shouldStore()) &&
