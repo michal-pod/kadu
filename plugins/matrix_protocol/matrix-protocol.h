@@ -41,6 +41,7 @@ class MatrixDeviceVerificationNotificationService;
 class MatrixHistoryService;
 class MatrixTimelineService;
 class MatrixRoomInvitationNotificationService;
+class MatrixSessionService;
 class PluginInjectedFactory;
 class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
@@ -65,6 +66,10 @@ public:
     virtual bool contactsListReadOnly() override
     {
         return true;
+    }
+    virtual bool canRememberPassword() const override
+    {
+        return false;
     }
     virtual bool isLocalHistorySupported() const override
     {
@@ -92,6 +97,7 @@ public:
     }
     virtual ProtocolHistoryService *historyService() override;
     virtual ProtocolTimelineService *timelineService() override;
+    virtual MultilogonService *multilogonService() override;
     virtual QAbstractItemModel *createChatMembersModel(const Chat &chat, QObject *parent) override;
     virtual QWidget *createChatSettingsWindow(const Chat &chat, QWidget *parent) override;
     virtual QString statusPixmapPath() override
@@ -121,6 +127,7 @@ private:
     MatrixChatStateService *m_chatStateService = nullptr;
     MatrixHistoryService *m_historyService = nullptr;
     MatrixTimelineService *m_timelineService = nullptr;
+    MatrixSessionService *m_sessionService = nullptr;
     MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;
     qint64 m_maximumAttachmentSize = 0;

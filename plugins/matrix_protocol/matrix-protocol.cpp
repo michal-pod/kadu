@@ -40,6 +40,7 @@
 #include "matrix-device-verification-notification-service.h"
 #include "matrix-history-service.h"
 #include "matrix-room-members-model.h"
+#include "matrix-session-service.h"
 #include "matrix-timeline-service.h"
 #include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
@@ -69,6 +70,9 @@
 
 MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Protocol{account, factory}
 {
+    account.setRememberPassword(false);
+    account.setHasPassword(true);
+    m_sessionService = new MatrixSessionService{account, this};
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
             [this] { m_applicationQuitting = true; });
 }
@@ -160,6 +164,7 @@ void MatrixProtocol::init()
     m_historyService->setConnection(m_connection);
     m_timelineService = m_pluginInjectedFactory->makeInjected<MatrixTimelineService>(account(), this);
     m_timelineService->setConnection(m_connection);
+    m_sessionService->setConnection(m_connection);
     m_aggregatedAccountAvatarService->add(m_accountAvatarService);
     m_aggregatedContactAvatarService->add(m_contactAvatarService);
     m_chatServiceRepository->addChatService(m_chatService);
@@ -174,6 +179,11 @@ ProtocolHistoryService *MatrixProtocol::historyService()
 ProtocolTimelineService *MatrixProtocol::timelineService()
 {
     return m_timelineService;
+}
+
+MultilogonService *MatrixProtocol::multilogonService()
+{
+    return m_sessionService;
 }
 
 QAbstractItemModel *MatrixProtocol::createChatMembersModel(const Chat &chat, QObject *parent)
@@ -223,12 +233,17 @@ void MatrixProtocol::createConnection()
         m_historyService->setConnection(m_connection);
     if (m_timelineService)
         m_timelineService->setConnection(m_connection);
+    if (m_sessionService)
+        m_sessionService->setConnection(m_connection);
 
     connect(m_connection, &Quotient::Connection::connected, this, [this] {
         if (!m_connection)
             return;
 
         MatrixAccountData{account()}.setDeviceId(m_connection->deviceId());
+        account().setRememberPassword(false);
+        account().setPassword({});
+        account().setHasPassword(true);
         m_connection->callApi<Quotient::GetConfigAuthedJob>(Quotient::BackgroundRequest)
             .then(this, [this](Quotient::GetConfigAuthedJob *job) {
                 if (job)
@@ -484,6 +499,8 @@ void MatrixProtocol::login()
             m_historyService->setConnection(m_connection);
         if (m_timelineService)
             m_timelineService->setConnection(m_connection);
+        if (m_sessionService)
+            m_sessionService->setConnection(m_connection);
     }
 
     const auto accountData = MatrixAccountData{account()};
@@ -518,6 +535,12 @@ void MatrixProtocol::loginWithPassword()
 {
     if (!m_connection)
         return;
+
+    if (account().password().isEmpty())
+    {
+        emit invalidPassword(account());
+        return;
+    }
 
     m_connection->loginWithPassword(account().id(), account().password(), QStringLiteral("Kadu"));
 }
@@ -690,6 +713,8 @@ void MatrixProtocol::logout()
             m_historyService->setConnection(nullptr);
         if (m_timelineService)
             m_timelineService->setConnection(nullptr);
+        if (m_sessionService)
+            m_sessionService->setConnection(nullptr);
         m_connection->deleteLater();
         m_connection = nullptr;
     }

@@ -22,7 +22,9 @@
 #ifndef MULTILOGON_SERVICE_H
 #define MULTILOGON_SERVICE_H
 
+#include <QtCore/QList>
 #include <QtCore/QObject>
+#include <QtCore/QString>
 
 #include "account-service.h"
 
@@ -40,12 +42,26 @@ public:
 
     virtual const QList<MultilogonSession> &sessions() const = 0;
     virtual void killSession(MultilogonSession session) = 0;
+    virtual void provideSessionKillPassword(
+        MultilogonSession session, const QString &authenticationSession, const QString &password);
+    virtual void refreshSessions();
+    virtual bool canKillSession(const MultilogonSession &session) const;
+    virtual bool supportsSessionVerification() const;
+    virtual QString activityColumnTitle() const;
 
 signals:
     void multilogonSessionAboutToBeConnected(MultilogonSession session);
     void multilogonSessionConnected(MultilogonSession session);
     void multilogonSessionAboutToBeDisconnected(MultilogonSession session);
     void multilogonSessionDisconnected(MultilogonSession session);
+    void sessionsAboutToBeReset();
+    void sessionsReset();
+    void sessionsLoadingChanged(bool loading);
+    void sessionsRefreshFailed(const QString &details);
+    void sessionKillStarted(MultilogonSession session);
+    void sessionKillFinished(MultilogonSession session);
+    void sessionKillFailed(MultilogonSession session, const QString &details);
+    void sessionKillPasswordRequired(MultilogonSession session, const QString &authenticationSession);
 };
 
 #endif   // MULTILOGON_SERVICE_H

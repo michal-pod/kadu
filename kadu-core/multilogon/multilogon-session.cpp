@@ -29,7 +29,11 @@ bool operator==(const MultilogonSession &x, const MultilogonSession &y)
         return false;
     if (x.remoteAddress != y.remoteAddress)
         return false;
-    if (x.logonTime != y.logonTime)
+    if (x.activityTime != y.activityTime)
+        return false;
+    if (x.current != y.current)
+        return false;
+    if (x.verificationState != y.verificationState)
         return false;
     return true;
 }

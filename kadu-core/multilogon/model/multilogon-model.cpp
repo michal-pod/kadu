@@ -42,6 +42,8 @@ MultilogonModel::MultilogonModel(MultilogonService *service, QObject *parent)
         connect(
             Service, SIGNAL(multilogonSessionDisconnected(MultilogonSession)), this,
             SLOT(multilogonSessionDisconnected(MultilogonSession)));
+        connect(Service, SIGNAL(sessionsAboutToBeReset()), this, SLOT(sessionsAboutToBeReset()));
+        connect(Service, SIGNAL(sessionsReset()), this, SLOT(sessionsReset()));
     }
 }
 
@@ -56,7 +58,7 @@ int MultilogonModel::rowCount(const QModelIndex &parent) const
 
 int MultilogonModel::columnCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : 3;
+    return parent.isValid() ? 0 : 4;
 }
 
 QVariant MultilogonModel::headerData(int section, Qt::Orientation orientation, int role) const
@@ -69,9 +71,11 @@ QVariant MultilogonModel::headerData(int section, Qt::Orientation orientation, i
     case 0:
         return tr("Name");
     case 1:
-        return tr("Ip");
+        return tr("Verification");
     case 2:
-        return tr("Logon time");
+        return tr("IP address");
+    case 3:
+        return Service ? Service->activityColumnTitle() : tr("Activity");
     }
 
     return QVariant();
@@ -90,17 +94,33 @@ QVariant MultilogonModel::data(const QModelIndex &index, int role) const
     if (role == MultilogonSessionRole)
         return QVariant::fromValue(session);
 
+    if (role == Qt::ToolTipRole && session.current)
+        return tr("This is the current session");
+
     if (Qt::DisplayRole != role)
         return QVariant();
 
     switch (index.column())
     {
     case 0:
-        return session.name;
+        return session.current ? tr("%1 (this device)").arg(session.name) : session.name;
     case 1:
-        return session.remoteAddress.toString();
+        switch (session.verificationState)
+        {
+        case MultilogonSessionVerificationState::NotAvailable:
+            return QVariant{};
+        case MultilogonSessionVerificationState::Unknown:
+            return tr("Unknown");
+        case MultilogonSessionVerificationState::Unverified:
+            return tr("Unverified");
+        case MultilogonSessionVerificationState::Verified:
+            return tr("Verified");
+        }
+        return QVariant{};
     case 2:
-        return session.logonTime;
+        return session.remoteAddress;
+    case 3:
+        return session.activityTime;
     }
 
     return QVariant();
@@ -135,4 +155,14 @@ void MultilogonModel::multilogonSessionDisconnected(MultilogonSession session)
     Q_UNUSED(session)
 
     endRemoveRows();
+}
+
+void MultilogonModel::sessionsAboutToBeReset()
+{
+    beginResetModel();
+}
+
+void MultilogonModel::sessionsReset()
+{
+    endResetModel();
 }

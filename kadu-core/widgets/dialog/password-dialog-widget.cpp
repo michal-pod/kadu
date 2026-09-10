@@ -40,6 +40,16 @@ PasswordDialogWidget::~PasswordDialogWidget()
 {
 }
 
+void PasswordDialogWidget::setPasswordStorageEnabled(bool enabled)
+{
+    PasswordStorageEnabled = enabled;
+    if (!Store)
+        return;
+
+    Store->setChecked(false);
+    Store->setVisible(enabled);
+}
+
 void PasswordDialogWidget::setIconsManager(IconsManager *iconsManager)
 {
     m_iconsManager = iconsManager;
@@ -67,6 +77,7 @@ void PasswordDialogWidget::createGui()
     formLayout->addRow(passwordLabel, Password);
 
     Store = new QCheckBox(tr("Store this password"), this);
+    Store->setVisible(PasswordStorageEnabled);
     formLayout->addWidget(Store);
 
     setLayout(formLayout);

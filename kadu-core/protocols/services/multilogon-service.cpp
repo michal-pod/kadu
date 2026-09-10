@@ -29,3 +29,30 @@ MultilogonService::MultilogonService(Account account, QObject *parent) : Account
 MultilogonService::~MultilogonService()
 {
 }
+
+void MultilogonService::provideSessionKillPassword(
+    MultilogonSession session, const QString &authenticationSession, const QString &password)
+{
+    Q_UNUSED(authenticationSession)
+    Q_UNUSED(password)
+    emit sessionKillFailed(session, tr("Password authentication is not supported by this protocol."));
+}
+
+void MultilogonService::refreshSessions()
+{
+}
+
+bool MultilogonService::canKillSession(const MultilogonSession &session) const
+{
+    return session != MultilogonSession{} && !session.current;
+}
+
+bool MultilogonService::supportsSessionVerification() const
+{
+    return false;
+}
+
+QString MultilogonService::activityColumnTitle() const
+{
+    return tr("Logon time");
+}

@@ -30,7 +30,7 @@ ShowMultilogonsAction::ShowMultilogonsAction(QObject *parent)
 {
     setIcon(KaduIcon{"kadu_icons/multilogon"});
     setName(QStringLiteral("showMultilogonsAction"));
-    setText(tr("Multilogons"));
+    setText(tr("Sessions"));
     setType(ActionDescription::TypeMainMenu);
 }
 

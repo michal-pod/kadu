@@ -41,6 +41,8 @@ public:
     explicit PasswordDialogWidget(const QString &title, QVariant data, QWidget *parent);
     virtual ~PasswordDialogWidget();
 
+    void setPasswordStorageEnabled(bool enabled);
+
 signals:
     void passwordEntered(const QVariant &data, const QString &password, bool permanent);
 
@@ -50,7 +52,8 @@ private:
 
     QFormLayout *formLayout;
     QLineEdit *Password;
-    QCheckBox *Store;
+    QCheckBox *Store{nullptr};
+    bool PasswordStorageEnabled{true};
 
     virtual void createGui();
 

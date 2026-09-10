@@ -34,7 +34,6 @@
 
 #include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
-#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QHBoxLayout>
@@ -93,20 +92,17 @@ void MatrixEditAccountWidget::createGui()
 
     m_password = new QLineEdit{general};
     m_password->setEchoMode(QLineEdit::Password);
+    m_password->setPlaceholderText(tr("Leave empty to keep using the current session"));
     connect(m_password, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
     form->addRow(tr("Password:"), m_password);
-
-    m_rememberPassword = new QCheckBox{tr("Remember password"), general};
-    connect(m_rememberPassword, SIGNAL(toggled(bool)), this, SLOT(dataChanged()));
-    form->addRow(QString{}, m_rememberPassword);
 
     m_identity = m_pluginInjectedFactory->makeInjected<IdentitiesComboBox>(general);
     connect(m_identity, SIGNAL(currentIndexChanged(int)), this, SLOT(dataChanged()));
     form->addRow(tr("Account identity:"), m_identity);
 
     auto info = new QLabel{
-        tr("The account uses password login. Message delivery and room synchronisation will be added in a later "
-           "step."),
+        tr("Kadu does not save the account password. A password entered here is kept only until it is used for "
+           "authentication; the Matrix access token remains in the system credential store."),
         general};
     info->setWordWrap(true);
     form->addRow(QString{}, info);
@@ -142,8 +138,7 @@ void MatrixEditAccountWidget::loadAccountData()
     m_identity->setCurrentIdentity(account().accountIdentity());
     m_matrixId->setText(account().id());
     m_homeserver->setText(MatrixAccountData{account()}.homeserver());
-    m_password->setText(account().password());
-    m_rememberPassword->setChecked(account().rememberPassword());
+    m_password->clear();
     simpleStateNotifier()->setState(StateNotChanged);
 }
 
@@ -163,8 +158,8 @@ void MatrixEditAccountWidget::apply()
     applyAccountConfigurationWidgets();
     account().setId(m_matrixId->text().trimmed());
     account().setPassword(m_password->text());
-    account().setHasPassword(!m_password->text().isEmpty());
-    account().setRememberPassword(m_rememberPassword->isChecked());
+    account().setHasPassword(true);
+    account().setRememberPassword(false);
     account().setAccountIdentity(m_identity->currentIdentity());
     MatrixAccountData{account()}.setHomeserver(m_homeserver->text().trimmed());
     account().data()->forceEmitUpdated();
@@ -200,9 +195,7 @@ void MatrixEditAccountWidget::dataChanged()
                               m_accountManager->byId(account().protocolName(), m_matrixId->text().trimmed()) != account();
     const auto unchanged = account().accountIdentity() == m_identity->currentIdentity() &&
                            account().id() == m_matrixId->text().trimmed() &&
-                           accountData.homeserver() == m_homeserver->text().trimmed() &&
-                           account().password() == m_password->text() &&
-                           account().rememberPassword() == m_rememberPassword->isChecked();
+                           accountData.homeserver() == m_homeserver->text().trimmed() && m_password->text().isEmpty();
 
     if (unchanged)
         simpleStateNotifier()->setState(StateNotChanged);

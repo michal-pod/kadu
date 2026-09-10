@@ -32,7 +32,6 @@
 
 #include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
-#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLabel>
@@ -96,17 +95,13 @@ void MatrixAddAccountWidget::createGui()
     connect(m_password, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
     form->addRow(tr("Password:"), m_password);
 
-    m_rememberPassword = new QCheckBox{tr("Remember password"), this};
-    connect(m_rememberPassword, SIGNAL(toggled(bool)), this, SLOT(dataChanged()));
-    form->addRow(QString{}, m_rememberPassword);
-
     m_identity = m_pluginInjectedFactory->makeInjected<IdentitiesComboBox>(this);
     connect(m_identity, SIGNAL(currentIndexChanged(int)), this, SLOT(dataChanged()));
     form->addRow(tr("Account identity:"), m_identity);
 
     auto info = new QLabel{
-        tr("The account uses password login. Message delivery and room synchronisation will be added in a later "
-           "step."),
+        tr("The password is used only for the initial sign-in. Kadu stores the resulting access token in the "
+           "system credential store instead of saving the password."),
         this};
     info->setWordWrap(true);
     form->addRow(QString{}, info);
@@ -133,7 +128,6 @@ void MatrixAddAccountWidget::resetGui()
     m_matrixId->clear();
     m_homeserver->setText("https://matrix.org");
     m_password->clear();
-    m_rememberPassword->setChecked(true);
     m_identityManager->removeUnused();
     m_identity->setCurrentIndex(0);
     dataChanged();
@@ -156,7 +150,7 @@ void MatrixAddAccountWidget::apply()
     account.setId(m_matrixId->text().trimmed());
     account.setPassword(m_password->text());
     account.setHasPassword(!m_password->text().isEmpty());
-    account.setRememberPassword(m_rememberPassword->isChecked());
+    account.setRememberPassword(false);
     account.setAccountIdentity(m_identity->currentIdentity());
     MatrixAccountData{account}.setHomeserver(m_homeserver->text().trimmed());
 
@@ -171,12 +165,12 @@ void MatrixAddAccountWidget::cancel()
 
 void MatrixAddAccountWidget::dataChanged()
 {
-    const auto valid = m_matrixId->hasAcceptableInput() && validHomeserver() && m_identity->currentIdentity() &&
+    const auto valid = m_matrixId->hasAcceptableInput() && validHomeserver() && !m_password->text().isEmpty() &&
+                       m_identity->currentIdentity() &&
                        !m_accountManager->byId("matrix", m_matrixId->text().trimmed());
     m_addAccountButton->setEnabled(valid);
 
     const auto untouched = m_matrixId->text().isEmpty() && m_homeserver->text() == "https://matrix.org" &&
-                           m_password->text().isEmpty() && m_rememberPassword->isChecked() &&
-                           m_identity->currentIndex() == 0;
+                           m_password->text().isEmpty() && m_identity->currentIndex() == 0;
     simpleStateNotifier()->setState(untouched ? StateNotChanged : valid ? StateChangedDataValid : StateChangedDataInvalid);
 }

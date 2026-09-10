@@ -30,6 +30,7 @@
 #include <injeqt/injeqt.h>
 
 class QPushButton;
+class QLabel;
 class QTableView;
 
 class AccountsComboBox;
@@ -48,6 +49,11 @@ class KADUAPI MultilogonWindow : public QWidget, DesktopAwareObject
     AccountsComboBox *Accounts;
     QTableView *SessionsTable;
     QPushButton *KillSessionButton;
+    QPushButton *RefreshButton;
+    QLabel *StatusLabel;
+    QPointer<MultilogonService> CurrentService;
+    bool SessionsLoading{false};
+    bool SessionOperationRunning{false};
 
     void createGui();
 
@@ -62,6 +68,14 @@ private slots:
     void accountChanged();
     void selectionChanged();
     void killSession();
+    void refreshSessions();
+    void sessionsLoadingChanged(bool loading);
+    void sessionsReset();
+    void sessionsRefreshFailed(const QString &details);
+    void sessionKillStarted(MultilogonSession session);
+    void sessionKillFinished(MultilogonSession session);
+    void sessionKillFailed(MultilogonSession session, const QString &details);
+    void sessionKillPasswordRequired(MultilogonSession session, const QString &authenticationSession);
 
 protected:
     virtual void keyPressEvent(QKeyEvent *e);

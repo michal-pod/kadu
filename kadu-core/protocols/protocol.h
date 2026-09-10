@@ -92,6 +92,11 @@ public:
         return CurrentAccount;
     }
 
+    virtual bool canRememberPassword() const
+    {
+        return true;
+    }
+
     virtual BuddyListSerializationService *buddyListSerializationService()
     {
         return nullptr;

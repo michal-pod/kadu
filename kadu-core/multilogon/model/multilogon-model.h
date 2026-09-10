@@ -38,6 +38,8 @@ private slots:
     void multilogonSessionConnected(MultilogonSession session);
     void multilogonSessionAboutToBeDisconnected(MultilogonSession session);
     void multilogonSessionDisconnected(MultilogonSession session);
+    void sessionsAboutToBeReset();
+    void sessionsReset();
 
 public:
     explicit MultilogonModel(MultilogonService *service, QObject *parent);

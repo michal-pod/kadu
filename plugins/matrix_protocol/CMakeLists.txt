@@ -31,6 +31,7 @@ set (SOURCES
     matrix-protocol.cpp
     matrix-room-invitation-notification-service.cpp
     matrix-room-members-model.cpp
+    matrix-session-service.cpp
     matrix-verify-device-action.cpp
 )
 

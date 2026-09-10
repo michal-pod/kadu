@@ -29,7 +29,6 @@ class AccountStorage;
 class IdentitiesComboBox;
 class IdentityManager;
 class PluginInjectedFactory;
-class QCheckBox;
 class QLineEdit;
 class QPushButton;
 
@@ -55,7 +54,6 @@ private:
     QLineEdit *m_matrixId = nullptr;
     QLineEdit *m_homeserver = nullptr;
     QLineEdit *m_password = nullptr;
-    QCheckBox *m_rememberPassword = nullptr;
     IdentitiesComboBox *m_identity = nullptr;
     QPushButton *m_addAccountButton = nullptr;
 

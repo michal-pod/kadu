@@ -261,6 +261,8 @@ void AccountManager::providePassword(Account account)
         tr("Please provide password for %1 (%2) account").arg(account.accountIdentity().name()).arg(account.id());
 
     auto passwordWidget = m_injectedFactory->makeInjected<PasswordDialogWidget>(message, account, nullptr);
+    if (auto protocolHandler = protocol(account))
+        passwordWidget->setPasswordStorageEnabled(protocolHandler->canRememberPassword());
     connect(
         passwordWidget, SIGNAL(passwordEntered(const QVariant &, const QString &, bool)), this,
         SLOT(passwordProvided(const QVariant &, const QString &, bool)));

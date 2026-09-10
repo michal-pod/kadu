@@ -98,7 +98,7 @@ void MultilogonNotificationService::notifyMultilogonSessionConnected(const Multi
     notification.title = tr("Multilogon");
     notification.text = normalizeHtml(plainToHtml(tr("Multilogon session connected")));
     notification.details = normalizeHtml(HtmlString{tr("from %1 at %2 with %3 for %4 account")}.arg(
-        plainToHtml(session.remoteAddress.toString()), plainToHtml(session.logonTime.toString()),
+        plainToHtml(session.remoteAddress), plainToHtml(session.activityTime.toString()),
         plainToHtml(session.name), plainToHtml(session.account.id())));
     notification.data = std::move(data);
     notification.callbacks.append(QStringLiteral("ignore"));
@@ -117,7 +117,7 @@ void MultilogonNotificationService::notifyMultilogonSessionDisonnected(const Mul
     notification.title = tr("Multilogon");
     notification.text = normalizeHtml(HtmlString{tr("Multilogon session disconnected")});
     notification.details = normalizeHtml(HtmlString{tr("from %1 at %2 with %3 for %4 account")}.arg(
-        plainToHtml(session.remoteAddress.toString()), plainToHtml(session.logonTime.toString()),
+        plainToHtml(session.remoteAddress), plainToHtml(session.activityTime.toString()),
         plainToHtml(session.name), plainToHtml(session.account.id())));
 
     m_notificationService->notify(notification);
@@ -134,7 +134,7 @@ void MultilogonNotificationService::disconnectSession(const Notification &notifi
         return;
 
     auto multilogonService = protocolHandler->multilogonService();
-    if (!multilogonService)
+    if (!multilogonService || !multilogonService->canKillSession(session))
         return;
 
     multilogonService->killSession(session);

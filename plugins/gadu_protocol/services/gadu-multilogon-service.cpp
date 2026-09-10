@@ -29,6 +29,7 @@
 
 // for Q_OS_WIN macro
 #include <QtCore/QDataStream>
+#include <QtNetwork/QHostAddress>
 #ifdef Q_OS_WIN
 #include <winsock2.h>
 #else
@@ -125,7 +126,7 @@ void GaduMultilogonService::addNewSessions(const gg_event_multilogon_info &multi
             logonTime.setSecsSinceEpoch(multilogonInfo.sessions[i].logon_time);
 
             auto session = MultilogonSession{account(), toByteArray(multilogonInfo.sessions[i].id),
-                                             multilogonInfo.sessions[i].name, remoteAddress, logonTime};
+                                             multilogonInfo.sessions[i].name, remoteAddress.toString(), logonTime};
 
             emit multilogonSessionAboutToBeConnected(session);
             Sessions.append(session);

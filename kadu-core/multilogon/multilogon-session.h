@@ -23,18 +23,27 @@
 
 #include <QtCore/QDateTime>
 #include <QtCore/QObject>
-#include <QtNetwork/QHostAddress>
 
 #include "accounts/account.h"
 #include "exports.h"
+
+enum class MultilogonSessionVerificationState
+{
+    NotAvailable,
+    Unknown,
+    Unverified,
+    Verified
+};
 
 struct KADUAPI MultilogonSession
 {
     Account account;
     QByteArray id;
     QString name;
-    QHostAddress remoteAddress;
-    QDateTime logonTime;
+    QString remoteAddress;
+    QDateTime activityTime;
+    bool current{false};
+    MultilogonSessionVerificationState verificationState{MultilogonSessionVerificationState::NotAvailable};
 };
 
 KADUAPI bool operator==(const MultilogonSession &x, const MultilogonSession &y);
