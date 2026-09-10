@@ -724,13 +724,45 @@ Item {
 
             Row {
                 id: headerActions
-                visible: root.themeValue("roomHeaderShowActions", true)
+                visible: roomEncryptionIndicator.visible || root.themeValue("roomHeaderShowActions", true)
                 anchors.top: parent.top
                 anchors.right: parent.right
                 spacing: 2
 
+                Item {
+                    id: roomEncryptionIndicator
+
+                    readonly property var roomFlags: root.chatViewModel && root.chatViewModel.roomInfo
+                                                             ? root.chatViewModel.roomInfo.flags : []
+                    readonly property bool roomEncrypted: roomFlags && roomFlags.indexOf("encrypted") >= 0
+
+                    visible: roomEncrypted
+                    width: visible ? 28 : 0
+                    height: 28
+                    Accessible.name: qsTr("End-to-end encryption is enabled for this room")
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: 16
+                        height: 16
+                        source: roomEncryptionIndicator.visible ? "image://kaduicon/security-high" : ""
+                        sourceSize.width: 16
+                        sourceSize.height: 16
+                        fillMode: Image.PreserveAspectFit
+                    }
+
+                    HoverHandler {
+                        id: roomEncryptionHover
+                    }
+
+                    ToolTip.visible: roomEncryptionHover.hovered
+                    ToolTip.text: qsTr("End-to-end encryption is enabled for this room")
+                    ToolTip.delay: 350
+                }
+
                 Repeater {
-                    model: root.chatViewModel ? root.chatViewModel.chatHeaderActions : []
+                    model: root.themeValue("roomHeaderShowActions", true) && root.chatViewModel
+                           ? root.chatViewModel.chatHeaderActions : []
 
                     delegate: ToolButton {
                         id: actionButton

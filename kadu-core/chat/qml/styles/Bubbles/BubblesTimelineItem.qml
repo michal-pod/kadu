@@ -310,7 +310,8 @@ Item {
                     id: systemEventLabel
                     anchors.left: systemSender.visible ? systemSender.right : parent.left
                     anchors.leftMargin: systemSender.visible ? 12 : 0
-                    anchors.right: parent.right
+                    anchors.right: systemEncryptionIndicator.visible ? systemEncryptionIndicator.left : parent.right
+                    anchors.rightMargin: systemEncryptionIndicator.visible ? 6 : 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.systemEventDescription()
                     color: root.textColor
@@ -319,6 +320,15 @@ Item {
                     font.italic: true
                     font.family: root.configuredFontFamily
                     font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
+                }
+
+                KaduChat.TimelineEncryptionIndicator {
+                    id: systemEncryptionIndicator
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    encrypted: root.encrypted
+                    decryptionState: root.decryptionState
+                    errorText: root.errorText
                 }
             }
 
@@ -622,16 +632,32 @@ Item {
                     accentColor: root.ownEvent ? root.outgoingAvatarColor : root.incomingAvatarColor
                 }
 
-                Text {
-                    visible: root.showTimestamp
+                Row {
+                    visible: root.showTimestamp || root.encrypted
                     x: bubble.x
                     width: bubble.width
-                    text: Qt.formatTime(root.timestamp, "HH:mm")
-                    color: root.timestampColor
-                    horizontalAlignment: root.layoutAsOutgoing ? Text.AlignRight : Text.AlignLeft
-                    opacity: 0.70
-                    font.family: root.configuredFontFamily
-                    font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
+                    height: implicitHeight
+                    spacing: 5
+                    layoutDirection: root.layoutAsOutgoing ? Qt.RightToLeft : Qt.LeftToRight
+
+                    KaduChat.TimelineEncryptionIndicator {
+                        id: bubbleEncryptionIndicator
+                        anchors.verticalCenter: parent.verticalCenter
+                        encrypted: root.encrypted
+                        decryptionState: root.decryptionState
+                        errorText: root.errorText
+                    }
+
+                    Text {
+                        id: bubbleTimestamp
+                        visible: root.showTimestamp
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Qt.formatTime(root.timestamp, "HH:mm")
+                        color: root.timestampColor
+                        opacity: 0.70
+                        font.family: root.configuredFontFamily
+                        font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
+                    }
                 }
 
                 Text {

@@ -78,6 +78,12 @@ private:
         QSize originalSize;
     };
 
+    struct MegolmRecoveryState
+    {
+        ChatTimelineDecryptionState decryptionState = ChatTimelineDecryptionState::Pending;
+        QString errorText;
+    };
+
     QPointer<ChatManager> m_chatManager;
     QPointer<ChatStorage> m_chatStorage;
     QPointer<Quotient::Connection> m_connection;
@@ -101,6 +107,7 @@ private:
     mutable QHash<QString, ChatTimelineAttachmentKind> m_attachmentKinds;
     mutable QHash<QString, QHash<QString, QUrl>> m_memberAvatarSources;
     mutable QHash<QString, QJsonObject> m_decryptedEventSources;
+    QHash<QString, MegolmRecoveryState> m_megolmRecoveryStates;
     QHash<QString, QString> m_eventTransactionIds;
     mutable QHash<QString, QString> m_reactionEventTargets;
     MatrixMegolmSessionRecovery *m_sessionRecovery;
@@ -151,6 +158,7 @@ private:
     static QString attachmentResourceId(const QString &eventId, bool thumbnail);
     static QString localEchoId(const QString &transactionId);
     static QString transactionIdForLocalEcho(const QString &stableId);
+    static QString megolmSessionKey(const Quotient::Room *room, const QString &sessionId);
     static QString joinRuleName(const QJsonObject &joinRules);
     QByteArray sourceOrderForEvent(const Quotient::RoomEvent &event, const QString &eventId,
                                    qint64 timelineIndex) const;

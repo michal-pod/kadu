@@ -82,10 +82,11 @@ enum class ChatTimelineDeliveryState
 
 enum class ChatTimelineDecryptionState
 {
-    NotEncrypted,
-    Pending,
-    Decrypted,
-    Failed
+    NotEncrypted = 0,
+    Pending = 1,
+    Decrypted = 2,
+    Failed = 3,
+    MissingKey = 4
 };
 
 enum class ChatTimelineAttachmentKind

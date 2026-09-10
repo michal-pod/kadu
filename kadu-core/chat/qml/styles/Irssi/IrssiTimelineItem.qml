@@ -85,6 +85,26 @@ Item {
                         : state === 3 ? qsTr("transfer failed") : qsTr("ready")
         return "[" + (attachment.fileName || qsTr("attachment")) + " — " + stateText + "]"
     }
+    function encryptionEmoji() {
+        if (!encrypted || decryptionState === 0)
+            return ""
+        if (decryptionState === 1)
+            return "⌛"
+        if (decryptionState === 2)
+            return "🔒"
+        if (decryptionState === 4)
+            return "🔐"
+        return "⚠"
+    }
+    function encryptionDescription() {
+        if (decryptionState === 1)
+            return qsTr("Encrypted event; waiting for a decryption key")
+        if (decryptionState === 2)
+            return qsTr("Encrypted and successfully decrypted")
+        if (decryptionState === 4)
+            return qsTr("Encrypted event; decryption key is unavailable")
+        return qsTr("Encrypted event could not be decrypted")
+    }
 
     Menu {
         id: eventMenu
@@ -123,12 +143,34 @@ Item {
             width: parent.width
             spacing: 6
 
-            Text {
-                width: 66
-                text: root.timestampText()
-                color: root.timestampColor
-                font.family: root.terminalFont
-                font.pointSize: root.fontSize
+            Row {
+                width: implicitWidth
+                height: implicitHeight
+                spacing: 5
+
+                Text {
+                    text: root.timestampText()
+                    color: root.timestampColor
+                    font.family: root.terminalFont
+                    font.pointSize: root.fontSize
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.encryptionEmoji().length > 0
+                    text: root.encryptionEmoji()
+                    font.pixelSize: 12
+
+                    HoverHandler {
+                        id: encryptionHover
+                    }
+
+                    ToolTip.visible: encryptionHover.hovered
+                    ToolTip.text: root.decryptionState !== 2 && root.errorText.length > 0
+                                  ? root.encryptionDescription() + ": " + root.errorText
+                                  : root.encryptionDescription()
+                    ToolTip.delay: 350
+                }
             }
 
             Text {

@@ -38,22 +38,46 @@ class MatrixMegolmSessionRecovery final : public QObject
     Q_OBJECT
 
 public:
+    enum class Failure
+    {
+        MissingKey,
+        RecoveryUnavailable,
+        UnsupportedAlgorithm,
+        UnsupportedBackup,
+        InvalidBackup,
+        Unknown
+    };
+    Q_ENUM(Failure)
+
     explicit MatrixMegolmSessionRecovery(QObject *parent = nullptr);
 
     void setConnection(Quotient::Connection *connection);
     void requestFromBackup(Quotient::Room *room, const Quotient::EncryptedEvent &event);
 
 signals:
+    void sessionRecoveryStarted(Quotient::Room *room, const QString &sessionId);
+    void sessionRecoveryFailed(Quotient::Room *room, const QString &sessionId,
+                               MatrixMegolmSessionRecovery::Failure failure, const QString &errorText);
     void sessionRestored(Quotient::Room *room, const QString &sessionId);
     void backupRestored();
 
 private:
+    struct WaitingRequest
+    {
+        QPointer<Quotient::Room> room;
+        QString sessionId;
+    };
+
     QPointer<Quotient::Connection> m_connection;
     QPointer<Quotient::SSSSHandler> m_crossSigningRecovery;
     QSet<QString> m_pendingRequests;
     QHash<QString, QDateTime> m_requestAttempts;
+    QHash<QString, WaitingRequest> m_waitingForBackupKey;
     bool m_crossSigningRequested = false;
 
     void finishRequest(const QString &requestId, Quotient::Connection *connection);
-    void requestBackupKeyFromVerifiedDevice();
+    void failRequest(const QString &requestId, Quotient::Connection *connection, Quotient::Room *room,
+                     const QString &sessionId, Failure failure, const QString &errorText);
+    bool requestBackupKeyFromVerifiedDevice();
+    void finishBackupKeyRequest();
 };

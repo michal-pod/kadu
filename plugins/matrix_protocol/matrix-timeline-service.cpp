@@ -139,8 +139,30 @@ MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
         : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
 {
     m_attachmentImages.setMaxCost(AttachmentImageCacheSizeKiB);
+    connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRecoveryStarted, this,
+            [this](Quotient::Room *room, const QString &sessionId) {
+                const auto key = megolmSessionKey(room, sessionId);
+                if (!m_megolmRecoveryStates.contains(key))
+                    return;
+                m_megolmRecoveryStates.remove(key);
+                updateTimelineEventsForMegolmSession(room, sessionId);
+            });
+    connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRecoveryFailed, this,
+            [this](Quotient::Room *room, const QString &sessionId,
+                   MatrixMegolmSessionRecovery::Failure failure, const QString &errorText) {
+                const auto keyUnavailable = failure == MatrixMegolmSessionRecovery::Failure::MissingKey ||
+                                            failure == MatrixMegolmSessionRecovery::Failure::RecoveryUnavailable;
+                const auto state = keyUnavailable
+                                       ? ChatTimelineDecryptionState::MissingKey
+                                       : ChatTimelineDecryptionState::Failed;
+                m_megolmRecoveryStates.insert(megolmSessionKey(room, sessionId), {state, errorText});
+                updateTimelineEventsForMegolmSession(room, sessionId);
+            });
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRestored, this,
-            &MatrixTimelineService::updateTimelineEventsForMegolmSession);
+            [this](Quotient::Room *room, const QString &sessionId) {
+                m_megolmRecoveryStates.remove(megolmSessionKey(room, sessionId));
+                updateTimelineEventsForMegolmSession(room, sessionId);
+            });
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::backupRestored, this,
             &MatrixTimelineService::refreshEncryptedEvents);
 }
@@ -164,6 +186,7 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_watchedRooms.clear();
     m_loadedRooms.clear();
     m_historicalEventIds.clear();
+    m_megolmRecoveryStates.clear();
     clearAttachmentDownloads();
     m_attachmentImages.clear();
     m_attachmentImageDimensions.clear();
@@ -1529,6 +1552,17 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
                                               ? ChatTimelineDecryptionState::Pending
                                               : ChatTimelineDecryptionState::Decrypted)
                                        : ChatTimelineDecryptionState::NotEncrypted;
+    if (item.state.decryptionState == ChatTimelineDecryptionState::Pending)
+        if (const auto *encryptedEvent = Quotient::eventCast<const Quotient::EncryptedEvent>(&event))
+        {
+            const auto recoveryState = m_megolmRecoveryStates.constFind(
+                megolmSessionKey(room, encryptedEvent->sessionId()));
+            if (recoveryState != m_megolmRecoveryStates.cend())
+            {
+                item.state.decryptionState = recoveryState->decryptionState;
+                item.state.errorText = recoveryState->errorText;
+            }
+        }
     item.level = MatrixTimelineClassification::levelForEvent(event);
 
     const auto eventType = event.matrixType();
@@ -1758,8 +1792,15 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
     if (eventType == QStringLiteral("m.room.encrypted"))
     {
         item.kind = ChatTimelineItemKind::EncryptedEvent;
-        item.content.plainText = tr("Encrypted Matrix event is waiting for a key (%1).").arg(eventType);
-        item.state.errorText = tr("The event could not be decrypted yet.");
+        if (item.state.decryptionState == ChatTimelineDecryptionState::MissingKey)
+            item.content.plainText = tr("Encrypted Matrix event cannot be read because its key is unavailable (%1).")
+                                         .arg(eventType);
+        else if (item.state.decryptionState == ChatTimelineDecryptionState::Failed)
+            item.content.plainText = tr("Encrypted Matrix event could not be decrypted (%1).").arg(eventType);
+        else
+            item.content.plainText = tr("Encrypted Matrix event is waiting for a key (%1).").arg(eventType);
+        if (item.state.errorText.isEmpty())
+            item.state.errorText = tr("The event could not be decrypted yet.");
         appendReactions(item, room, event);
         return item;
     }
@@ -2069,11 +2110,13 @@ void MatrixTimelineService::showEventSource(const QString &eventId, const Quotie
 
     auto *layout = new QVBoxLayout{dialog};
     auto *tabs = new QTabWidget{dialog};
+    const auto isRawEncryptedEvent = Quotient::eventCast<const Quotient::EncryptedEvent>(&event) != nullptr;
     const auto originalEncryptedJson = event.encryptedJson();
     const auto decryptedJson = m_decryptedEventSources.value(eventId);
-    const auto encryptedJson = originalEncryptedJson.isEmpty() && !decryptedJson.isEmpty()
-                                   ? event.fullJson()
-                                   : originalEncryptedJson;
+    const auto encryptedJson = !originalEncryptedJson.isEmpty()
+                                   ? originalEncryptedJson
+                                   : (isRawEncryptedEvent || !decryptedJson.isEmpty() ? event.fullJson()
+                                                                                     : QJsonObject{});
     if (!encryptedJson.isEmpty())
     {
         auto *encryptedSource = new QPlainTextEdit{tabs};
@@ -2082,13 +2125,16 @@ void MatrixTimelineService::showEventSource(const QString &eventId, const Quotie
         tabs->addTab(encryptedSource, tr("Encrypted event"));
     }
 
-    auto *eventSource = new QPlainTextEdit{tabs};
-    eventSource->setReadOnly(true);
-    const auto visibleEventJson = originalEncryptedJson.isEmpty() && !decryptedJson.isEmpty()
-                                      ? decryptedJson
-                                      : event.fullJson();
-    eventSource->setPlainText(QString::fromUtf8(QJsonDocument{visibleEventJson}.toJson(QJsonDocument::Indented)));
-    tabs->addTab(eventSource, encryptedJson.isEmpty() ? tr("Matrix event") : tr("Decrypted event"));
+    const auto visibleEventJson = !decryptedJson.isEmpty() ? decryptedJson
+                                                           : (!isRawEncryptedEvent ? event.fullJson() : QJsonObject{});
+    if (!visibleEventJson.isEmpty())
+    {
+        auto *eventSource = new QPlainTextEdit{tabs};
+        eventSource->setReadOnly(true);
+        eventSource->setPlainText(
+            QString::fromUtf8(QJsonDocument{visibleEventJson}.toJson(QJsonDocument::Indented)));
+        tabs->addTab(eventSource, encryptedJson.isEmpty() ? tr("Matrix event") : tr("Decrypted event"));
+    }
     layout->addWidget(tabs);
 
     auto *buttons = new QDialogButtonBox{QDialogButtonBox::Close, dialog};
@@ -2096,6 +2142,11 @@ void MatrixTimelineService::showEventSource(const QString &eventId, const Quotie
     connect(dialog, &QDialog::finished, dialog, &QObject::deleteLater);
     layout->addWidget(buttons);
     dialog->open();
+}
+
+QString MatrixTimelineService::megolmSessionKey(const Quotient::Room *room, const QString &sessionId)
+{
+    return (room ? room->id() : QString{}) + QStringLiteral("\x1f") + sessionId;
 }
 
 void MatrixTimelineService::updateAttachmentEvent(Quotient::Room *room, const QString &eventId)

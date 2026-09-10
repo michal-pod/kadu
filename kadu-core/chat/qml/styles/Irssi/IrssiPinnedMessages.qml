@@ -59,6 +59,18 @@ Item {
         }
     }
 
+    function encryptionEmoji(entry) {
+        if (!entry.encrypted || Number(entry.decryptionState) === 0)
+            return ""
+        if (Number(entry.decryptionState) === 1)
+            return "⌛"
+        if (Number(entry.decryptionState) === 2)
+            return "🔒"
+        if (Number(entry.decryptionState) === 4)
+            return "🔐"
+        return "⚠"
+    }
+
     Popup {
         id: pinnedMessagesPopup
         parent: root
@@ -135,6 +147,7 @@ Item {
                     Text {
                         width: parent.width
                         text: "[" + Qt.formatTime(entry.timestamp || new Date(), "HH:mm:ss") + "] " +
+                              (root.encryptionEmoji(entry).length > 0 ? root.encryptionEmoji(entry) + " " : "") +
                               "<" + (entry.senderDisplayName || qsTr("unknown")) + "> " +
                               (entry.redacted ? qsTr("message removed") :
                                (entry.plainText || qsTr("This pinned message is not loaded yet.")))

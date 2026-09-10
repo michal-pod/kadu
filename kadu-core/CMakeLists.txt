@@ -195,6 +195,7 @@ qt_add_qml_module (libkadu
 	QML_FILES
 		chat/qml/EmojiPicker.qml
 		chat/qml/ChatPage.qml
+		chat/qml/TimelineEncryptionIndicator.qml
 		chat/qml/TimelineActionsBar.qml
 		chat/qml/TimelineReactionsBar.qml
 		chat/qml/ReactionEmojiPickerPopup.qml

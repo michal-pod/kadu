@@ -261,7 +261,8 @@ Item {
             visible: root.isSystemEvent()
             width: parent.width
             implicitHeight: Math.max(systemSenderAvatar.visible ? systemSenderAvatar.height : 0,
-                                     systemEventLabel.implicitHeight) + 6
+                                     systemEventLabel.implicitHeight,
+                                     systemEncryptionIndicator.implicitHeight) + 6
 
             HoverHandler {
                 id: systemEventHover
@@ -303,7 +304,8 @@ Item {
                 x: root.senderDisplayName.length > 0 ? 38 : 8
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - x - 16
-                implicitHeight: systemEventLabel.implicitHeight
+                implicitHeight: Math.max(systemEventLabel.implicitHeight,
+                                         systemEncryptionIndicator.implicitHeight)
 
                 Text {
                     id: systemSender
@@ -323,7 +325,8 @@ Item {
                     id: systemEventLabel
                     anchors.left: systemSender.visible ? systemSender.right : parent.left
                     anchors.leftMargin: systemSender.visible ? 12 : 0
-                    anchors.right: parent.right
+                    anchors.right: systemEncryptionIndicator.visible ? systemEncryptionIndicator.left : parent.right
+                    anchors.rightMargin: systemEncryptionIndicator.visible ? 6 : 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.systemEventDescription()
                     color: root.textColor
@@ -332,6 +335,15 @@ Item {
                     font.italic: true
                     font.family: root.configuredFontFamily
                     font.pointSize: Math.max(8, root.configuredFontPointSize - 1)
+                }
+
+                KaduChat.TimelineEncryptionIndicator {
+                    id: systemEncryptionIndicator
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    encrypted: root.encrypted
+                    decryptionState: root.decryptionState
+                    errorText: root.errorText
                 }
             }
 
@@ -392,7 +404,10 @@ Item {
                     visible: root.showSender
                     width: parent.width
                     implicitHeight: Math.max(senderAvatar.visible ? senderAvatar.height : 0,
-                                             sender.implicitHeight, timestamp.implicitHeight)
+                                             sender.visible ? sender.implicitHeight : 0,
+                                             timestamp.visible ? timestamp.implicitHeight : 0,
+                                             headerEncryptionIndicator.visible
+                                                 ? headerEncryptionIndicator.implicitHeight : 0)
 
                     Rectangle {
                         id: senderAvatar
@@ -428,7 +443,9 @@ Item {
                         id: sender
                         anchors.left: senderAvatar.visible ? senderAvatar.right : parent.left
                         anchors.leftMargin: senderAvatar.visible ? 6 : 0
-                        anchors.right: timestamp.left
+                        anchors.right: headerEncryptionIndicator.visible
+                                       ? headerEncryptionIndicator.left
+                                       : (timestamp.visible ? timestamp.left : parent.right)
                         anchors.rightMargin: 8
                         visible: !root.emote
                         text: root.ownEvent ? qsTr("You") : root.senderDisplayName
@@ -445,11 +462,22 @@ Item {
                         visible: root.showTimestamp
                         anchors.right: parent.right
                         anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatTime(root.timestamp, "HH:mm")
                         color: root.timestampColor
                         opacity: 0.70
                         font.family: root.configuredFontFamily
                         font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
+                    }
+
+                    KaduChat.TimelineEncryptionIndicator {
+                        id: headerEncryptionIndicator
+                        anchors.right: timestamp.visible ? timestamp.left : parent.right
+                        anchors.rightMargin: timestamp.visible ? 5 : 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        encrypted: root.encrypted
+                        decryptionState: root.decryptionState
+                        errorText: root.errorText
                     }
                 }
 
@@ -529,7 +557,10 @@ Item {
                     id: messageRow
                     x: 30
                     width: parent.width - x
-                    implicitHeight: Math.max(message.implicitHeight, trailingTimestamp.implicitHeight)
+                    implicitHeight: Math.max(message.implicitHeight,
+                                             trailingTimestamp.visible ? trailingTimestamp.implicitHeight : 0,
+                                             trailingEncryptionIndicator.visible
+                                                 ? trailingEncryptionIndicator.implicitHeight : 0)
 
                     Image {
                         id: redactedIcon
@@ -544,8 +575,10 @@ Item {
                     TextEdit {
                         id: message
                         x: redactedIcon.visible ? redactedIcon.width + 6 : 0
-                        width: trailingTimestamp.visible ? parent.width - x - trailingTimestamp.implicitWidth - 8
-                                                      : parent.width - x
+                        width: Math.max(1, parent.width - x -
+                                          (trailingTimestamp.visible ? trailingTimestamp.implicitWidth + 8 : 0) -
+                                          (trailingEncryptionIndicator.visible
+                                               ? trailingEncryptionIndicator.width + 5 : 0))
                         text: root.redacted ? qsTr("Message removed") : root.displayedMessageText()
                         textFormat: !root.emote && root.formattedText.length > 0
                                     ? TextEdit.RichText : TextEdit.PlainText
@@ -591,6 +624,17 @@ Item {
                         opacity: 0.70
                         font.family: root.configuredFontFamily
                         font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
+                    }
+
+                    KaduChat.TimelineEncryptionIndicator {
+                        id: trailingEncryptionIndicator
+                        visible: !root.showSender && root.encrypted && root.decryptionState !== 0
+                        anchors.right: trailingTimestamp.visible ? trailingTimestamp.left : parent.right
+                        anchors.rightMargin: trailingTimestamp.visible ? 5 : 16
+                        anchors.bottom: parent.bottom
+                        encrypted: root.encrypted
+                        decryptionState: root.decryptionState
+                        errorText: root.errorText
                     }
                 }
 
