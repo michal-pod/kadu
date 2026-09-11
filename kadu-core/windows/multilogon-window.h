@@ -50,6 +50,7 @@ class KADUAPI MultilogonWindow : public QWidget, DesktopAwareObject
     QTableView *SessionsTable;
     QPushButton *KillSessionButton;
     QPushButton *RefreshButton;
+    QPushButton *VerifySessionButton;
     QLabel *StatusLabel;
     QPointer<MultilogonService> CurrentService;
     bool SessionsLoading{false};

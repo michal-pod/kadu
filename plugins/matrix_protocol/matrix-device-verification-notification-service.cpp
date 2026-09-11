@@ -17,6 +17,7 @@
 #include "notification/notification.h"
 
 #include <Quotient/keyverificationsession.h>
+#include <QtCore/QUuid>
 
 #include <utility>
 
@@ -73,9 +74,11 @@ void MatrixDeviceVerificationNotificationService::notifyVerificationRequest(
         return;
 
     const auto key = sessionKey(account, session);
+    if (m_sessions.value(key) == session)
+        return;
     m_sessions.insert(key, session);
     connect(session, &QObject::destroyed, this, [this, key, session] {
-        if (m_sessions.value(key) == session)
+        if (!m_sessions.value(key) || m_sessions.value(key) == session)
             m_sessions.remove(key);
     });
 
@@ -93,7 +96,14 @@ void MatrixDeviceVerificationNotificationService::notifyVerificationRequest(
 QString MatrixDeviceVerificationNotificationService::sessionKey(
     const Account &account, Quotient::KeyVerificationSession *session) const
 {
-    return account.id() + QLatin1Char('\x1f') + session->transactionId();
+    // In-room sessions have an empty transactionId in libQuotient 0.9.6.1.
+    auto id = session->property("kaduVerificationId").toString();
+    if (id.isEmpty())
+    {
+        id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        session->setProperty("kaduVerificationId", id);
+    }
+    return account.uuid().toString() + QLatin1Char('\x1f') + id;
 }
 
 Quotient::KeyVerificationSession *
@@ -106,15 +116,15 @@ void MatrixDeviceVerificationNotificationService::showVerificationDialog(const N
 {
     const auto key = notification.data.value(QStringLiteral("matrix:verification-session")).toString();
     auto *session = sessionFor(notification);
-    if (!session || session->state() != Quotient::KeyVerificationSession::INCOMING)
-        return;
-
     if (auto *dialog = m_dialogs.value(key).data())
     {
         dialog->raise();
         dialog->activateWindow();
         return;
     }
+
+    if (!session || session->state() != Quotient::KeyVerificationSession::INCOMING)
+        return;
 
     auto *dialog = new MatrixDeviceVerificationDialog{session};
     m_dialogs.insert(key, dialog);
@@ -124,6 +134,7 @@ void MatrixDeviceVerificationNotificationService::showVerificationDialog(const N
 
 void MatrixDeviceVerificationNotificationService::rejectVerification(const Notification &notification)
 {
-    if (auto *session = sessionFor(notification))
+    if (auto *session = sessionFor(notification);
+        session && session->state() == Quotient::KeyVerificationSession::INCOMING)
         session->cancelVerification(Quotient::KeyVerificationSession::USER);
 }

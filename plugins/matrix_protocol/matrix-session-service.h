@@ -24,7 +24,6 @@
 
 #include <QtCore/QHash>
 #include <QtCore/QPointer>
-#include <QtCore/QSet>
 
 namespace Quotient
 {
@@ -46,16 +45,24 @@ public:
     virtual void provideSessionKillPassword(
         MultilogonSession session, const QString &authenticationSession, const QString &password) override;
     virtual void refreshSessions() override;
+    virtual bool sessionsLoading() const override;
     virtual bool canKillSession(const MultilogonSession &session) const override;
     virtual bool supportsSessionVerification() const override;
+    virtual bool canVerifySession(const MultilogonSession &session) const override;
+    virtual void verifySession(const MultilogonSession &session) override;
     virtual QString activityColumnTitle() const override;
+
+signals:
+    void sessionVerificationRequested(const QString &deviceId);
 
 private:
     QPointer<Quotient::Connection> m_connection;
     QList<MultilogonSession> m_sessions;
     QHash<QByteArray, MultilogonSession> m_disconnectingSessions;
-    QSet<QByteArray> m_sessionsAwaitingPassword;
+    QHash<QByteArray, QString> m_sessionsAwaitingPassword;
     bool m_loading{false};
+    quint64 m_connectionGeneration = 0;
+    quint64 m_sessionsRevision = 0;
 
     void clearSessions();
     void connectionLoggedOut();

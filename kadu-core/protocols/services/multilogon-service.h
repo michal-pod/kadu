@@ -45,8 +45,11 @@ public:
     virtual void provideSessionKillPassword(
         MultilogonSession session, const QString &authenticationSession, const QString &password);
     virtual void refreshSessions();
+    virtual bool sessionsLoading() const;
     virtual bool canKillSession(const MultilogonSession &session) const;
     virtual bool supportsSessionVerification() const;
+    virtual bool canVerifySession(const MultilogonSession &session) const;
+    virtual void verifySession(const MultilogonSession &session);
     virtual QString activityColumnTitle() const;
 
 signals:

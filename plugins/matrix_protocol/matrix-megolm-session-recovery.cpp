@@ -23,11 +23,15 @@
 #include <Quotient/csapi/key_backup.h>
 #include <Quotient/database.h>
 #include <Quotient/e2ee/cryptoutils.h>
-#include <Quotient/e2ee/sssshandler.h>
+#include <Quotient/e2ee/qolminboundsession.h>
 #include <Quotient/events/encryptedevent.h>
 #include <Quotient/room.h>
 
 #include <QtCore/QJsonDocument>
+#include <QtCore/QTimer>
+
+#include <algorithm>
+#include <limits>
 
 MatrixMegolmSessionRecovery::MatrixMegolmSessionRecovery(QObject *parent) : QObject{parent}
 {
@@ -37,41 +41,61 @@ void MatrixMegolmSessionRecovery::setConnection(Quotient::Connection *connection
 {
     if (m_connection == connection)
         return;
+    ++m_connectionGeneration;
 
+    if (m_connection)
+        disconnect(m_connection, nullptr, this, nullptr);
     m_connection = connection;
     m_pendingRequests.clear();
     m_requestAttempts.clear();
     m_waitingForBackupKey.clear();
     m_crossSigningRequested = false;
-    if (m_crossSigningRecovery)
-        m_crossSigningRecovery->deleteLater();
-    m_crossSigningRecovery = nullptr;
+    m_backupKeyRequestStarted = false;
+    m_backupKeyAvailable = false;
 
     if (!m_connection)
         return;
 
-    m_crossSigningRecovery = new Quotient::SSSSHandler{this};
-    m_crossSigningRecovery->setConnection(m_connection);
-    connect(m_crossSigningRecovery, &Quotient::SSSSHandler::finished, this,
-            &MatrixMegolmSessionRecovery::finishBackupKeyRequest);
+    connect(m_connection, &Quotient::Connection::sessionVerified, this,
+            [this](const QString &userId, const QString &) {
+                if (m_connection && userId == m_connection->userId())
+                {
+                    m_requestAttempts.clear();
+                    emit backupRestored();
+                }
+            });
 }
 
 void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
                                                     const Quotient::EncryptedEvent &event)
 {
-    if (!m_connection || !room || event.sessionId().isEmpty())
+    if (!m_connection || !m_connection->isLoggedIn() || !room || room->connection() != m_connection
+        || event.sessionId().isEmpty())
         return;
 
     const auto roomId = room->id();
     const auto sessionId = event.sessionId();
     const auto requestId = roomId + QStringLiteral("\x1f") + sessionId;
-    if (m_pendingRequests.contains(requestId) || m_waitingForBackupKey.contains(requestId))
+    if (m_pendingRequests.contains(requestId))
         return;
 
+    auto *database = m_connection->database();
+    const auto backupDecryptionKey = database
+        ? database->loadEncrypted(QStringLiteral("m.megolm_backup.v1")) : QByteArray{};
+    if (!backupDecryptionKey.isEmpty() && !m_backupKeyAvailable)
+    {
+        // Manual recovery must also release requests waiting for another device.
+        m_backupKeyAvailable = true;
+        m_waitingForBackupKey.clear();
+        m_requestAttempts.clear();
+    }
+    if (m_waitingForBackupKey.contains(requestId))
+        return;
     const auto now = QDateTime::currentDateTimeUtc();
     const auto previousAttempt = m_requestAttempts.value(requestId);
     if (previousAttempt.isValid() && previousAttempt.secsTo(now) < 60)
         return;
+    // Set this before any signal: timeline refreshes can re-enter this function.
     m_requestAttempts.insert(requestId, now);
 
     if (event.algorithm() != QStringLiteral("m.megolm.v1.aes-sha2"))
@@ -81,7 +105,6 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
         return;
     }
 
-    auto *database = m_connection->database();
     if (!database)
     {
         emit sessionRecoveryFailed(room, sessionId, Failure::RecoveryUnavailable,
@@ -89,7 +112,6 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
         return;
     }
 
-    const auto backupDecryptionKey = database->loadEncrypted(QStringLiteral("m.megolm_backup.v1"));
     if (backupDecryptionKey.isEmpty())
     {
         m_waitingForBackupKey.insert(requestId, WaitingRequest{room, sessionId});
@@ -108,10 +130,13 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
 
     const QPointer<Quotient::Connection> requestedConnection{m_connection};
     const QPointer<Quotient::Room> requestedRoom{room};
+    const auto generation = m_connectionGeneration;
     auto versionJob =
         m_connection->callApi<Quotient::GetRoomKeysVersionCurrentJob>(Quotient::BackgroundRequest);
     connect(versionJob, &Quotient::BaseJob::failure, this,
-            [this, requestedConnection, requestedRoom, requestId, sessionId, versionJob] {
+            [this, requestedConnection, requestedRoom, requestId, sessionId, versionJob, generation] {
+                if (generation != m_connectionGeneration)
+                    return;
                 const auto failure = versionJob->error() == Quotient::BaseJob::NotFound
                                          ? Failure::RecoveryUnavailable
                                          : Failure::Unknown;
@@ -122,7 +147,9 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
             });
     connect(versionJob, &Quotient::BaseJob::success, this,
             [this, requestedConnection, requestedRoom, requestId, roomId, sessionId, backupDecryptionKey,
-             versionJob] {
+             versionJob, generation] {
+                if (generation != m_connectionGeneration)
+                    return;
                 if (!requestedConnection || requestedConnection != m_connection || !requestedRoom)
                 {
                     finishRequest(requestId, requestedConnection.data());
@@ -140,7 +167,9 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
                 auto keyJob = requestedConnection->callApi<Quotient::GetRoomKeyBySessionIdJob>(
                     Quotient::BackgroundRequest, roomId, sessionId, versionJob->version());
                 connect(keyJob, &Quotient::BaseJob::failure, this,
-                        [this, requestedConnection, requestedRoom, requestId, sessionId, keyJob] {
+                        [this, requestedConnection, requestedRoom, requestId, sessionId, keyJob, generation] {
+                            if (generation != m_connectionGeneration)
+                                return;
                             const auto failure = keyJob->error() == Quotient::BaseJob::NotFound
                                                      ? Failure::MissingKey
                                                      : Failure::Unknown;
@@ -153,7 +182,9 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
                         });
                 connect(keyJob, &Quotient::BaseJob::success, this,
                         [this, requestedConnection, requestedRoom, requestId, sessionId, backupDecryptionKey,
-                         keyJob] {
+                         keyJob, generation] {
+                            if (generation != m_connectionGeneration)
+                                return;
                             if (!requestedConnection || requestedConnection != m_connection || !requestedRoom)
                             {
                                 finishRequest(requestId, requestedConnection.data());
@@ -162,7 +193,7 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
 
                             const auto backupData = keyJob->jsonData();
                             const auto firstMessageIndex =
-                                backupData.value(QStringLiteral("first_message_index")).toInt(-1);
+                                backupData.value(QStringLiteral("first_message_index")).toInteger(-1);
                             const auto sessionData =
                                 backupData.value(QStringLiteral("session_data")).toObject();
                             const auto decrypted = Quotient::curve25519AesSha2Decrypt(
@@ -194,11 +225,22 @@ void MatrixMegolmSessionRecovery::requestFromBackup(Quotient::Room *room,
                                                          .value(QStringLiteral("ed25519"))
                                                          .toString()
                                                          .toLatin1();
-                            if (sessionKey.isEmpty() || senderKey.isEmpty() || senderEdKey.isEmpty()
-                                || firstMessageIndex < 0)
+                            if (session.value(QStringLiteral("algorithm")).toString()
+                                    != QStringLiteral("m.megolm.v1.aes-sha2")
+                                || sessionKey.isEmpty() || senderKey.isEmpty() || senderEdKey.isEmpty()
+                                || firstMessageIndex < 0 || firstMessageIndex > std::numeric_limits<uint32_t>::max())
                             {
                                 failRequest(requestId, requestedConnection.data(), requestedRoom.data(), sessionId,
                                             Failure::InvalidBackup, tr("The backed-up session key is incomplete."));
+                                return;
+                            }
+
+                            const auto imported = Quotient::QOlmInboundGroupSession::importSession(sessionKey);
+                            if (!imported || imported->sessionId() != sessionId.toLatin1()
+                                || imported->firstKnownIndex() != static_cast<uint32_t>(firstMessageIndex))
+                            {
+                                failRequest(requestId, requestedConnection.data(), requestedRoom.data(), sessionId,
+                                            Failure::InvalidBackup, tr("The backed-up key does not match the requested session."));
                                 return;
                             }
 
@@ -230,11 +272,32 @@ bool MatrixMegolmSessionRecovery::requestBackupKeyFromVerifiedDevice()
 {
     if (m_crossSigningRequested)
         return true;
-    if (!m_crossSigningRecovery || !m_connection)
+    if (!m_connection || m_backupKeyRequestStarted)
+        return false;
+
+    const auto devices = m_connection->devicesForUser(m_connection->userId());
+    if (std::none_of(devices.cbegin(), devices.cend(), [this](const QString &device) {
+            return device != m_connection->deviceId()
+                   && m_connection->isVerifiedDevice(m_connection->userId(), device);
+        }))
         return false;
 
     m_crossSigningRequested = true;
-    m_crossSigningRecovery->unlockSSSSFromCrossSigning();
+    m_backupKeyRequestStarted = true;
+    const QPointer<Quotient::Connection> requestedConnection{m_connection};
+    const auto generation = m_connectionGeneration;
+    // SSSSHandler downloads and imports the entire backup on the GUI thread.
+    // Request only its decryption key; room sessions are restored on demand.
+    m_connection->requestKeyFromDevices(QLatin1String{"m.megolm_backup.v1"})
+        .then(this, [this, requestedConnection, generation](const QByteArray &) {
+            if (requestedConnection && requestedConnection == m_connection && generation == m_connectionGeneration)
+                finishBackupKeyRequest();
+        });
+    QTimer::singleShot(30000, this, [this, requestedConnection, generation] {
+        if (requestedConnection && requestedConnection == m_connection && generation == m_connectionGeneration
+            && m_crossSigningRequested)
+            finishBackupKeyRequest();
+    });
     return true;
 }
 
@@ -254,6 +317,7 @@ void MatrixMegolmSessionRecovery::finishBackupKeyRequest()
     if (!backupDecryptionKey.isEmpty())
     {
         m_waitingForBackupKey.clear();
+        m_requestAttempts.clear();
         emit backupRestored();
         return;
     }

@@ -187,6 +187,8 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_loadedRooms.clear();
     m_historicalEventIds.clear();
     m_megolmRecoveryStates.clear();
+    m_encryptedEventsToRefresh.clear();
+    m_queuedEncryptedEvents.clear();
     clearAttachmentDownloads();
     m_attachmentImages.clear();
     m_attachmentImageDimensions.clear();
@@ -2007,6 +2009,13 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
     const auto *event = eventForTimelineItem(room, timelineItem, decryptedEvent, encrypted);
     if (!event)
         return;
+    if (decryptedEvent && m_connection && event->senderId() == m_connection->userId())
+    {
+        const auto *request = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+        if (event->matrixType().startsWith(QStringLiteral("m.key.verification."))
+            || (request && request->rawMsgtype() == QStringLiteral("m.key.verification.request")))
+            emit verificationEventDecrypted(room);
+    }
     if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(event))
     {
         rememberReactionEvent(eventId, reactionEvent->eventId());
@@ -2055,7 +2064,7 @@ void MatrixTimelineService::updateTimelineEventsForMegolmSession(Quotient::Room 
     for (const auto &timelineItem : room->messageEvents())
         if (const auto *encryptedEvent = timelineItem.viewAs<Quotient::EncryptedEvent>();
             encryptedEvent && encryptedEvent->sessionId() == sessionId)
-            updateTimelineEvent(room, timelineItem->id());
+            queueEncryptedEventRefresh(room, timelineItem->id());
 }
 
 void MatrixTimelineService::appendReactions(ChatTimelineItem &item, Quotient::Room *room,
@@ -2098,8 +2107,37 @@ void MatrixTimelineService::refreshEncryptedEvents()
 
         for (const auto &timelineItem : room->messageEvents())
             if (timelineItem.viewAs<Quotient::EncryptedEvent>())
-                updateTimelineEvent(room, timelineItem->id());
+                queueEncryptedEventRefresh(room, timelineItem->id());
     }
+}
+
+void MatrixTimelineService::queueEncryptedEventRefresh(Quotient::Room *room, const QString &eventId)
+{
+    if (eventId.isEmpty() || m_queuedEncryptedEvents.contains(eventId))
+        return;
+    m_queuedEncryptedEvents.insert(eventId);
+    m_encryptedEventsToRefresh.enqueue({QPointer<Quotient::Room>{room}, eventId});
+    if (!m_encryptedRefreshScheduled)
+    {
+        m_encryptedRefreshScheduled = true;
+        QTimer::singleShot(0, this, &MatrixTimelineService::processEncryptedEventRefreshes);
+    }
+}
+
+void MatrixTimelineService::processEncryptedEventRefreshes()
+{
+    // Give input and sync processing a turn between small batches of decryption.
+    for (int count = 0; count < 16 && !m_encryptedEventsToRefresh.isEmpty(); ++count)
+    {
+        const auto [room, eventId] = m_encryptedEventsToRefresh.dequeue();
+        m_queuedEncryptedEvents.remove(eventId);
+        if (room && m_connection && room->connection() == m_connection)
+            updateTimelineEvent(room, eventId);
+    }
+    if (m_encryptedEventsToRefresh.isEmpty())
+        m_encryptedRefreshScheduled = false;
+    else
+        QTimer::singleShot(0, this, &MatrixTimelineService::processEncryptedEventRefreshes);
 }
 
 void MatrixTimelineService::showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const

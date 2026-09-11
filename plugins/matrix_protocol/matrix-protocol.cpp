@@ -65,14 +65,16 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
-#include <QtCore/QSignalBlocker>
+#include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#include <QtWidgets/QMessageBox>
 
 MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Protocol{account, factory}
 {
     account.setRememberPassword(false);
     account.setHasPassword(true);
     m_sessionService = new MatrixSessionService{account, this};
+    connect(m_sessionService, &MatrixSessionService::sessionVerificationRequested, this, &MatrixProtocol::verifyDevice);
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
             [this] { m_applicationQuitting = true; });
 }
@@ -164,6 +166,8 @@ void MatrixProtocol::init()
     m_historyService->setConnection(m_connection);
     m_timelineService = m_pluginInjectedFactory->makeInjected<MatrixTimelineService>(account(), this);
     m_timelineService->setConnection(m_connection);
+    connect(m_timelineService, &MatrixTimelineService::verificationEventDecrypted, this,
+            &MatrixProtocol::scheduleVerificationRefresh);
     m_sessionService->setConnection(m_connection);
     m_aggregatedAccountAvatarService->add(m_accountAvatarService);
     m_aggregatedContactAvatarService->add(m_contactAvatarService);
@@ -210,6 +214,13 @@ QWidget *MatrixProtocol::createChatSettingsWindow(const Chat &chat, QWidget *par
 
 void MatrixProtocol::createConnection()
 {
+    m_inRoomVerificationSessions.clear();
+    m_handledInRoomVerificationEvents.clear();
+    m_inRoomVerificationRooms.clear();
+    m_verificationRefreshScheduled.clear();
+    m_deviceVerificationDialogs.clear();
+    m_recoveryKeyRestorePrompted = false;
+    m_connectionReady = false;
     for (auto *room : m_debugWatchedRooms)
         if (room)
             disconnect(room, nullptr, this, nullptr);
@@ -241,9 +252,13 @@ void MatrixProtocol::createConnection()
             return;
 
         MatrixAccountData{account()}.setDeviceId(m_connection->deviceId());
+        m_connectionReady = true;
+        m_loginInProgress = false;
         account().setRememberPassword(false);
         account().setPassword({});
         account().setHasPassword(true);
+        if (!isConnecting())
+            return;
         m_connection->callApi<Quotient::GetConfigAuthedJob>(Quotient::BackgroundRequest)
             .then(this, [this](Quotient::GetConfigAuthedJob *job) {
                 if (job)
@@ -267,10 +282,10 @@ void MatrixProtocol::createConnection()
     //         });
     connect(m_connection, &Quotient::Connection::newKeyVerificationSession, this,
             [this](Quotient::KeyVerificationSession *session) {
-                registerInRoomVerificationSession(session);
                 if (m_deviceVerificationNotificationService)
                     m_deviceVerificationNotificationService->notifyVerificationRequest(account(), session);
             });
+    connect(m_connection, &Quotient::Connection::newRoom, this, &MatrixProtocol::watchVerificationRoom);
     connect(m_connection, &Quotient::Connection::invitedRoom, this,
             [this](Quotient::Room *room, Quotient::Room *) {
                 if (m_roomInvitationNotificationService)
@@ -465,9 +480,36 @@ void MatrixProtocol::promptForRecoveryKeyRestore()
     if (!database || !database->loadEncrypted(QStringLiteral("m.megolm_backup.v1")).isEmpty())
         return;
 
+    restoreRecoveryKey();
+}
+
+void MatrixProtocol::restoreRecoveryKey()
+{
+    if (m_recoveryDialog)
+    {
+        m_recoveryDialog->show();
+        m_recoveryDialog->raise();
+        m_recoveryDialog->activateWindow();
+        return;
+    }
+    if (!isConnected() || !m_connection || !m_connectionReady
+        || !m_connection->isLoggedIn() || !m_connection->encryptionEnabled())
+    {
+        QMessageBox::information(nullptr, tr("Restore Matrix Recovery Key"),
+                                 tr("Connect the Matrix account with encryption enabled before restoring its keys."));
+        return;
+    }
+    if (!m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key"))
+        || !m_connection->hasAccountData(QStringLiteral("m.megolm_backup.v1")))
+    {
+        QMessageBox::information(nullptr, tr("Restore Matrix Recovery Key"),
+                                 tr("No recovery data is available yet. Wait for synchronisation or check the key backup on your other device."));
+        return;
+    }
     m_recoveryKeyRestorePrompted = true;
     auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection};
-    connect(dialog, &QDialog::accepted, this, [this] {
+    m_recoveryDialog = dialog;
+    connect(dialog, &MatrixRestoreRecoveryKeyDialog::keysRestored, this, [this] {
         if (m_timelineService)
             m_timelineService->refreshEncryptedEvents();
     });
@@ -476,6 +518,17 @@ void MatrixProtocol::promptForRecoveryKeyRestore()
 
 void MatrixProtocol::handleConnectionError(const QString &message, const QString &details)
 {
+    m_loginInProgress = false;
+    const auto errorCode = QJsonDocument::fromJson(details.toUtf8()).object().value(QStringLiteral("errcode")).toString();
+    if (errorCode == QStringLiteral("M_UNKNOWN_TOKEN") || errorCode == QStringLiteral("M_FORBIDDEN"))
+    {
+        m_accessTokenRejected = true;
+        account().setPassword({});
+        if (m_connection)
+            m_connection->stopSync();
+        if (m_sessionService)
+            m_sessionService->setConnection(nullptr);
+    }
     const auto reason = details.isEmpty() ? message : QStringLiteral("%1: %2").arg(message, details);
     emit connectionError(account(), MatrixAccountData{account()}.homeserver(), reason);
     connectionError();
@@ -483,6 +536,22 @@ void MatrixProtocol::handleConnectionError(const QString &message, const QString
 
 void MatrixProtocol::login()
 {
+    if (m_loginInProgress)
+        return;
+    if (m_accessTokenRejected)
+    {
+        if (account().password().isEmpty())
+        {
+            passwordRequired();
+            return;
+        }
+        // A rejected token must not be read from the credential store again.
+        // A new password login gets a fresh device and encryption context.
+        discardConnection();
+        createConnection();
+        loginWithPassword();
+        return;
+    }
     if (!m_connection)
         createConnection();
     else
@@ -504,23 +573,45 @@ void MatrixProtocol::login()
     }
 
     const auto accountData = MatrixAccountData{account()};
+    if (m_connection->isLoggedIn() && m_connectionReady)
+    {
+        // Resuming after a network interruption must not initialise Olm twice.
+        m_connection->syncLoop();
+        loggedIn();
+        return;
+    }
     if (accountData.deviceId().isEmpty())
     {
         loginWithPassword();
         return;
     }
 
+    m_loginInProgress = true;
     auto *accessTokenJob = new QKeychain::ReadPasswordJob{qAppName(), this};
     accessTokenJob->setKey(account().id());
-    connect(accessTokenJob, &QKeychain::Job::finished, this, [this, accessTokenJob] {
-        if (!m_connection)
+    const QPointer<Quotient::Connection> requestedConnection{m_connection};
+    connect(accessTokenJob, &QKeychain::Job::finished, this, [this, accessTokenJob, requestedConnection] {
+        if (!requestedConnection || requestedConnection != m_connection)
             return;
+        if (!isConnecting())
+        {
+            m_loginInProgress = false;
+            return;
+        }
 
+        if (accessTokenJob->error() != QKeychain::Error::NoError
+            && accessTokenJob->error() != QKeychain::Error::EntryNotFound)
+        {
+            handleConnectionError(tr("The saved Matrix session could not be read from the system credential store."),
+                                  accessTokenJob->errorString());
+            return;
+        }
         const auto accessToken = accessTokenJob->error() == QKeychain::Error::NoError
                                      ? accessTokenJob->binaryData()
                                      : QByteArray{};
         if (accessToken.isEmpty())
         {
+            m_loginInProgress = false;
             loginWithPassword();
             return;
         }
@@ -538,10 +629,12 @@ void MatrixProtocol::loginWithPassword()
 
     if (account().password().isEmpty())
     {
-        emit invalidPassword(account());
+        passwordRequired();
         return;
     }
 
+    m_accessTokenRejected = false;
+    m_loginInProgress = true;
     m_connection->loginWithPassword(account().id(), account().password(), QStringLiteral("Kadu"));
 }
 
@@ -564,7 +657,8 @@ void MatrixProtocol::rejectRoomInvitation(const QString &roomId)
 
 QStringList MatrixProtocol::availableVerificationDevices() const
 {
-    if (!m_connection || !m_connection->isLoggedIn() || !m_connection->encryptionEnabled())
+    if (!isConnected() || !m_connection || !m_connectionReady
+        || !m_connection->isLoggedIn() || !m_connection->encryptionEnabled())
         return {};
 
     auto devices = m_connection->devicesForUser(m_connection->userId());
@@ -575,19 +669,28 @@ QStringList MatrixProtocol::availableVerificationDevices() const
 
 void MatrixProtocol::verifyDevice(const QString &deviceId)
 {
+    if (auto *dialog = m_deviceVerificationDialogs.value(deviceId).data())
+    {
+        dialog->show();
+        dialog->raise();
+        dialog->activateWindow();
+        return;
+    }
     if (!m_connection || !availableVerificationDevices().contains(deviceId))
         return;
-
-    Quotient::KeyVerificationSession *session = nullptr;
+    if (m_connection->hasConflictingDeviceIdsAndCrossSigningKeys(m_connection->userId()))
     {
-        QSignalBlocker blocker{m_connection};
-        session = m_connection->startKeyVerificationSession(m_connection->userId(), deviceId);
+        QMessageBox::warning(nullptr, tr("Verify Matrix Device"),
+                             tr("The account has conflicting device and cross-signing keys. Verification cannot continue."));
+        return;
     }
+
+    auto *session = m_connection->startKeyVerificationSession(m_connection->userId(), deviceId);
     if (!session)
         return;
 
     showDeviceVerificationDialog(session);
-    session->sendRequest();
+    // The libQuotient constructor has already sent the request.
 }
 
 void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSession *session)
@@ -596,66 +699,55 @@ void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSessi
         return;
 
     auto *dialog = new MatrixDeviceVerificationDialog{session};
+    const auto deviceId = session->remoteDeviceId();
+    m_deviceVerificationDialogs.insert(deviceId, dialog);
+    connect(dialog, &QObject::destroyed, this, [this, deviceId, dialog] {
+        if (!m_deviceVerificationDialogs.value(deviceId) || m_deviceVerificationDialogs.value(deviceId) == dialog)
+            m_deviceVerificationDialogs.remove(deviceId);
+    });
     dialog->show();
 }
 
-void MatrixProtocol::registerInRoomVerificationSession(Quotient::KeyVerificationSession *session)
+void MatrixProtocol::watchVerificationRoom(Quotient::Room *room)
 {
-    if (!m_connection || !session || !session->userVerification())
+    if (!room || m_inRoomVerificationRooms.contains(room))
         return;
-
-    for (auto *room : m_connection->allRooms())
-    {
-        if (!room)
-            continue;
-
-        const Quotient::TimelineItem *matchingRequest = nullptr;
-        for (const auto &item : room->messageEvents())
-        {
-            const auto *request = item.viewAs<Quotient::RoomMessageEvent>();
-            if (!request || request->senderId() != m_connection->userId()
-                || request->rawMsgtype() != QStringLiteral("m.key.verification.request")
-                || request->contentPart<QString>(QStringLiteral("from_device"))
-                       != session->remoteDeviceId())
-                continue;
-
-            if (!matchingRequest || item.index() > matchingRequest->index())
-                matchingRequest = &item;
-        }
-
-        if (!matchingRequest)
-            continue;
-
-        const auto requestEventId = matchingRequest->event()->id();
-        m_inRoomVerificationSessions.insert(requestEventId, session);
-        connect(session, &QObject::destroyed, this, [this, requestEventId, session] {
-            if (m_inRoomVerificationSessions.value(requestEventId).data() == session)
-            {
-                m_inRoomVerificationSessions.remove(requestEventId);
-                m_handledInRoomVerificationEvents.remove(requestEventId);
-            }
-        });
-
-        if (!m_inRoomVerificationRooms.contains(room))
-        {
-            m_inRoomVerificationRooms.insert(room);
-            connect(room, &QObject::destroyed, this, [this, room] {
-                m_inRoomVerificationRooms.remove(room);
+    m_inRoomVerificationRooms.insert(room);
+    connect(room, &QObject::destroyed, this, [this, room] {
+        m_inRoomVerificationRooms.remove(room);
+        m_verificationRefreshScheduled.remove(room);
+    });
+    connect(room, &Quotient::Room::addedMessages, this,
+            [this, room](int fromIndex, int toIndex) {
+                handleInRoomVerificationEvents(room, fromIndex, toIndex);
             });
-            connect(room, &Quotient::Room::addedMessages, this,
-                    [this, room](int fromIndex, int toIndex) {
-                        handleInRoomVerificationEvents(room, fromIndex, toIndex);
-                    });
-        }
+    connect(room, &Quotient::Room::replacedEvent, this, [this, room](const Quotient::RoomEvent *event) {
+        const auto *request = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+        if (!Quotient::eventCast<const Quotient::KeyVerificationEvent>(event)
+            && (!request || request->rawMsgtype() != QStringLiteral("m.key.verification.request")))
+            return;
+        scheduleVerificationRefresh(room);
+    });
+}
 
-        handleInRoomVerificationEvents(room, room->minTimelineIndex(), room->maxTimelineIndex());
+void MatrixProtocol::scheduleVerificationRefresh(Quotient::Room *room)
+{
+    if (!room || m_verificationRefreshScheduled.contains(room))
         return;
-    }
+    m_verificationRefreshScheduled.insert(room);
+    // Decryption can reveal a request after its replies are already present.
+    const QPointer<Quotient::Room> watchedRoom{room};
+    QTimer::singleShot(0, this, [this, watchedRoom] {
+        if (!watchedRoom)
+            return;
+        m_verificationRefreshScheduled.remove(watchedRoom);
+        handleInRoomVerificationEvents(watchedRoom, watchedRoom->minTimelineIndex(), watchedRoom->maxTimelineIndex());
+    });
 }
 
 void MatrixProtocol::handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex)
 {
-    if (!m_connection || !room)
+    if (!m_connection || !m_connection->isLoggedIn() || !room || room->connection() != m_connection)
         return;
 
     for (const auto &item : room->messageEvents())
@@ -663,62 +755,130 @@ void MatrixProtocol::handleInRoomVerificationEvents(Quotient::Room *room, int fr
         if (item.index() < fromIndex || item.index() > toIndex)
             continue;
 
-        const auto *event = item.viewAs<Quotient::KeyVerificationEvent>();
+        const auto *visibleEvent = item.event();
+        const auto *originalEvent = item.viewAs<Quotient::EncryptedEvent>();
+        Quotient::RoomEventPtr decryptedEvent;
+        if (originalEvent)
+        {
+            const auto age = originalEvent->originTimestamp().secsTo(QDateTime::currentDateTimeUtc());
+            if (originalEvent->senderId() != m_connection->userId() || age < -60 || age > 600)
+                continue;
+            decryptedEvent = room->decryptMessage(*originalEvent);
+            if (!decryptedEvent)
+                continue;
+            visibleEvent = decryptedEvent.get();
+        }
+        else
+            originalEvent = visibleEvent->originalEvent();
+
+        // libQuotient skips every own-user event here, including requests from
+        // another device. Create the session directly from this exact request.
+        if (const auto *request = Quotient::eventCast<const Quotient::RoomMessageEvent>(visibleEvent);
+            request && request->senderId() == m_connection->userId()
+            && request->rawMsgtype() == QStringLiteral("m.key.verification.request")
+            && request->contentPart<QString>(QStringLiteral("to")) == m_connection->userId())
+        {
+            const auto key = room->id() + QLatin1Char('\x1f') + request->id();
+            const auto device = request->contentPart<QString>(QStringLiteral("from_device"));
+            const auto age = request->originTimestamp().secsTo(QDateTime::currentDateTimeUtc());
+            if (device.isEmpty() || device == m_connection->deviceId() || age < -60 || age > 600
+                || request->id().isEmpty() || !request->originTimestamp().isValid()
+                || (originalEvent && !originalEvent->deviceId().isEmpty() && originalEvent->deviceId() != device)
+                || m_connection->hasConflictingDeviceIdsAndCrossSigningKeys(m_connection->userId())
+                || m_inRoomVerificationSessions.contains(key))
+                continue;
+            auto *session = new Quotient::KeyVerificationSession{request, room};
+            m_inRoomVerificationSessions.insert(key, session);
+            connect(session, &QObject::destroyed, this, [this, key, session] {
+                // Retain the null entry so a timeline refresh cannot revive a finished request.
+                if (!m_inRoomVerificationSessions.value(key) || m_inRoomVerificationSessions.value(key) == session)
+                    m_handledInRoomVerificationEvents.remove(key);
+            });
+            if (m_deviceVerificationNotificationService)
+                m_deviceVerificationNotificationService->notifyVerificationRequest(account(), session);
+            continue;
+        }
+
+        const auto *event = Quotient::eventCast<const Quotient::KeyVerificationEvent>(visibleEvent);
         if (!event || event->senderId() != m_connection->userId()
-            || !event->originalEvent()
-            || event->originalEvent()->deviceId() == m_connection->deviceId())
+            || !static_cast<const Quotient::RoomEvent *>(event)->transactionId().isEmpty()
+            || (originalEvent && originalEvent->deviceId() == m_connection->deviceId()))
             continue;
 
-        const auto requestEventId = event->contentPart<QJsonObject>(QStringLiteral("m.relates_to"))
-                                        .value(QStringLiteral("event_id"))
-                                        .toString();
-        const auto session = m_inRoomVerificationSessions.value(requestEventId);
+        const auto relation = event->contentPart<QJsonObject>(QStringLiteral("m.relates_to"));
+        if (relation.value(QStringLiteral("rel_type")).toString() != QStringLiteral("m.reference"))
+            continue;
+        const auto requestEventId = relation.value(QStringLiteral("event_id")).toString();
+        const auto key = room->id() + QLatin1Char('\x1f') + requestEventId;
+        const auto session = m_inRoomVerificationSessions.value(key);
         const auto eventId = item.event()->id();
-        if (!session || m_handledInRoomVerificationEvents[requestEventId].contains(eventId))
+        if (!session || session->state() == Quotient::KeyVerificationSession::DONE
+            || session->state() == Quotient::KeyVerificationSession::CANCELED
+            || m_handledInRoomVerificationEvents[key].contains(eventId))
             continue;
-
-        m_handledInRoomVerificationEvents[requestEventId].insert(eventId);
+        const auto fromDevice = event->contentPart<QString>(QStringLiteral("from_device"));
+        if ((!fromDevice.isEmpty() && fromDevice != session->remoteDeviceId())
+            || (originalEvent && !originalEvent->deviceId().isEmpty()
+                && originalEvent->deviceId() != session->remoteDeviceId()))
+            continue;
+        m_handledInRoomVerificationEvents[key].insert(eventId);
         session->handleEvent(*event);
     }
 }
 
 void MatrixProtocol::logout()
 {
-    if (m_applicationQuitting)
-    {
-        if (m_connection)
-            m_connection->stopSync();
-        loggedOut();
-        return;
-    }
-
-    if (m_connection && m_connection->isLoggedIn())
-    {
-        m_connection->logout();
-        return;
-    }
-
+    // Protocol::logout() is also used for going offline. Revoking the Matrix
+    // token here would delete the device and its local pickling key on every
+    // status change. Keep the identity so it can resume after going online.
     if (m_connection)
     {
+        if (!m_applicationQuitting)
+            for (auto *session : m_connection->findChildren<Quotient::KeyVerificationSession *>(
+                     QString{}, Qt::FindDirectChildrenOnly))
+                if (session->state() != Quotient::KeyVerificationSession::DONE
+                    && session->state() != Quotient::KeyVerificationSession::CANCELED)
+                    session->cancelVerification(Quotient::KeyVerificationSession::USER);
+        m_connection->stopSync();
+    }
+    if (m_recoveryDialog)
+        m_recoveryDialog->reject();
+    detachConnectionServices();
+    loggedOut();
+}
+
+void MatrixProtocol::discardConnection()
+{
+    m_connectionReady = false;
+    m_loginInProgress = false;
+    if (m_recoveryDialog)
+        m_recoveryDialog->reject();
+    if (m_connection)
+    {
+        m_connection->stopSync();
         disconnect(m_connection, nullptr, this, nullptr);
-        if (m_chatService)
-            m_chatService->setConnection(nullptr);
-        if (m_chatStateService)
-            m_chatStateService->setConnection(nullptr);
-        if (m_accountAvatarService)
-            m_accountAvatarService->setConnection(nullptr);
-        if (m_contactAvatarService)
-            m_contactAvatarService->setConnection(nullptr);
-        if (m_historyService)
-            m_historyService->setConnection(nullptr);
-        if (m_timelineService)
-            m_timelineService->setConnection(nullptr);
-        if (m_sessionService)
-            m_sessionService->setConnection(nullptr);
+        detachConnectionServices();
         m_connection->deleteLater();
         m_connection = nullptr;
     }
-    loggedOut();
+}
+
+void MatrixProtocol::detachConnectionServices()
+{
+    if (m_chatService)
+        m_chatService->setConnection(nullptr);
+    if (m_chatStateService)
+        m_chatStateService->setConnection(nullptr);
+    if (m_accountAvatarService)
+        m_accountAvatarService->setConnection(nullptr);
+    if (m_contactAvatarService)
+        m_contactAvatarService->setConnection(nullptr);
+    if (m_historyService)
+        m_historyService->setConnection(nullptr);
+    if (m_timelineService)
+        m_timelineService->setConnection(nullptr);
+    if (m_sessionService)
+        m_sessionService->setConnection(nullptr);
 }
 
 void MatrixProtocol::sendStatusToServer()

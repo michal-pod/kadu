@@ -45,6 +45,7 @@ MatrixDeviceVerificationDialog::MatrixDeviceVerificationDialog(
 
     auto *layout = new QVBoxLayout{this};
     m_statusLabel = new QLabel{this};
+    m_statusLabel->setTextFormat(Qt::PlainText);
     m_statusLabel->setWordWrap(true);
     layout->addWidget(m_statusLabel);
 
@@ -61,7 +62,7 @@ MatrixDeviceVerificationDialog::MatrixDeviceVerificationDialog(
     layout->addWidget(m_buttons);
 
     connect(m_acceptButton, &QPushButton::clicked, this, [this] {
-        if (m_session)
+        if (m_session && m_session->state() == Quotient::KeyVerificationSession::INCOMING)
             m_session->sendReady();
     });
     connect(m_confirmButton, &QPushButton::clicked, this, &MatrixDeviceVerificationDialog::finishVerification);
@@ -76,6 +77,11 @@ MatrixDeviceVerificationDialog::MatrixDeviceVerificationDialog(
                 &MatrixDeviceVerificationDialog::updateState);
         connect(m_session, &Quotient::KeyVerificationSession::finished, this,
                 &MatrixDeviceVerificationDialog::updateState);
+        connect(m_session, &QObject::destroyed, this, [this] {
+            // Keep the terminal result visible after libQuotient deletes the session.
+            if (!m_terminalState)
+                updateState();
+        });
     }
 
     updateState();
@@ -96,7 +102,8 @@ void MatrixDeviceVerificationDialog::showSasEmojis()
     if (!m_session)
         return;
 
-    auto *emojisGrid = new QGridLayout;
+    auto *emojisWidget = new QWidget{this};
+    auto *emojisGrid = new QGridLayout{emojisWidget};
     const auto emojis = m_session->sasEmojis();
     for (qsizetype index = 0; index < emojis.size(); ++index)
     {
@@ -115,7 +122,7 @@ void MatrixDeviceVerificationDialog::showSasEmojis()
         emojisGrid->addWidget(emojiLabel, row, column);
         emojisGrid->addWidget(descriptionLabel, row + 1, column);
     }
-    m_emojisLayout->addLayout(emojisGrid);
+    m_emojisLayout->addWidget(emojisWidget);
 }
 
 void MatrixDeviceVerificationDialog::updateState()
@@ -124,11 +131,13 @@ void MatrixDeviceVerificationDialog::updateState()
     m_acceptButton->setVisible(false);
     m_confirmButton->setVisible(false);
     m_mismatchButton->setVisible(false);
-    m_closeButton->setVisible(false);
+    m_closeButton->setVisible(true);
+    m_closeButton->setText(tr("Cancel"));
 
     if (!m_session)
     {
         m_statusLabel->setText(tr("The verification session is no longer available."));
+        m_closeButton->setText(tr("Close"));
         m_closeButton->setVisible(true);
         return;
     }
@@ -164,10 +173,14 @@ void MatrixDeviceVerificationDialog::updateState()
                                    .arg(m_session->remoteDeviceId()));
         break;
     case Quotient::KeyVerificationSession::DONE:
+        m_terminalState = true;
+        m_closeButton->setText(tr("Close"));
         m_statusLabel->setText(tr("Device %1 was verified.").arg(m_session->remoteDeviceId()));
         m_closeButton->setVisible(true);
         break;
     case Quotient::KeyVerificationSession::CANCELED:
+        m_terminalState = true;
+        m_closeButton->setText(tr("Close"));
         m_statusLabel->setText(errorMessage(m_session->error()));
         m_closeButton->setVisible(true);
         break;

@@ -31,6 +31,7 @@
 
 #include "../matrix-account-data.h"
 #include "../matrix-id-validator.h"
+#include "../matrix-protocol.h"
 
 #include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
@@ -106,6 +107,13 @@ void MatrixEditAccountWidget::createGui()
         general};
     info->setWordWrap(true);
     form->addRow(QString{}, info);
+
+    auto *restoreKeysButton = new QPushButton{tr("Restore recovery key..."), general};
+    form->addRow(QString{}, restoreKeysButton);
+    connect(restoreKeysButton, &QPushButton::clicked, this, [this] {
+        if (auto *protocol = qobject_cast<MatrixProtocol *>(account().protocolHandler()))
+            protocol->restoreRecoveryKey();
+    });
 
     auto *avatarWidget = m_pluginInjectedFactory->makeInjected<AccountAvatarWidget>(account(), general);
     generalLayout->addWidget(avatarWidget, 0, Qt::AlignTop);

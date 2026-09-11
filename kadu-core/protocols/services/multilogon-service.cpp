@@ -42,6 +42,11 @@ void MultilogonService::refreshSessions()
 {
 }
 
+bool MultilogonService::sessionsLoading() const
+{
+    return false;
+}
+
 bool MultilogonService::canKillSession(const MultilogonSession &session) const
 {
     return session != MultilogonSession{} && !session.current;
@@ -50,6 +55,15 @@ bool MultilogonService::canKillSession(const MultilogonSession &session) const
 bool MultilogonService::supportsSessionVerification() const
 {
     return false;
+}
+
+bool MultilogonService::canVerifySession(const MultilogonSession &) const
+{
+    return false;
+}
+
+void MultilogonService::verifySession(const MultilogonSession &)
+{
 }
 
 QString MultilogonService::activityColumnTitle() const

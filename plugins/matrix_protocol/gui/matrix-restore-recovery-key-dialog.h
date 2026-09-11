@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include <Quotient/e2ee/sssshandler.h>
-
 #include <QtCore/QPointer>
 #include <QtWidgets/QDialog>
 
@@ -27,14 +25,18 @@ class MatrixRestoreRecoveryKeyDialog final : public QDialog
 public:
     explicit MatrixRestoreRecoveryKeyDialog(Quotient::Connection *connection, QWidget *parent = nullptr);
 
+signals:
+    void keysRestored();
+
 private:
     QPointer<Quotient::Connection> m_connection;
-    QPointer<Quotient::SSSSHandler> m_handler;
     QLineEdit *m_recoveryKeyEdit = nullptr;
     QLabel *m_statusLabel = nullptr;
     QPushButton *m_restoreButton = nullptr;
 
-    static QString errorMessage(Quotient::SSSSHandler::Error error);
+    bool m_restoring = false;
+    bool m_restored = false;
+    bool m_closed = false;
     void setRestoreInProgress(bool inProgress);
     void showError(const QString &message);
 

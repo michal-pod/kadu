@@ -25,6 +25,7 @@
 
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
+#include <QtCore/QMetaMethod>
 #include <QtCore/QVariantMap>
 
 #include <algorithm>
@@ -44,6 +45,7 @@ void MatrixSessionService::setConnection(Quotient::Connection *connection)
 {
     if (m_connection == connection)
         return;
+    ++m_connectionGeneration;
 
     if (m_connection)
         disconnect(m_connection, nullptr, this, nullptr);
@@ -77,10 +79,7 @@ void MatrixSessionService::setConnection(Quotient::Connection *connection)
                 if (m_connection && userId == m_connection->userId())
                     updateVerificationStates();
             });
-    connect(m_connection, &QObject::destroyed, this, [this] {
-        setLoading(false);
-        clearSessions();
-    });
+    connect(m_connection, &QObject::destroyed, this, &MatrixSessionService::connectionLoggedOut);
 
     if (m_connection->isLoggedIn())
         refreshSessions();
@@ -104,7 +103,9 @@ void MatrixSessionService::killSession(MultilogonSession session)
 void MatrixSessionService::provideSessionKillPassword(
     MultilogonSession session, const QString &authenticationSession, const QString &password)
 {
-    if (!m_disconnectingSessions.contains(session.id))
+    if (authenticationSession.isEmpty() || session.account != account()
+        || m_sessionsAwaitingPassword.value(session.id) != authenticationSession
+        || !m_disconnectingSessions.contains(session.id))
         return;
     m_sessionsAwaitingPassword.remove(session.id);
     if (password.isEmpty())
@@ -128,11 +129,20 @@ void MatrixSessionService::refreshSessions()
     }
 
     setLoading(true);
+    const auto generation = m_connectionGeneration;
+    const auto revision = m_sessionsRevision;
     const QPointer<Quotient::Connection> requestedConnection{m_connection};
     auto job = requestedConnection->callApi<Quotient::GetDevicesJob>();
-    connect(job, &Quotient::BaseJob::success, this, [this, job, requestedConnection] {
-        if (!requestedConnection || requestedConnection.data() != m_connection.data())
+    connect(job, &Quotient::BaseJob::success, this, [this, job, requestedConnection, generation, revision] {
+        if (!requestedConnection || requestedConnection.data() != m_connection.data()
+            || generation != m_connectionGeneration)
             return;
+        if (revision != m_sessionsRevision)
+        {
+            setLoading(false);
+            refreshSessions();
+            return;
+        }
 
         QList<MultilogonSession> sessions;
         const auto currentDeviceId = requestedConnection->deviceId();
@@ -161,8 +171,9 @@ void MatrixSessionService::refreshSessions()
         emit sessionsReset();
         setLoading(false);
     });
-    connect(job, &Quotient::BaseJob::failure, this, [this, job, requestedConnection] {
-        if (!requestedConnection || requestedConnection.data() != m_connection.data())
+    connect(job, &Quotient::BaseJob::failure, this, [this, job, requestedConnection, generation] {
+        if (!requestedConnection || requestedConnection.data() != m_connection.data()
+            || generation != m_connectionGeneration)
             return;
 
         setLoading(false);
@@ -170,15 +181,36 @@ void MatrixSessionService::refreshSessions()
     });
 }
 
+bool MatrixSessionService::sessionsLoading() const
+{
+    return m_loading;
+}
+
 bool MatrixSessionService::canKillSession(const MultilogonSession &session) const
 {
-    return m_connection && m_connection->isLoggedIn() && session != MultilogonSession{} && !session.current
-           && !m_disconnectingSessions.contains(session.id);
+    return m_connection && m_connection->isLoggedIn() && session.account == account()
+           && !session.id.isEmpty() && QString::fromUtf8(session.id) != m_connection->deviceId()
+           && !session.current && !m_disconnectingSessions.contains(session.id)
+           && std::any_of(m_sessions.cbegin(), m_sessions.cend(), [&session](const auto &candidate) {
+                  return candidate.id == session.id;
+              });
 }
 
 bool MatrixSessionService::supportsSessionVerification() const
 {
     return true;
+}
+
+bool MatrixSessionService::canVerifySession(const MultilogonSession &session) const
+{
+    return canKillSession(session) && m_connection->encryptionEnabled() && m_connection->database()
+           && m_connection->isKnownE2eeCapableDevice(m_connection->userId(), QString::fromUtf8(session.id));
+}
+
+void MatrixSessionService::verifySession(const MultilogonSession &session)
+{
+    if (canVerifySession(session))
+        emit sessionVerificationRequested(QString::fromUtf8(session.id));
 }
 
 QString MatrixSessionService::activityColumnTitle() const
@@ -204,21 +236,24 @@ void MatrixSessionService::deleteSession(
         authentication->authInfo.insert(
             QStringLiteral("identifier"),
             QVariantMap{{QStringLiteral("type"), QStringLiteral("m.id.user")},
-                        {QStringLiteral("user"), account().id()}});
+                        {QStringLiteral("user"), m_connection->userId()}});
         authentication->authInfo.insert(QStringLiteral("password"), password);
     }
 
     const QPointer<Quotient::Connection> requestedConnection{m_connection};
+    const auto generation = m_connectionGeneration;
     auto job = requestedConnection->callApi<Quotient::DeleteDeviceJob>(
         QString::fromUtf8(session.id), authentication);
-    connect(job, &Quotient::BaseJob::success, this, [this, session, requestedConnection] {
-        if (!requestedConnection || requestedConnection.data() != m_connection.data())
+    connect(job, &Quotient::BaseJob::success, this, [this, session, requestedConnection, generation] {
+        if (!requestedConnection || requestedConnection.data() != m_connection.data()
+            || generation != m_connectionGeneration)
             return;
         finishSessionDeletion(session);
     });
     connect(job, &Quotient::BaseJob::failure, this,
-            [this, job, session, authenticationSession, requestedConnection] {
-                if (!requestedConnection || requestedConnection.data() != m_connection.data())
+            [this, job, session, requestedConnection, generation] {
+                if (!requestedConnection || requestedConnection.data() != m_connection.data()
+                    || generation != m_connectionGeneration)
                     return;
 
                 if (job->error() == Quotient::BaseJob::Unauthorised)
@@ -236,23 +271,24 @@ void MatrixSessionService::deleteSession(
                     for (const auto &flowValue : response.value(QStringLiteral("flows")).toArray())
                     {
                         const auto stages = flowValue.toObject().value(QStringLiteral("stages")).toArray();
-                        for (const auto &stage : stages)
-                            if (stage.toString() == QStringLiteral("m.login.password"))
-                            {
-                                passwordSupported = true;
-                                break;
-                            }
+                        const auto completed = response.value(QStringLiteral("completed")).toArray();
+                        passwordSupported = stages.contains(QStringLiteral("m.login.password"))
+                            && std::all_of(stages.cbegin(), stages.cend(), [&completed](const QJsonValue &stage) {
+                                   return stage.toString() == QStringLiteral("m.login.password") || completed.contains(stage);
+                               });
                         if (passwordSupported)
                             break;
                     }
 
                     if (!passwordCompleted && passwordSupported && !sessionId.isEmpty())
                     {
-                        m_sessionsAwaitingPassword.insert(session.id);
+                        if (!isSignalConnected(QMetaMethod::fromSignal(&MultilogonService::sessionKillPasswordRequired)))
+                        {
+                            failSessionDeletion(session, tr("The account password is required to disconnect this session."));
+                            return;
+                        }
+                        m_sessionsAwaitingPassword.insert(session.id, sessionId);
                         emit sessionKillPasswordRequired(session, sessionId);
-                        if (m_sessionsAwaitingPassword.remove(session.id))
-                            failSessionDeletion(
-                                session, tr("The account password is required to disconnect this session."));
                         return;
                     }
 
@@ -267,6 +303,7 @@ void MatrixSessionService::deleteSession(
 
 void MatrixSessionService::finishSessionDeletion(const MultilogonSession &session)
 {
+    ++m_sessionsRevision;
     m_disconnectingSessions.remove(session.id);
     m_sessionsAwaitingPassword.remove(session.id);
 
@@ -294,8 +331,9 @@ MultilogonSessionVerificationState MatrixSessionService::verificationState(const
 {
     if (!m_connection || !m_connection->encryptionEnabled())
         return MultilogonSessionVerificationState::NotAvailable;
-    if (deviceId == m_connection->deviceId()
-        || m_connection->isVerifiedDevice(m_connection->userId(), deviceId))
+    if (!m_connection->database())
+        return MultilogonSessionVerificationState::Unknown;
+    if (m_connection->isVerifiedDevice(m_connection->userId(), deviceId))
         return MultilogonSessionVerificationState::Verified;
     if (m_connection->isKnownE2eeCapableDevice(m_connection->userId(), deviceId))
         return MultilogonSessionVerificationState::Unverified;
@@ -338,6 +376,7 @@ void MatrixSessionService::clearSessions()
 
 void MatrixSessionService::connectionLoggedOut()
 {
+    ++m_connectionGeneration;
     setLoading(false);
     const auto interruptedSessions = m_disconnectingSessions;
     m_disconnectingSessions.clear();

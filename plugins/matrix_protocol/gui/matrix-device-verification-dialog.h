@@ -32,6 +32,7 @@ private:
     QPushButton *m_confirmButton = nullptr;
     QPushButton *m_mismatchButton = nullptr;
     QPushButton *m_closeButton = nullptr;
+    bool m_terminalState = false;
 
     static QString errorMessage(Quotient::KeyVerificationSession::Error error);
     void updateState();

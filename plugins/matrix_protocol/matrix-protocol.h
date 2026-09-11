@@ -38,6 +38,8 @@ class MatrixChatService;
 class MatrixChatStateService;
 class MatrixContactAvatarService;
 class MatrixDeviceVerificationNotificationService;
+class MatrixDeviceVerificationDialog;
+class MatrixRestoreRecoveryKeyDialog;
 class MatrixHistoryService;
 class MatrixTimelineService;
 class MatrixRoomInvitationNotificationService;
@@ -109,6 +111,7 @@ public:
     void rejectRoomInvitation(const QString &roomId);
     QStringList availableVerificationDevices() const;
     void verifyDevice(const QString &deviceId);
+    void restoreRecoveryKey();
 
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
@@ -133,19 +136,28 @@ private:
     qint64 m_maximumAttachmentSize = 0;
     bool m_recoveryKeyRestorePrompted = false;
     bool m_applicationQuitting = false;
+    bool m_accessTokenRejected = false;
+    bool m_connectionReady = false;
+    bool m_loginInProgress = false;
+    QPointer<MatrixRestoreRecoveryKeyDialog> m_recoveryDialog;
+    QHash<QString, QPointer<MatrixDeviceVerificationDialog>> m_deviceVerificationDialogs;
     QHash<QString, QPointer<Quotient::KeyVerificationSession>> m_inRoomVerificationSessions;
     QHash<QString, QSet<QString>> m_handledInRoomVerificationEvents;
     QSet<Quotient::Room *> m_inRoomVerificationRooms;
+    QSet<Quotient::Room *> m_verificationRefreshScheduled;
     QSet<Quotient::Room *> m_debugWatchedRooms;
 
     void createConnection();
+    void discardConnection();
+    void detachConnectionServices();
     void watchRoomForDebug(Quotient::Room *room);
     void dumpMatrixRooms();
     void handleConnectionError(const QString &message, const QString &details = {});
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
     void showDeviceVerificationDialog(Quotient::KeyVerificationSession *session);
-    void registerInRoomVerificationSession(Quotient::KeyVerificationSession *session);
+    void watchVerificationRoom(Quotient::Room *room);
+    void scheduleVerificationRefresh(Quotient::Room *room);
     void handleInRoomVerificationEvents(Quotient::Room *room, int fromIndex, int toIndex);
 
 private slots:

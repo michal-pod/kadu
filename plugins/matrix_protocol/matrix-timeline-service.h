@@ -29,6 +29,7 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QPointer>
 #include <QtCore/QPromise>
+#include <QtCore/QQueue>
 #include <QtCore/QSet>
 #include <QtCore/QSize>
 #include <QtCore/QUrl>
@@ -71,6 +72,9 @@ public:
     void markTimelineItemRead(const Chat &chat, const QString &stableId) override;
     QImage requestAttachmentImage(const Chat &chat, const QUrl &sourceUri, const QSize &requestedSize) override;
 
+signals:
+    void verificationEventDecrypted(Quotient::Room *room);
+
 private:
     struct DecodedAttachmentImage
     {
@@ -111,6 +115,9 @@ private:
     QHash<QString, QString> m_eventTransactionIds;
     mutable QHash<QString, QString> m_reactionEventTargets;
     MatrixMegolmSessionRecovery *m_sessionRecovery;
+    QQueue<QPair<QPointer<Quotient::Room>, QString>> m_encryptedEventsToRefresh;
+    QSet<QString> m_queuedEncryptedEvents;
+    bool m_encryptedRefreshScheduled = false;
 
     static constexpr int AttachmentImageCacheSizeKiB = 256 * 1024;
 
@@ -136,6 +143,8 @@ private:
     void updateTimelineEvent(Quotient::Room *room, const QString &eventId);
     void updateTimelineEventsForMember(Quotient::Room *room, const QString &memberId);
     void updateTimelineEventsForMegolmSession(Quotient::Room *room, const QString &sessionId);
+    void queueEncryptedEventRefresh(Quotient::Room *room, const QString &eventId);
+    void processEncryptedEventRefreshes();
     void appendReactions(ChatTimelineItem &item, Quotient::Room *room, const Quotient::RoomEvent &event) const;
     void showEventSource(const QString &eventId, const Quotient::RoomEvent &event) const;
     void updateAttachmentEvent(Quotient::Room *room, const QString &eventId);

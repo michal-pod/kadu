@@ -32,6 +32,8 @@
 #include <QtWidgets/QTableView>
 #include <QtWidgets/QVBoxLayout>
 
+#include <memory>
+
 #include "accounts/filter/have-multilogon-filter.h"
 #include "configuration/config-file-variant-wrapper.h"
 #include "core/injected-factory.h"
@@ -108,6 +110,7 @@ void MultilogonWindow::createGui()
     layout->addWidget(SessionsTable);
 
     StatusLabel = new QLabel(this);
+    StatusLabel->setTextFormat(Qt::PlainText);
     StatusLabel->setWordWrap(true);
     layout->addWidget(StatusLabel);
 
@@ -116,15 +119,21 @@ void MultilogonWindow::createGui()
         new QPushButton(qApp->style()->standardIcon(QStyle::SP_BrowserReload), tr("Refresh"), buttons);
     KillSessionButton =
         new QPushButton(qApp->style()->standardIcon(QStyle::SP_DialogCloseButton), tr("Disconnect session"), buttons);
+    VerifySessionButton = new QPushButton(tr("Verify device"), buttons);
     QPushButton *closeButton =
         new QPushButton(qApp->style()->standardIcon(QStyle::SP_DialogCancelButton), tr("Close"), buttons);
 
     KillSessionButton->setEnabled(false);
     connect(RefreshButton, SIGNAL(clicked()), this, SLOT(refreshSessions()));
     connect(KillSessionButton, SIGNAL(clicked()), this, SLOT(killSession()));
+    connect(VerifySessionButton, &QPushButton::clicked, this, [this] {
+        if (CurrentService)
+            CurrentService->verifySession(multilogonSession());
+    });
     connect(closeButton, SIGNAL(clicked()), this, SLOT(close()));
 
     buttons->addButton(RefreshButton, QDialogButtonBox::ActionRole);
+    buttons->addButton(VerifySessionButton, QDialogButtonBox::ActionRole);
     buttons->addButton(KillSessionButton, QDialogButtonBox::DestructiveRole);
     buttons->addButton(closeButton, QDialogButtonBox::RejectRole);
 
@@ -175,6 +184,9 @@ void MultilogonWindow::accountChanged()
     SessionsLoading = false;
     SessionOperationRunning = false;
     StatusLabel->clear();
+    Accounts->setEnabled(true);
+    VerifySessionButton->setVisible(false);
+    VerifySessionButton->setEnabled(false);
     delete SessionsTable->model();
 
     Protocol *protocol = Accounts->currentAccount().protocolHandler();
@@ -187,6 +199,7 @@ void MultilogonWindow::accountChanged()
     }
 
     CurrentService = service;
+    VerifySessionButton->setVisible(service->supportsSessionVerification());
 
     SessionsTable->setModel(new MultilogonModel(service, this));
     SessionsTable->setColumnHidden(1, !service->supportsSessionVerification());
@@ -208,6 +221,7 @@ void MultilogonWindow::accountChanged()
 
     RefreshButton->setEnabled(true);
     sessionsReset();
+    sessionsLoadingChanged(service->sessionsLoading());
     refreshSessions();
 }
 
@@ -216,11 +230,13 @@ void MultilogonWindow::selectionChanged()
     const auto session = multilogonSession();
     KillSessionButton->setEnabled(
         !SessionsLoading && !SessionOperationRunning && CurrentService && CurrentService->canKillSession(session));
+    VerifySessionButton->setEnabled(
+        !SessionsLoading && !SessionOperationRunning && CurrentService && CurrentService->canVerifySession(session));
 }
 
 void MultilogonWindow::killSession()
 {
-    MultilogonService *service = multilogonService();
+    const QPointer<MultilogonService> service{multilogonService()};
     if (!service)
         return;
 
@@ -232,7 +248,7 @@ void MultilogonWindow::killSession()
         this, tr("Disconnect session"),
         tr("Disconnect %1? This will sign the session out of the account.").arg(session.name),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    if (result == QMessageBox::Yes)
+    if (result == QMessageBox::Yes && service && CurrentService == service)
         service->killSession(session);
 }
 
@@ -313,14 +329,27 @@ void MultilogonWindow::sessionKillPasswordRequired(
     if (!CurrentService)
         return;
 
-    bool accepted = false;
-    const auto password = QInputDialog::getText(
-        this, tr("Authentication required"),
-        tr("Enter the password for %1 to disconnect this session:").arg(session.account.id()),
-        QLineEdit::Password, {}, &accepted);
-    if (!CurrentService)
-        return;
-
-    CurrentService->provideSessionKillPassword(
-        session, authenticationSession, accepted ? password : QString{});
+    const QPointer<MultilogonService> service{CurrentService};
+    auto *dialog = new QInputDialog{this};
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(tr("Authentication required"));
+    dialog->setLabelText(tr("Enter the password for %1 to disconnect this session:").arg(session.account.id()));
+    dialog->setTextEchoMode(QLineEdit::Password);
+    const auto answered = std::make_shared<bool>(false);
+    connect(dialog, &QDialog::finished, service, [service, dialog, session, authenticationSession, answered](int result) {
+        *answered = true;
+        if (service)
+            service->provideSessionKillPassword(
+                session, authenticationSession, result == QDialog::Accepted ? dialog->textValue() : QString{});
+    });
+    connect(dialog, &QObject::destroyed, service, [service, session, authenticationSession, answered] {
+        if (service && !*answered)
+            service->provideSessionKillPassword(session, authenticationSession, {});
+    });
+    connect(service, &MultilogonService::sessionKillFailed, dialog,
+            [dialog, session](const MultilogonSession &failed, const QString &) {
+                if (failed.id == session.id)
+                    dialog->reject();
+            });
+    dialog->open();
 }
