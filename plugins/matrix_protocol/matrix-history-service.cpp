@@ -19,6 +19,8 @@
 
 #include "matrix-history-service.h"
 
+#include "matrix-room-state-registry.h"
+
 #include "chat/chat-details-room.h"
 #include "contacts/contact-manager.h"
 #include "html/html-conversion.h"
@@ -55,7 +57,6 @@ void MatrixHistoryService::setConnection(Quotient::Connection *connection)
 
     m_connection = connection;
     m_watchedRooms.clear();
-    m_loadedRooms.clear();
     if (!m_connection)
         return;
 
@@ -101,7 +102,7 @@ QFuture<ProtocolHistoryPage> MatrixHistoryService::requestHistoryForRoom(
         return completedPage(std::move(page));
     }
 
-    if (!m_loadedRooms.contains(room))
+    if (!m_roomStateRegistry || !m_roomStateRegistry->isLoaded(room))
         return waitForRoomInitialState(request, room);
 
     if (!request.text().isEmpty())
@@ -222,11 +223,8 @@ void MatrixHistoryService::watchRoom(Quotient::Room *room)
         return;
 
     m_watchedRooms.insert(room);
-    connect(room, &Quotient::Room::baseStateLoaded, this,
-            [this, room] { m_loadedRooms.insert(room); });
     connect(room, &QObject::destroyed, this, [this, room] {
         m_watchedRooms.remove(room);
-        m_loadedRooms.remove(room);
     });
 }
 
@@ -238,27 +236,37 @@ QFuture<ProtocolHistoryPage> MatrixHistoryService::waitForRoomInitialState(
     promise->start();
 
     const QPointer<Quotient::Room> watchedRoom{room};
-    connect(room, &Quotient::Room::baseStateLoaded, this, [this, promise, request, watchedRoom] {
-        if (!watchedRoom)
-        {
-            ProtocolHistoryPage page;
-            page.setError(tr("Matrix room is no longer available."));
-            finishRequest(promise, std::move(page));
-            return;
-        }
+    if (!m_roomStateRegistry)
+    {
+        ProtocolHistoryPage page;
+        page.setError(tr("Matrix room state service is not available."));
+        finishRequest(promise, std::move(page));
+        return future;
+    }
 
-        auto *futureWatcher = new QFutureWatcher<ProtocolHistoryPage>{this};
-        connect(futureWatcher, &QFutureWatcher<ProtocolHistoryPage>::finished, this,
-                [this, promise, futureWatcher] {
-                    finishRequest(promise, futureWatcher->future().result());
-                    futureWatcher->deleteLater();
-                });
-        futureWatcher->setFuture(requestHistoryForRoom(request, watchedRoom.data()));
-    });
-    connect(room, &QObject::destroyed, this, [this, promise] {
+    auto *requestContextObject = new QObject{this};
+    const QPointer<QObject> requestContext{requestContextObject};
+    connect(m_roomStateRegistry, &MatrixRoomStateRegistry::roomLoaded, requestContextObject,
+            [this, promise, request, watchedRoom, requestContext](Quotient::Room *loadedRoom) {
+                if (!watchedRoom || loadedRoom != watchedRoom.data())
+                    return;
+
+                auto *futureWatcher = new QFutureWatcher<ProtocolHistoryPage>{requestContext.data()};
+                connect(futureWatcher, &QFutureWatcher<ProtocolHistoryPage>::finished, requestContext.data(),
+                        [this, promise, requestContext, futureWatcher] {
+                            finishRequest(promise, futureWatcher->future().result());
+                            futureWatcher->deleteLater();
+                            if (requestContext)
+                                requestContext->deleteLater();
+                        });
+                futureWatcher->setFuture(requestHistoryForRoom(request, watchedRoom.data()));
+            });
+    connect(room, &QObject::destroyed, requestContextObject, [this, promise, requestContext] {
         ProtocolHistoryPage page;
         page.setError(tr("Matrix room is no longer available."));
         finishRequest(promise, std::move(page));
+        if (requestContext)
+            requestContext->deleteLater();
     });
     return future;
 }
@@ -281,6 +289,11 @@ Quotient::Room *MatrixHistoryService::roomForChat(const Chat &chat) const
     if (const auto *details = qobject_cast<ChatDetailsRoom *>(chat.details()))
         return m_connection->room(details->room(), Quotient::JoinState::Join);
     return nullptr;
+}
+
+void MatrixHistoryService::setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry)
+{
+    m_roomStateRegistry = roomStateRegistry;
 }
 
 ProtocolHistoryPage MatrixHistoryService::pageForRoom(

@@ -39,6 +39,7 @@ class ContactManager;
 class FormattedStringFactory;
 class MessageStorage;
 class MatrixContactAvatarService;
+class MatrixRoomStateRegistry;
 
 namespace Quotient
 {
@@ -62,6 +63,7 @@ public:
 
     void setConnection(Quotient::Connection *connection);
     void setContactAvatarService(MatrixContactAvatarService *contactAvatarService);
+    void setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry);
     void completeCachedStateLoading(bool cacheLoaded);
 
 public slots:
@@ -80,9 +82,9 @@ private:
     QPointer<FormattedStringFactory> m_formattedStringFactory;
     QPointer<MessageStorage> m_messageStorage;
     QPointer<MatrixContactAvatarService> m_contactAvatarService;
+    QPointer<MatrixRoomStateRegistry> m_roomStateRegistry;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
-    QSet<Quotient::Room *> m_loadedRooms;
     QSet<QString> m_historicalEventIds;
     QSet<QString> m_localTransactionIds;
     bool m_initialSyncFinished = false;
@@ -113,6 +115,7 @@ private:
     void synchronizeRoomPriority(Quotient::Room *room);
     void synchronizeRoomUnreadCount(Quotient::Room *room);
     void watchRoom(Quotient::Room *room);
+    void handleRoomBaseStateLoaded(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,
                                 const QString &eventId);

@@ -41,6 +41,8 @@
 class ChatManager;
 class ChatStorage;
 class MatrixMegolmSessionRecovery;
+class MatrixRoomStateRegistry;
+class MatrixTimelineRelationCache;
 
 namespace Quotient
 {
@@ -59,6 +61,7 @@ public:
     virtual ~MatrixTimelineService();
 
     void setConnection(Quotient::Connection *connection);
+    void setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry);
     void refreshEncryptedEvents();
 
     QFuture<ChatTimelinePage> requestTimeline(const ChatTimelineRequest &request) override;
@@ -90,9 +93,9 @@ private:
 
     QPointer<ChatManager> m_chatManager;
     QPointer<ChatStorage> m_chatStorage;
+    QPointer<MatrixRoomStateRegistry> m_roomStateRegistry;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
-    QSet<Quotient::Room *> m_loadedRooms;
     QSet<QString> m_historicalEventIds;
     QCache<QString, QImage> m_attachmentImages;
     QHash<QString, QSize> m_attachmentImageDimensions;
@@ -113,7 +116,7 @@ private:
     mutable QHash<QString, QJsonObject> m_decryptedEventSources;
     QHash<QString, MegolmRecoveryState> m_megolmRecoveryStates;
     QHash<QString, QString> m_eventTransactionIds;
-    mutable QHash<QString, QString> m_reactionEventTargets;
+    MatrixTimelineRelationCache *m_relationCache;
     MatrixMegolmSessionRecovery *m_sessionRecovery;
     QQueue<QPair<QPointer<Quotient::Room>, QString>> m_encryptedEventsToRefresh;
     QSet<QString> m_queuedEncryptedEvents;
@@ -124,8 +127,9 @@ private:
     Chat chatForRoom(Quotient::Room *room) const;
     Quotient::Room *roomForChat(const Chat &chat) const;
     QUrl memberAvatarSource(Quotient::Room *room, const QString &memberId) const;
-    void rememberReactionEvent(const QString &reactionEventId, const QString &targetEventId) const;
-    QString reactionTargetForEvent(const QString &eventId) const;
+    void rememberReactionEvent(Quotient::Room *room, const QString &reactionEventId,
+                               const QString &targetEventId) const;
+    QString reactionTargetForEvent(Quotient::Room *room, const QString &eventId) const;
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handlePendingEventAdded(Quotient::Room *room, const Quotient::RoomEvent *event);

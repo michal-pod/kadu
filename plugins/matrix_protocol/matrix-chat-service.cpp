@@ -21,6 +21,7 @@
 #include "matrix-chat-service.moc"
 
 #include "matrix-contact-avatar-service.h"
+#include "matrix-room-state-registry.h"
 
 #include "accounts/account.h"
 #include "avatars/avatars.h"
@@ -307,7 +308,6 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
 
     m_connection = connection;
     m_watchedRooms.clear();
-    m_loadedRooms.clear();
     m_historicalEventIds.clear();
     m_localTransactionIds.clear();
     m_initialSyncFinished = false;
@@ -354,6 +354,19 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
 
     for (auto *room : m_connection->allRooms())
         watchRoom(room);
+}
+
+void MatrixChatService::setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry)
+{
+    if (m_roomStateRegistry == roomStateRegistry)
+        return;
+
+    if (m_roomStateRegistry)
+        disconnect(m_roomStateRegistry, nullptr, this, nullptr);
+    m_roomStateRegistry = roomStateRegistry;
+    if (m_roomStateRegistry)
+        connect(m_roomStateRegistry, &MatrixRoomStateRegistry::roomLoaded, this,
+                &MatrixChatService::handleRoomBaseStateLoaded);
 }
 
 void MatrixChatService::completeCachedStateLoading(bool cacheLoaded)
@@ -1119,14 +1132,6 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
                     if (event)
                         m_historicalEventIds.insert(event->id());
             });
-    connect(room, &Quotient::Room::baseStateLoaded, this, [this, room] {
-        m_loadedRooms.insert(room);
-        synchronizeRoom(room);
-        // A room first seen in an incremental sync emits addedMessages before
-        // baseStateLoaded. Process its initial timeline once the room is usable.
-        if (m_initialSyncFinished)
-            handleNewMessages(room, room->minTimelineIndex(), room->maxTimelineIndex());
-    });
     connect(room, &Quotient::Room::memberListChanged, this,
             [this, room] { synchronizeRoomMembers(room); });
     connect(room, &Quotient::Room::tagsChanged, this, [this, room] { synchronizeRoomPriority(room); });
@@ -1151,13 +1156,28 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
     });
     connect(room, &QObject::destroyed, this, [this, room] {
         m_watchedRooms.remove(room);
-        m_loadedRooms.remove(room);
     });
+
+    if (m_roomStateRegistry && m_roomStateRegistry->isLoaded(room))
+        handleRoomBaseStateLoaded(room);
+}
+
+void MatrixChatService::handleRoomBaseStateLoaded(Quotient::Room *room)
+{
+    if (!room || !m_watchedRooms.contains(room))
+        return;
+
+    synchronizeRoom(room);
+    // A room first seen in an incremental sync emits addedMessages before its
+    // base state is ready. Process that initial timeline once the room is usable.
+    if (m_initialSyncFinished)
+        handleNewMessages(room, room->minTimelineIndex(), room->maxTimelineIndex());
 }
 
 void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex)
 {
-    if (!m_connection || !m_initialSyncFinished || !m_loadedRooms.contains(room))
+    if (!m_connection || !m_initialSyncFinished || !m_roomStateRegistry ||
+        !m_roomStateRegistry->isLoaded(room))
         return;
 
     if (!isSupportedRoom(room))

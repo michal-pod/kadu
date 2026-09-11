@@ -20,6 +20,8 @@
 #include "matrix-timeline-service.h"
 
 #include "matrix-megolm-session-recovery.h"
+#include "matrix-room-state-registry.h"
+#include "matrix-timeline-relation-cache.h"
 
 #include "chat/chat-details-room.h"
 #include "chat/chat-manager.h"
@@ -136,7 +138,8 @@ ChatTimelineItemLevel levelForEvent(const Quotient::RoomEvent &event)
 }
 
 MatrixTimelineService::MatrixTimelineService(Account account, QObject *parent)
-        : ProtocolTimelineService{account, parent}, m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
+        : ProtocolTimelineService{account, parent}, m_relationCache{new MatrixTimelineRelationCache{this}},
+          m_sessionRecovery{new MatrixMegolmSessionRecovery{this}}
 {
     m_attachmentImages.setMaxCost(AttachmentImageCacheSizeKiB);
     connect(m_sessionRecovery, &MatrixMegolmSessionRecovery::sessionRecoveryStarted, this,
@@ -184,7 +187,6 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
 
     m_connection = connection;
     m_watchedRooms.clear();
-    m_loadedRooms.clear();
     m_historicalEventIds.clear();
     m_megolmRecoveryStates.clear();
     m_encryptedEventsToRefresh.clear();
@@ -207,6 +209,7 @@ void MatrixTimelineService::setConnection(Quotient::Connection *connection)
     m_memberAvatarSources.clear();
     m_decryptedEventSources.clear();
     m_eventTransactionIds.clear();
+    m_relationCache->setConnection(connection);
     m_sessionRecovery->setConnection(connection);
     if (!m_connection)
         return;
@@ -452,7 +455,7 @@ bool MatrixTimelineService::removeOwnReaction(const Chat &chat, const QString &s
             reactionEvent->senderId() != m_connection->userId())
             continue;
 
-        rememberReactionEvent(relatedEvent->id(), stableId);
+        rememberReactionEvent(room, relatedEvent->id(), stableId);
         room->redactEvent(relatedEvent->id());
         return true;
     }
@@ -844,7 +847,7 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const Ch
         return completedPage(std::move(page));
     }
 
-    if (!m_loadedRooms.contains(room))
+    if (!m_roomStateRegistry || !m_roomStateRegistry->isLoaded(room))
         return waitForRoomInitialState(request, room);
 
     static const auto remoteCursorPrefix = QByteArrayLiteral("matrix:");
@@ -1057,8 +1060,19 @@ QFuture<ChatTimelinePage> MatrixTimelineService::waitForRoomInitialState(const C
     initialStateTimer->setSingleShot(true);
     initialStateTimer->setInterval(30000);
     const QPointer<Quotient::Room> watchedRoom{room};
-    connect(room, &Quotient::Room::baseStateLoaded, requestContextObject,
-            [this, promise, request, watchedRoom, requestStarted, requestFinished, requestContext, initialStateTimer] {
+    if (!m_roomStateRegistry)
+    {
+        ChatTimelinePage page;
+        page.error = tr("Matrix room state service is not available.");
+        finishInitialStateRequest(promise, requestFinished, requestContext, std::move(page));
+        return future;
+    }
+
+    connect(m_roomStateRegistry, &MatrixRoomStateRegistry::roomLoaded, requestContextObject,
+            [this, promise, request, watchedRoom, requestStarted, requestFinished, requestContext,
+             initialStateTimer](Quotient::Room *loadedRoom) {
+        if (loadedRoom != watchedRoom.data())
+            return;
         if (*requestStarted || *requestFinished)
             return;
         *requestStarted = true;
@@ -1071,7 +1085,6 @@ QFuture<ChatTimelinePage> MatrixTimelineService::waitForRoomInitialState(const C
             return;
         }
 
-        m_loadedRooms.insert(watchedRoom.data());
         auto *futureWatcher = new QFutureWatcher<ChatTimelinePage>{requestContext.data()};
         connect(futureWatcher, &QFutureWatcher<ChatTimelinePage>::finished, requestContext.data(),
                 [this, promise, requestFinished, requestContext, futureWatcher] {
@@ -1171,15 +1184,16 @@ const Quotient::RoomEvent *MatrixTimelineService::eventForTimelineItem(
     return event;
 }
 
-void MatrixTimelineService::rememberReactionEvent(const QString &reactionEventId, const QString &targetEventId) const
+void MatrixTimelineService::rememberReactionEvent(Quotient::Room *room, const QString &reactionEventId,
+                                                  const QString &targetEventId) const
 {
-    if (!reactionEventId.isEmpty() && !targetEventId.isEmpty())
-        m_reactionEventTargets.insert(reactionEventId, targetEventId);
+    if (room)
+        m_relationCache->rememberReaction(room->id(), reactionEventId, targetEventId);
 }
 
-QString MatrixTimelineService::reactionTargetForEvent(const QString &eventId) const
+QString MatrixTimelineService::reactionTargetForEvent(Quotient::Room *room, const QString &eventId) const
 {
-    return m_reactionEventTargets.value(eventId);
+    return room ? m_relationCache->reactionTarget(room->id(), eventId) : QString{};
 }
 
 void MatrixTimelineService::watchRoom(Quotient::Room *room)
@@ -1223,8 +1237,6 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                     if (event)
                         m_historicalEventIds.insert(event->id());
             });
-    connect(room, &Quotient::Room::baseStateLoaded, this,
-            [this, room] { m_loadedRooms.insert(room); });
     connect(room, &Quotient::Room::pinnedEventsChanged, this, [this, room] {
         const auto chat = chatForRoom(room);
         if (chat)
@@ -1267,7 +1279,7 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                     return;
                 if (newEvent->isRedacted())
                 {
-                    const auto reactionTarget = reactionTargetForEvent(newEvent->id());
+                    const auto reactionTarget = reactionTargetForEvent(room, newEvent->id());
                     if (!reactionTarget.isEmpty())
                     {
                         updateTimelineEvent(room, reactionTarget);
@@ -1275,7 +1287,7 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                     }
                     if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(oldEvent))
                     {
-                        rememberReactionEvent(oldEvent->id(), reactionEvent->eventId());
+                        rememberReactionEvent(room, oldEvent->id(), reactionEvent->eventId());
                         updateTimelineEvent(room, reactionEvent->eventId());
                         return;
                     }
@@ -1294,13 +1306,12 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
     connect(room, &QObject::destroyed, this, [this, room, roomId = room->id()] {
         m_memberAvatarSources.remove(roomId);
         m_watchedRooms.remove(room);
-        m_loadedRooms.remove(room);
     });
 }
 
 void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex)
 {
-    if (!m_loadedRooms.contains(room))
+    if (!m_roomStateRegistry || !m_roomStateRegistry->isLoaded(room))
         return;
 
     const auto chat = chatForRoom(room);
@@ -1318,7 +1329,7 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         if (m_historicalEventIds.remove(timelineItem->id()))
             continue;
 
-        const auto reactionTarget = reactionTargetForEvent(timelineItem->id());
+        const auto reactionTarget = reactionTargetForEvent(room, timelineItem->id());
         if (timelineItem->isRedacted() && !reactionTarget.isEmpty())
         {
             updateTimelineEvent(room, reactionTarget);
@@ -1345,9 +1356,16 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         if (roomInfoChangedByEvent)
             emit roomInfoChanged(chat);
 
+        if (const auto *redactionEvent = Quotient::eventCast<const Quotient::RedactionEvent>(event))
+        {
+            const auto reactionTarget = reactionTargetForEvent(room, redactionEvent->redactedEvent());
+            if (!reactionTarget.isEmpty())
+                updateTimelineEvent(room, reactionTarget);
+            continue;
+        }
         if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(event))
         {
-            rememberReactionEvent(timelineItem->id(), reactionEvent->eventId());
+            rememberReactionEvent(room, timelineItem->id(), reactionEvent->eventId());
             updateTimelineEvent(room, reactionEvent->eventId());
             continue;
         }
@@ -1458,7 +1476,7 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
         inspected = true;
         nextCursor = index;
 
-        if ((*it)->isRedacted() && !reactionTargetForEvent((*it)->id()).isEmpty())
+        if ((*it)->isRedacted() && !reactionTargetForEvent(room, (*it)->id()).isEmpty())
             continue;
 
         Quotient::RoomEventPtr decryptedEvent;
@@ -1495,7 +1513,7 @@ ChatTimelineItem MatrixTimelineService::itemForDetachedEvent(Quotient::Room *roo
                                                               const Quotient::RoomEvent &remoteEvent)
 {
     const auto eventId = remoteEvent.id();
-    if (remoteEvent.isRedacted() && !reactionTargetForEvent(eventId).isEmpty())
+    if (remoteEvent.isRedacted() && !reactionTargetForEvent(room, eventId).isEmpty())
         return {};
     const Quotient::RoomEvent *event = &remoteEvent;
     Quotient::RoomEventPtr decryptedEvent;
@@ -1997,7 +2015,7 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
         return;
     const auto &timelineItem = *iterator;
 
-    const auto reactionTarget = reactionTargetForEvent(eventId);
+    const auto reactionTarget = reactionTargetForEvent(room, eventId);
     if (timelineItem->isRedacted() && !reactionTarget.isEmpty())
     {
         updateTimelineEvent(room, reactionTarget);
@@ -2018,7 +2036,7 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
     }
     if (const auto *reactionEvent = Quotient::eventCast<const Quotient::ReactionEvent>(event))
     {
-        rememberReactionEvent(eventId, reactionEvent->eventId());
+        rememberReactionEvent(room, eventId, reactionEvent->eventId());
         updateTimelineEvent(room, reactionEvent->eventId());
         return;
     }
@@ -2079,7 +2097,7 @@ void MatrixTimelineService::appendReactions(ChatTimelineItem &item, Quotient::Ro
         if (!reactionEvent || relatedEvent->isRedacted())
             continue;
 
-        rememberReactionEvent(relatedEvent->id(), reactionEvent->eventId());
+        rememberReactionEvent(room, relatedEvent->id(), reactionEvent->eventId());
         const auto reactionKey = reactionEvent->key();
         auto reaction = std::find_if(item.content.reactions.begin(), item.content.reactions.end(),
                                      [&reactionKey](const ChatTimelineReaction &candidate) {
@@ -2109,6 +2127,11 @@ void MatrixTimelineService::refreshEncryptedEvents()
             if (timelineItem.viewAs<Quotient::EncryptedEvent>())
                 queueEncryptedEventRefresh(room, timelineItem->id());
     }
+}
+
+void MatrixTimelineService::setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry)
+{
+    m_roomStateRegistry = roomStateRegistry;
 }
 
 void MatrixTimelineService::queueEncryptedEventRefresh(Quotient::Room *room, const QString &eventId)

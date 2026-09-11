@@ -44,6 +44,7 @@
 #include "matrix-ssl-certificate-service.h"
 #include "matrix-timeline-service.h"
 #include "matrix-room-invitation-notification-service.h"
+#include "matrix-room-state-registry.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
 #include "gui/matrix-room-settings-window.h"
@@ -82,6 +83,11 @@ MatrixProtocol::MatrixProtocol(Account account, ProtocolFactory *factory) : Prot
 
 MatrixProtocol::~MatrixProtocol()
 {
+    // Flush protocol-owned caches while the connection still carries the
+    // account identity and cache directory.
+    detachConnectionServices();
+    if (m_roomStateRegistry)
+        m_roomStateRegistry->setConnection(nullptr);
     if (m_aggregatedAccountAvatarService && m_accountAvatarService)
         m_aggregatedAccountAvatarService->remove(m_accountAvatarService);
     if (m_aggregatedContactAvatarService && m_contactAvatarService)
@@ -164,6 +170,7 @@ void MatrixProtocol::init()
             this, [this](const QString &requestHost) { handleSslCertificateDecision(requestHost, true); });
     connect(m_sslCertificateService, &MatrixSslCertificateService::certificateRejected,
             this, [this](const QString &requestHost) { handleSslCertificateDecision(requestHost, false); });
+    m_roomStateRegistry = new MatrixRoomStateRegistry{this};
     createConnection();
     m_accountAvatarService = m_pluginInjectedFactory->makeInjected<MatrixAccountAvatarService>(account(), this);
     m_accountAvatarService->setConnection(m_connection);
@@ -171,12 +178,15 @@ void MatrixProtocol::init()
     m_contactAvatarService->setConnection(m_connection);
     m_chatService = m_pluginInjectedFactory->makeInjected<MatrixChatService>(account(), this);
     m_chatService->setContactAvatarService(m_contactAvatarService);
+    m_chatService->setRoomStateRegistry(m_roomStateRegistry);
     m_chatService->setConnection(m_connection);
     m_chatStateService = m_pluginInjectedFactory->makeInjected<MatrixChatStateService>(account(), this);
     m_chatStateService->setConnection(m_connection);
     m_historyService = m_pluginInjectedFactory->makeInjected<MatrixHistoryService>(account(), this);
+    m_historyService->setRoomStateRegistry(m_roomStateRegistry);
     m_historyService->setConnection(m_connection);
     m_timelineService = m_pluginInjectedFactory->makeInjected<MatrixTimelineService>(account(), this);
+    m_timelineService->setRoomStateRegistry(m_roomStateRegistry);
     m_timelineService->setConnection(m_connection);
     connect(m_timelineService, &MatrixTimelineService::verificationEventDecrypted, this,
             &MatrixProtocol::scheduleVerificationRefresh);
@@ -243,6 +253,8 @@ void MatrixProtocol::createConnection()
     m_debugWatchedRooms.clear();
 
     m_connection = new Quotient::Connection{QUrl{MatrixAccountData{account()}.homeserver()}, this};
+    if (m_roomStateRegistry)
+        m_roomStateRegistry->setConnection(m_connection);
     m_connection->setLazyLoading(true);
     // Encryption must be enabled before logging in: this makes libQuotient initialise
     // the local Olm account and publish this client's device keys.

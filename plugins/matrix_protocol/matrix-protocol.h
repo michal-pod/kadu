@@ -43,6 +43,7 @@ class MatrixRestoreRecoveryKeyDialog;
 class MatrixHistoryService;
 class MatrixTimelineService;
 class MatrixRoomInvitationNotificationService;
+class MatrixRoomStateRegistry;
 class MatrixSessionService;
 class MatrixSslCertificateService;
 class PluginInjectedFactory;
@@ -132,6 +133,7 @@ private:
     MatrixChatStateService *m_chatStateService = nullptr;
     MatrixHistoryService *m_historyService = nullptr;
     MatrixTimelineService *m_timelineService = nullptr;
+    MatrixRoomStateRegistry *m_roomStateRegistry = nullptr;
     MatrixSessionService *m_sessionService = nullptr;
     MatrixAccountAvatarService *m_accountAvatarService = nullptr;
     MatrixContactAvatarService *m_contactAvatarService = nullptr;

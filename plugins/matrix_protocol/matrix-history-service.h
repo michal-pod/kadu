@@ -30,6 +30,7 @@
 
 class ContactManager;
 class MessageStorage;
+class MatrixRoomStateRegistry;
 
 namespace Quotient
 {
@@ -47,6 +48,7 @@ public:
     virtual ~MatrixHistoryService() = default;
 
     void setConnection(Quotient::Connection *connection);
+    void setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry);
 
     virtual bool isLocalHistoryEnabled() const override;
     virtual void storeMessage(const Message &message) override;
@@ -55,9 +57,9 @@ public:
 private:
     QPointer<ContactManager> m_contactManager;
     QPointer<MessageStorage> m_messageStorage;
+    QPointer<MatrixRoomStateRegistry> m_roomStateRegistry;
     QPointer<Quotient::Connection> m_connection;
     QSet<Quotient::Room *> m_watchedRooms;
-    QSet<Quotient::Room *> m_loadedRooms;
 
     Quotient::Room *roomForChat(const Chat &chat) const;
     void watchRoom(Quotient::Room *room);
