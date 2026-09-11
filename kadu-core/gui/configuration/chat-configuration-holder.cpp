@@ -20,7 +20,6 @@
 #include "configuration/configuration.h"
 #include "configuration/deprecated-configuration-api.h"
 #include "chat-style/chat-style-manager.h"
-#include "widgets/chat-widget/chat-widget-title-composing-state-position.h"
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPalette>
@@ -31,8 +30,7 @@
 ChatConfigurationHolder::ChatConfigurationHolder(QObject *parent)
         : ConfigurationHolder{parent}, AutoSend{}, NiceDateFormat{}, CustomColors{}, ChatTextCustomColors{},
           ForceCustomChatFont{}, ChatBgFilled{}, UseTransparency{},
-          TimelineDetails{ChatTimelineDetails::AllEvents}, ContactStateChats{}, ContactStateWindowTitle{},
-          ContactStateWindowTitlePosition{}
+          TimelineDetails{ChatTimelineDetails::AllEvents}, ContactStateChats{}
 {
 }
 
@@ -99,9 +97,6 @@ void ChatConfigurationHolder::configurationUpdated()
                                 : palette.text().color().name();
 
     ContactStateChats = m_configuration->deprecatedApi()->readBoolEntry("Chat", "ContactStateChats");
-    ContactStateWindowTitle = m_configuration->deprecatedApi()->readBoolEntry("Chat", "ContactStateWindowTitle");
-    ContactStateWindowTitlePosition =
-        m_configuration->deprecatedApi()->readNumEntry("Chat", "ContactStateWindowTitlePosition");
 
     ChatBgFilled = CustomColors && m_configuration->deprecatedApi()->readBoolEntry("Look", "ChatBgFilled");
     ChatBgColor = CustomColors ? m_configuration->deprecatedApi()->readColorEntry("Look", "ChatBgColor")
@@ -115,13 +110,4 @@ void ChatConfigurationHolder::configurationUpdated()
                                                                            : ChatTimelineDetails::AllEvents;
 
     emit chatConfigurationUpdated();
-}
-
-ChatWidgetTitleComposingStatePosition ChatConfigurationHolder::composingStatePosition() const
-{
-    if (!ContactStateWindowTitle)
-        return ChatWidgetTitleComposingStatePosition::None;
-    if (ContactStateWindowTitlePosition == 0)
-        return ChatWidgetTitleComposingStatePosition::AtBegining;
-    return ChatWidgetTitleComposingStatePosition::AtEnd;
 }

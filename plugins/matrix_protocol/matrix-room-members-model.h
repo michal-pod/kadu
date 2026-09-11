@@ -15,8 +15,10 @@
 #include "model/kadu-abstract-model.h"
 
 #include <QtCore/QAbstractListModel>
+#include <QtCore/QHash>
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
+#include <QtCore/QUrl>
 
 class Contact;
 class ContactManager;
@@ -41,16 +43,26 @@ public:
     virtual QModelIndexList indexListForValue(const QVariant &value) const override;
 
 private:
+    struct InvitedMember
+    {
+        QString displayName;
+        QUrl avatarUrl;
+    };
+
     static constexpr auto PageSize = 100;
     static constexpr auto AvatarSize = 48;
 
     Account m_account;
     QPointer<Quotient::Room> m_room;
     QPointer<ContactManager> m_contactManager;
+    QHash<QString, InvitedMember> m_invitedMembers;
     QStringList m_memberIds;
     int m_visibleMemberCount = 0;
+    bool m_invitedMembersLoading = false;
+    bool m_invitedMembersReloadPending = false;
 
     Contact contactForMember(const QString &memberId) const;
+    void loadInvitedMembers();
     void reload();
     void updateMember(const QString &memberId);
 };

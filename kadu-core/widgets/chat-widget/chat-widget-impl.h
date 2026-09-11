@@ -31,6 +31,7 @@
 #include "protocols/services/chat-state-service.h"
 
 #include <QtCore/QDateTime>
+#include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QPointer>
 #include <QtCore/QTimer>
@@ -108,6 +109,7 @@ class KADUAPI ChatWidgetImpl : public ChatWidget, public ConfigurationAwareObjec
     QTimer ComposingTimer;
     bool IsComposing;
     ChatState CurrentContactActivity;
+    QHash<QString, QString> m_typingContacts;
 
     bool SplittersInitialized;
 
@@ -153,6 +155,7 @@ private slots:
     void checkComposing();
     void updateComposing();
     void contactActivityChanged(const Contact &contact, ChatState state);
+    void chatPeerActivityChanged(const QString &peerId, const QString &displayName, ChatState state);
 
     void keyPressedSlot(QKeyEvent *e, CustomInput *input, bool &handled);
 

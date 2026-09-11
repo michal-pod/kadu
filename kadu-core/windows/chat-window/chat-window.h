@@ -30,7 +30,6 @@
 #include <QtWidgets/QWidget>
 #include <injeqt/injeqt.h>
 
-class ChatConfigurationHolder;
 class ChatWidget;
 class Chat;
 class Configuration;
@@ -69,7 +68,6 @@ protected:
     virtual void compositingDisabled() override;
 
 private:
-    QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
     QPointer<Configuration> m_configuration;
     QPointer<IconsManager> m_iconsManager;
     QPointer<InjectedFactory> m_injectedFactory;
@@ -80,7 +78,6 @@ private:
     QRect defaultGeometry() const;
 
 private slots:
-    INJEQT_SET void setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder);
     INJEQT_SET void setConfiguration(Configuration *configuration);
     INJEQT_SET void setIconsManager(IconsManager *iconsManager);
     INJEQT_SET void setInjectedFactory(InjectedFactory *injectedFactory);

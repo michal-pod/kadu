@@ -45,7 +45,6 @@ class QAction;
 class QMenu;
 
 class AttachTabAction;
-class ChatConfigurationHolder;
 class ChatManager;
 class ChatWidgetManager;
 class ChatWidgetRepository;
@@ -69,7 +68,6 @@ class TabsManager : public StorableObject, ConfigurationAwareObject
     friend class TabWidget;
 
     QPointer<AttachTabAction> m_attachTabAction;
-    QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
     QPointer<ChatManager> m_chatManager;
     QPointer<ChatWidgetManager> m_chatWidgetManager;
     QPointer<ChatWidgetRepository> m_chatWidgetRepository;
@@ -110,7 +108,6 @@ class TabsManager : public StorableObject, ConfigurationAwareObject
 
 private slots:
     INJEQT_SET void setAttachTabAction(AttachTabAction *attachTabAction);
-    INJEQT_SET void setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder);
     INJEQT_SET void setChatManager(ChatManager *chatManager);
     INJEQT_SET void setChatWidgetRepository(ChatWidgetRepository *chatWidgetRepository);
     INJEQT_SET void setChatWidgetManager(ChatWidgetManager *chatWidgetManager);

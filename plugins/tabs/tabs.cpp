@@ -41,7 +41,6 @@
 #include "contacts/contact-set.h"
 #include "core/core.h"
 #include "core/session-service.h"
-#include "gui/configuration/chat-configuration-holder.h"
 #include "icons/kadu-icon.h"
 #include "menu/menu-inventory.h"
 #include "message/unread-message-repository.h"
@@ -77,11 +76,6 @@ TabsManager::~TabsManager()
 void TabsManager::setAttachTabAction(AttachTabAction *attachTabAction)
 {
     m_attachTabAction = attachTabAction;
-}
-
-void TabsManager::setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder)
-{
-    m_chatConfigurationHolder = chatConfigurationHolder;
 }
 
 void TabsManager::setChatManager(ChatManager *chatManager)
@@ -555,7 +549,6 @@ void TabsManager::setConfiguration(ChatWidget *chatWidget)
     auto blinkChatTitle = m_configuration->deprecatedApi()->readBoolEntry("Chat", "BlinkChatTitle", false);
     chatWidget->title()->setBlinkIconWhenUnreadMessages(blinkChatTitle);
     chatWidget->title()->setBlinkTitleWhenUnreadMessages(blinkChatTitle);
-    chatWidget->title()->setComposingStatePosition(m_chatConfigurationHolder->composingStatePosition());
     chatWidget->title()->setShowUnreadMessagesCount(
         m_configuration->deprecatedApi()->readBoolEntry("Chat", "NewMessagesInChatTitle", false));
 }

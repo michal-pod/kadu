@@ -640,9 +640,10 @@ Item {
 
                 Text {
                     visible: root.edited && !root.redacted
-                    width: parent.width
+                    x: 30
+                    width: parent.width - x
                     text: qsTr("edited")
-                    color: root.mutedTextColor
+                    color: root.textColor
                     font.family: root.configuredFontFamily
                     font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                     font.italic: true

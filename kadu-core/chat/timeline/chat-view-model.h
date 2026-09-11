@@ -72,6 +72,7 @@ class KADUAPI ChatViewModel : public QObject
     Q_PROPERTY(QString historyError READ historyError NOTIFY timelineStateChanged)
     Q_PROPERTY(QString readMarkerId READ readMarkerId NOTIFY timelineStateChanged)
     Q_PROPERTY(int newEventsBelow READ newEventsBelow NOTIFY timelineStateChanged)
+    Q_PROPERTY(QString typingIndicatorText READ typingIndicatorText NOTIFY typingIndicatorTextChanged)
     Q_PROPERTY(int timelineActionsRevision READ timelineActionsRevision NOTIFY timelineActionsChanged)
     Q_PROPERTY(bool composerActive READ composerActive NOTIFY composerContextChanged)
     Q_PROPERTY(QVariantMap composerContext READ composerContext NOTIFY composerContextChanged)
@@ -117,6 +118,7 @@ public:
     QString historyError() const;
     QString readMarkerId() const;
     int newEventsBelow() const;
+    QString typingIndicatorText() const;
     int timelineActionsRevision() const;
     bool composerActive() const;
     QVariantMap composerContext() const;
@@ -130,6 +132,7 @@ public:
     void addLegacyMessage(const Message &message);
     void addLegacyMessages(const SortedMessages &messages);
     void setUrlHandlerManager(UrlHandlerManager *urlHandlerManager);
+    void setTypingUsers(QStringList displayNames);
     void clearComposerContext();
 
     Q_INVOKABLE void openUrl(const QString &url);
@@ -161,6 +164,7 @@ signals:
     void chatHeaderActionsChanged();
     void roomInfoChanged();
     void timelineStateChanged();
+    void typingIndicatorTextChanged();
     void timelineActionsChanged();
     void composerContextChanged();
     void pinnedMessagesChanged();
@@ -188,6 +192,7 @@ private:
     QString m_chatHeaderDescription;
     ComposerMode m_composerMode = ComposerMode::None;
     ChatTimelineItem m_composerTarget;
+    QString m_typingIndicatorText;
     bool m_open = false;
     int m_timelineActionsRevision = 0;
 

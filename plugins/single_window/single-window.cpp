@@ -21,7 +21,6 @@
 #include "core/application.h"
 #include "core/session-service.h"
 #include "file-transfer/file-transfer-manager.h"
-#include "gui/configuration/chat-configuration-holder.h"
 #include "gui/hot-key.h"
 #include "icons/kadu-icon.h"
 #include "message/unread-message-repository.h"
@@ -124,11 +123,6 @@ SingleWindow::~SingleWindow()
 void SingleWindow::setApplication(Application *application)
 {
     m_application = application;
-}
-
-void SingleWindow::setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder)
-{
-    m_chatConfigurationHolder = chatConfigurationHolder;
 }
 
 void SingleWindow::setChatWidgetManager(ChatWidgetManager *chatWidgetManager)
@@ -346,7 +340,6 @@ void SingleWindow::setConfiguration(ChatWidget *chatWidget)
     auto blinkChatTitle = m_configuration->deprecatedApi()->readBoolEntry("Chat", "BlinkChatTitle", false);
     chatWidget->title()->setBlinkIconWhenUnreadMessages(blinkChatTitle);
     chatWidget->title()->setBlinkTitleWhenUnreadMessages(blinkChatTitle);
-    chatWidget->title()->setComposingStatePosition(m_chatConfigurationHolder->composingStatePosition());
     chatWidget->title()->setShowUnreadMessagesCount(
         m_configuration->deprecatedApi()->readBoolEntry("Chat", "NewMessagesInChatTitle", false));
 }

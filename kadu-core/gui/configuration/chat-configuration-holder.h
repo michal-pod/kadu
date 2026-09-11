@@ -28,8 +28,6 @@
 #include <QtGui/QFont>
 #include <injeqt/injeqt.h>
 
-enum class ChatWidgetTitleComposingStatePosition;
-
 class Configuration;
 class ChatStyleManager;
 
@@ -120,16 +118,6 @@ public:
     {
         return ContactStateChats;
     }
-    bool contactStateWindowTitle() const
-    {
-        return ContactStateWindowTitle;
-    }
-    int contactStateWindowTitlePosition() const
-    {
-        return ContactStateWindowTitlePosition;
-    }
-    ChatWidgetTitleComposingStatePosition composingStatePosition() const;
-
 signals:
     void chatConfigurationUpdated();
 
@@ -157,8 +145,6 @@ private:
     ChatTimelineDetails TimelineDetails;
 
     bool ContactStateChats;
-    bool ContactStateWindowTitle;
-    int ContactStateWindowTitlePosition;
 
 private slots:
     INJEQT_SET void setConfiguration(Configuration *configuration);

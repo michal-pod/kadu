@@ -16,6 +16,7 @@
 #include <QtCore/QHash>
 #include <QtCore/QJsonObject>
 #include <QtCore/QPointer>
+#include <QtCore/QSet>
 #include <QtCore/QStringList>
 #include <QtCore/QUrl>
 #include <QtCore/QVector>
@@ -42,6 +43,7 @@ class QStandardItemModel;
 class QTabWidget;
 class QTableWidget;
 class QToolButton;
+class QTimer;
 
 namespace Quotient
 {
@@ -66,7 +68,8 @@ private:
     enum MemberSearchDataRole
     {
         MemberIdRole = Qt::UserRole + 1,
-        MemberSearchTextRole
+        MemberSearchTextRole,
+        MemberDirectoryResultRole
     };
 
     enum class PowerLevelLocation
@@ -93,6 +96,7 @@ private:
         QLabel *nameLabel;
         QLabel *mxidLabel;
         MatrixPowerLevelEditor *editor;
+        QToolButton *removeButton;
     };
 
     Chat m_chat;
@@ -122,6 +126,7 @@ private:
     QStandardItemModel *m_memberSearchModel = nullptr;
     QSortFilterProxyModel *m_memberSearchProxy = nullptr;
     QCompleter *m_memberCompleter = nullptr;
+    QTimer *m_memberDirectorySearchTimer = nullptr;
     QLabel *m_accessEncryptionLabel = nullptr;
     QLabel *m_roomVersionLabel = nullptr;
     QLabel *m_canonicalAliasLabel = nullptr;
@@ -152,10 +157,15 @@ private:
     QVector<UserPowerLevelSetting> m_userPowerLevelSettings;
     QHash<QString, QString> m_memberDisplayNames;
     QHash<QString, QUrl> m_memberAvatarUrls;
+    QSet<QString> m_roomMemberIds;
+    QSet<QString> m_invitedMemberIds;
+    QSet<QString> m_removedUserPowerLevelIds;
     QString m_selectedMemberId;
     bool m_customPowerLevelsCreated = false;
     bool m_memberSearchLoading = false;
     bool m_memberSearchLoaded = false;
+    bool m_invitationPending = false;
+    int m_memberDirectorySearchGeneration = 0;
     bool m_removeAvatar = false;
     bool m_saving = false;
     bool m_closeAfterSave = false;
@@ -177,10 +187,19 @@ private:
     void createCustomPowerLevelSettings();
     void ensureMemberSearchModel();
     void refreshMemberSearch();
+    void scheduleMemberDirectorySearch();
+    void searchMemberDirectory();
+    void clearMemberDirectoryResults();
+    QString validMatrixUserId(const QString &text) const;
     void selectMemberSearchResult(const QModelIndex &index);
     void addSelectedMember();
+    void inviteUser(const QString &userId);
     void loadUserPowerLevels();
     void addUserPowerLevel(const QString &userId, std::optional<qint64> explicitValue, bool selectRow = false);
+    void removeUserPowerLevel(const QString &userId);
+    void removeUserPowerLevelRow(const QString &userId);
+    bool canInviteUser() const;
+    bool canKickUser(const QString &userId) const;
     void refreshUserPowerLevel(const QString &userId);
     void connectRoom();
     void loadRoomData();

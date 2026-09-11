@@ -36,7 +36,6 @@
 #include "contacts/contact-set.h"
 #include "core/core.h"
 #include "core/injected-factory.h"
-#include "gui/configuration/chat-configuration-holder.h"
 #include "icons/icons-manager.h"
 #include "os/generic/window-geometry-manager.h"
 #include "storage/custom-properties-variant-wrapper.h"
@@ -55,11 +54,6 @@ ChatWindow::ChatWindow(Chat chat, QWidget *parent) : QWidget(parent), DesktopAwa
 ChatWindow::~ChatWindow()
 {
     emit windowDestroyed(this);
-}
-
-void ChatWindow::setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder)
-{
-    m_chatConfigurationHolder = chatConfigurationHolder;
 }
 
 void ChatWindow::setConfiguration(Configuration *configuration)
@@ -116,7 +110,6 @@ void ChatWindow::configurationUpdated()
     // m_configuration->deprecatedApi()->readBoolEntry("Chat", "BlinkChatTitle", true));
     m_chatWidget->title()->setBlinkTitleWhenUnreadMessages(
         m_configuration->deprecatedApi()->readBoolEntry("Chat", "BlinkChatTitle", false));
-    m_chatWidget->title()->setComposingStatePosition(m_chatConfigurationHolder->composingStatePosition());
     m_chatWidget->title()->setShowUnreadMessagesCount(
         m_configuration->deprecatedApi()->readBoolEntry("Chat", "NewMessagesInChatTitle", false));
 }

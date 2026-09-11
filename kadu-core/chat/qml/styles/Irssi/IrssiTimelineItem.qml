@@ -72,7 +72,7 @@ Item {
     function messageText() {
         if (redacted)
             return qsTr("message removed")
-        return plainText
+        return plainText + (edited ? " [" + qsTr("edited") + "]" : "")
     }
     function actions() { return timelineActions ? timelineActions(stableId) : [] }
     function triggerAction(id) {

@@ -16,12 +16,17 @@
 #include "model/roles.h"
 #include "talkable/talkable.h"
 
+#include <Quotient/avatar.h>
+#include <Quotient/connection.h>
+#include <Quotient/csapi/rooms.h>
+#include <Quotient/events/roommemberevent.h>
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
 #include <QtGui/QPixmap>
 
 #include <algorithm>
+#include <utility>
 
 MatrixRoomMembersModel::MatrixRoomMembersModel(
     Account account, Quotient::Room *room, ContactManager *contactManager, QObject *parent)
@@ -30,7 +35,10 @@ MatrixRoomMembersModel::MatrixRoomMembersModel(
     if (!m_room)
         return;
 
-    connect(m_room, &Quotient::Room::memberListChanged, this, &MatrixRoomMembersModel::reload);
+    connect(m_room, &Quotient::Room::memberListChanged, this, [this] {
+        reload();
+        loadInvitedMembers();
+    });
     connect(m_room, &Quotient::Room::allMembersLoaded, this, &MatrixRoomMembersModel::reload);
     connect(m_room, &Quotient::Room::memberNameUpdated, this,
             [this](const Quotient::RoomMember &member) { updateMember(member.id()); });
@@ -44,6 +52,7 @@ MatrixRoomMembersModel::MatrixRoomMembersModel(
     });
 
     reload();
+    loadInvitedMembers();
     m_room->setDisplayed(true);
 }
 
@@ -64,18 +73,37 @@ QVariant MatrixRoomMembersModel::data(const QModelIndex &index, int role) const
         return {};
 
     const auto memberId = m_memberIds.at(index.row());
+    const auto invitedMember = m_invitedMembers.constFind(memberId);
+    const auto invited = invitedMember != m_invitedMembers.cend();
     const auto member = m_room->member(memberId);
-    const auto displayName = member.isEmpty() ? memberId : member.disambiguatedName();
+    const auto displayName = invited
+                                 ? (invitedMember->displayName.isEmpty() ? memberId : invitedMember->displayName)
+                                 : (member.isEmpty() ? memberId : member.disambiguatedName());
 
     switch (role)
     {
     case Qt::DisplayRole:
         return displayName;
     case Qt::ToolTipRole:
-        return member.isEmpty() ? memberId : member.fullName();
+        return invited || member.isEmpty() ? memberId : member.fullName();
     case DescriptionRole:
-        return displayName == memberId ? QString{} : memberId;
+    {
+        const auto mxid = displayName == memberId ? QString{} : memberId;
+        if (!invited)
+            return mxid;
+        return mxid.isEmpty() ? tr("Invited") : tr("%1 — invited").arg(mxid);
+    }
     case AvatarRole:
+        if (invited && m_room->connection() && !invitedMember->avatarUrl.isEmpty())
+        {
+            const QPointer<MatrixRoomMembersModel> model{
+                const_cast<MatrixRoomMembersModel *>(this)};
+            return QPixmap::fromImage(m_room->connection()->userAvatar(invitedMember->avatarUrl).get(
+                AvatarSize, [model, memberId] {
+                    if (model)
+                        model->updateMember(memberId);
+                }));
+        }
         return QPixmap::fromImage(m_room->memberAvatar(memberId, AvatarSize));
     case AccountRole:
         return QVariant::fromValue(m_account);
@@ -124,17 +152,74 @@ Contact MatrixRoomMembersModel::contactForMember(const QString &memberId) const
     return m_contactManager ? m_contactManager->byId(m_account, memberId, ActionCreateAndAdd) : Contact::null;
 }
 
+void MatrixRoomMembersModel::loadInvitedMembers()
+{
+    if (!m_room || !m_room->connection())
+        return;
+    if (m_invitedMembersLoading)
+    {
+        m_invitedMembersReloadPending = true;
+        return;
+    }
+
+    m_invitedMembersLoading = true;
+    m_invitedMembersReloadPending = false;
+    m_room->connection()
+        ->callApi<Quotient::GetMembersByRoomJob>(
+            m_room->id(), QString{}, QStringLiteral("invite"))
+        .then(this, [this](Quotient::GetMembersByRoomJob *job) {
+            QHash<QString, InvitedMember> invitedMembers;
+            for (const auto &event : job->chunk())
+            {
+                const auto *memberEvent = Quotient::eventCast<const Quotient::RoomMemberEvent>(event);
+                if (!memberEvent || memberEvent->membership() != Quotient::Membership::Invite ||
+                    memberEvent->userId().isEmpty())
+                    continue;
+
+                invitedMembers.insert(
+                    memberEvent->userId(),
+                    {memberEvent->newDisplayName().value_or(QString{}),
+                     memberEvent->newAvatarUrl().value_or(QUrl{})});
+            }
+
+            m_invitedMembers = std::move(invitedMembers);
+            m_invitedMembersLoading = false;
+            reload();
+            if (m_invitedMembersReloadPending)
+                loadInvitedMembers();
+        }, [this](Quotient::GetMembersByRoomJob *) {
+            m_invitedMembersLoading = false;
+            if (m_invitedMembersReloadPending)
+                loadInvitedMembers();
+        });
+}
+
 void MatrixRoomMembersModel::reload()
 {
     if (!m_room)
         return;
 
     auto memberIds = m_room->joinedMemberIds();
+    for (auto invitedMember = m_invitedMembers.cbegin(); invitedMember != m_invitedMembers.cend(); ++invitedMember)
+        if (!memberIds.contains(invitedMember.key()))
+            memberIds.append(invitedMember.key());
     const auto room = m_room.data();
-    std::stable_sort(memberIds.begin(), memberIds.end(), [room](const QString &left, const QString &right) {
-        return room->member(left).disambiguatedName().localeAwareCompare(
-                   room->member(right).disambiguatedName()) < 0;
-    });
+    const auto invitedMembers = &m_invitedMembers;
+    std::stable_sort(
+        memberIds.begin(), memberIds.end(), [room, invitedMembers](const QString &left, const QString &right) {
+            const auto leftInvited = invitedMembers->contains(left);
+            const auto rightInvited = invitedMembers->contains(right);
+            if (leftInvited != rightInvited)
+                return !leftInvited;
+            const auto leftName = leftInvited
+                                      ? invitedMembers->value(left).displayName
+                                      : room->member(left).disambiguatedName();
+            const auto rightName = rightInvited
+                                       ? invitedMembers->value(right).displayName
+                                       : room->member(right).disambiguatedName();
+            return (leftName.isEmpty() ? left : leftName).localeAwareCompare(
+                       rightName.isEmpty() ? right : rightName) < 0;
+        });
 
     beginResetModel();
     m_memberIds = std::move(memberIds);

@@ -20,6 +20,7 @@
 #pragma once
 
 #include <QtCore/QHash>
+#include <QtCore/QJsonObject>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QString>
@@ -40,6 +41,11 @@ public:
     void setConnection(Quotient::Connection *connection);
     void rememberReaction(const QString &roomId, const QString &reactionEventId, const QString &targetEventId) const;
     QString reactionTarget(const QString &roomId, const QString &reactionEventId) const;
+    void rememberReplacement(const QString &roomId, const QString &targetEventId,
+                             const QJsonObject &replacementEvent) const;
+    QJsonObject replacement(const QString &roomId, const QString &targetEventId) const;
+    QString replacementTarget(const QString &roomId, const QString &replacementEventId) const;
+    void forgetReplacement(const QString &roomId, const QString &targetEventId) const;
 
 private:
     struct Relation
@@ -48,13 +54,23 @@ private:
         qint64 observedAt = 0;
     };
 
+    struct Replacement
+    {
+        QJsonObject event;
+        qint64 originTimestamp = 0;
+        qint64 observedAt = 0;
+    };
+
     static constexpr auto CacheVersion = 1;
     static constexpr auto MaximumRelationsPerRoom = 20000;
     static constexpr auto RetainedRelationsPerRoom = 18000;
+    static constexpr auto MaximumReplacementsPerRoom = 2000;
+    static constexpr auto RetainedReplacementsPerRoom = 1800;
 
     QPointer<Quotient::Connection> m_connection;
     QTimer *m_saveTimer;
     mutable QHash<QString, QHash<QString, Relation>> m_reactions;
+    mutable QHash<QString, QHash<QString, Replacement>> m_replacements;
     mutable QString m_cachePath;
     mutable bool m_loaded = false;
     mutable bool m_dirty = false;
@@ -63,4 +79,5 @@ private:
     void scheduleSave() const;
     void save() const;
     void pruneRoom(const QString &roomId) const;
+    void pruneReplacements(const QString &roomId) const;
 };

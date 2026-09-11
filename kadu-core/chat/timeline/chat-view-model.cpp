@@ -45,6 +45,8 @@
 #include <QtGui/QFont>
 #include <QtGui/QGuiApplication>
 
+#include <algorithm>
+
 ChatViewModel::ChatViewModel(
     Chat chat, ProtocolTimelineService *service, ChatStyleManager *chatStyleManager,
     ChatConfigurationHolder *chatConfigurationHolder, QObject *parent, Configuration *configuration)
@@ -280,6 +282,11 @@ int ChatViewModel::newEventsBelow() const
     return m_timelineController ? m_timelineController->newEventsBelow() : 0;
 }
 
+QString ChatViewModel::typingIndicatorText() const
+{
+    return m_typingIndicatorText;
+}
+
 bool ChatViewModel::composerActive() const
 {
     return m_composerMode != ComposerMode::None && !m_composerTarget.stableId.isEmpty();
@@ -391,6 +398,32 @@ void ChatViewModel::addLegacyMessages(const SortedMessages &messages)
 void ChatViewModel::setUrlHandlerManager(UrlHandlerManager *urlHandlerManager)
 {
     m_urlHandlerManager = urlHandlerManager;
+}
+
+void ChatViewModel::setTypingUsers(QStringList displayNames)
+{
+    displayNames.removeAll(QString{});
+    displayNames.removeDuplicates();
+    std::sort(displayNames.begin(), displayNames.end(), [](const QString &left, const QString &right) {
+        return left.localeAwareCompare(right) < 0;
+    });
+
+    QString text;
+    if (displayNames.size() == 1)
+        text = tr("%1 is typing…").arg(displayNames.front());
+    else if (displayNames.size() == 2)
+        text = tr("%1 and %2 are typing…").arg(displayNames.at(0), displayNames.at(1));
+    else if (displayNames.size() == 3)
+        text = tr("%1, %2 and %3 are typing…").arg(displayNames.at(0), displayNames.at(1), displayNames.at(2));
+    else if (displayNames.size() > 3)
+        text = tr("%1, %2 and %n other people are typing…", nullptr, displayNames.size() - 2)
+                   .arg(displayNames.at(0), displayNames.at(1));
+
+    if (m_typingIndicatorText == text)
+        return;
+
+    m_typingIndicatorText = text;
+    emit typingIndicatorTextChanged();
 }
 
 void ChatViewModel::clearComposerContext()

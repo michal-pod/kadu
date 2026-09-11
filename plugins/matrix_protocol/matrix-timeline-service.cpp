@@ -865,33 +865,38 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestTimelineForRoom(const Ch
 
     const auto requestedLimit = request.limit > 0 ? request.limit : 50;
     const auto loadLimit = std::max(requestedLimit, 50);
+    auto historyJob = room->getPreviousContent(loadLimit);
+    if (!historyJob)
+        return completedPage(pageForRoom(request, room));
+
     auto promise = std::make_shared<QPromise<ChatTimelinePage>>();
     auto future = promise->future();
     promise->start();
 
     const QPointer<Quotient::Room> watchedRoom{room};
-    room->getPreviousContent(loadLimit).then(
-        this,
-        [this, promise, request, watchedRoom] {
-            if (!watchedRoom)
-            {
-                ChatTimelinePage page;
-                page.error = tr("Matrix room is no longer available.");
-                finishRequest(promise, std::move(page));
-                return;
-            }
-
-            auto page = pageForRoom(request, watchedRoom.data());
-            const auto chat = chatForRoom(watchedRoom.data());
-            if (chat)
-                emit pinnedMessagesChanged(chat);
-            finishRequest(promise, std::move(page));
-        },
-        [this, promise] {
+    // JobHandle continuations run before BaseJob::success, while Room adds the
+    // fetched events in its own success handler. Connect after getPreviousContent()
+    // so this handler observes the updated room timeline rather than an empty one.
+    connect(historyJob, &Quotient::BaseJob::success, this, [this, promise, request, watchedRoom] {
+        if (!watchedRoom)
+        {
             ChatTimelinePage page;
-            page.error = tr("Could not retrieve Matrix history.");
+            page.error = tr("Matrix room is no longer available.");
             finishRequest(promise, std::move(page));
-        });
+            return;
+        }
+
+        auto page = pageForRoom(request, watchedRoom.data());
+        const auto chat = chatForRoom(watchedRoom.data());
+        if (chat)
+            emit pinnedMessagesChanged(chat);
+        finishRequest(promise, std::move(page));
+    });
+    connect(historyJob, &Quotient::BaseJob::failure, this, [this, promise] {
+        ChatTimelinePage page;
+        page.error = tr("Could not retrieve Matrix history.");
+        finishRequest(promise, std::move(page));
+    });
     return future;
 }
 
@@ -931,6 +936,15 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestContextPage(const ChatTi
             page.newerCursor = job->end().isEmpty() ? QByteArray{} : remoteCursorPrefix + job->end().toUtf8();
             page.hasOlder = !page.olderCursor.isEmpty();
             page.hasNewer = !page.newerCursor.isEmpty();
+
+            for (const auto &remoteEvent : before)
+                if (remoteEvent)
+                    rememberReplacementEvent(watchedRoom.data(), *remoteEvent);
+            if (event)
+                rememberReplacementEvent(watchedRoom.data(), *event);
+            for (const auto &remoteEvent : after)
+                if (remoteEvent)
+                    rememberReplacementEvent(watchedRoom.data(), *remoteEvent);
 
             auto appendEvent = [this, &page, watchedRoom](const Quotient::RoomEventPtr &remoteEvent) {
                 if (!remoteEvent)
@@ -1009,6 +1023,9 @@ QFuture<ChatTimelinePage> MatrixTimelineService::requestPaginatedPage(const Chat
             // Filtering/visibility can produce an empty chunk before the end.
             // Only the pagination token determines whether to keep fetching.
             const auto hasMore = !nextCursor.isEmpty() && nextCursor != request.cursor;
+            for (const auto &remoteEvent : events)
+                if (remoteEvent)
+                    rememberReplacementEvent(watchedRoom.data(), *remoteEvent);
             auto appendEvent = [this, &page, watchedRoom](const Quotient::RoomEventPtr &remoteEvent) {
                 if (!remoteEvent)
                     return;
@@ -1196,6 +1213,66 @@ QString MatrixTimelineService::reactionTargetForEvent(Quotient::Room *room, cons
     return room ? m_relationCache->reactionTarget(room->id(), eventId) : QString{};
 }
 
+void MatrixTimelineService::rememberReplacementEvent(Quotient::Room *room, const QString &targetEventId,
+                                                       const Quotient::RoomEvent &rawEvent) const
+{
+    if (room)
+        m_relationCache->rememberReplacement(room->id(), targetEventId, rawEvent.fullJson());
+}
+
+bool MatrixTimelineService::rememberReplacementEvent(Quotient::Room *room,
+                                                       const Quotient::RoomEvent &rawEvent) const
+{
+    if (!room)
+        return false;
+
+    const Quotient::RoomEvent *event = &rawEvent;
+    Quotient::RoomEventPtr decryptedEvent;
+    if (const auto *encryptedEvent = Quotient::eventCast<const Quotient::EncryptedEvent>(&rawEvent))
+    {
+        decryptedEvent = room->decryptMessage(*encryptedEvent);
+        if (!decryptedEvent)
+            return false;
+        event = decryptedEvent.get();
+    }
+
+    const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+    if (!messageEvent || messageEvent->replacedEvent().isEmpty())
+        return false;
+
+    rememberReplacementEvent(room, messageEvent->replacedEvent(), rawEvent);
+    return true;
+}
+
+QString MatrixTimelineService::replacementTargetForEvent(Quotient::Room *room, const QString &eventId) const
+{
+    return room ? m_relationCache->replacementTarget(room->id(), eventId) : QString{};
+}
+
+void MatrixTimelineService::forgetReplacementEvent(Quotient::Room *room, const QString &targetEventId) const
+{
+    if (room)
+        m_relationCache->forgetReplacement(room->id(), targetEventId);
+}
+
+Quotient::RoomEventPtr MatrixTimelineService::cachedReplacementEvent(Quotient::Room *room,
+                                                                      const QString &targetEventId) const
+{
+    if (!room)
+        return {};
+
+    const auto replacementJson = m_relationCache->replacement(room->id(), targetEventId);
+    if (replacementJson.isEmpty())
+        return {};
+
+    auto replacement = Quotient::loadEvent<Quotient::RoomEvent>(replacementJson);
+    if (!replacement)
+        return {};
+    if (const auto *encryptedEvent = Quotient::eventCast<const Quotient::EncryptedEvent>(replacement.get()))
+        return room->decryptMessage(*encryptedEvent);
+    return replacement;
+}
+
 void MatrixTimelineService::watchRoom(Quotient::Room *room)
 {
     if (!room || m_watchedRooms.contains(room))
@@ -1279,6 +1356,13 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                     return;
                 if (newEvent->isRedacted())
                 {
+                    const auto replacementTarget = replacementTargetForEvent(room, newEvent->id());
+                    if (!replacementTarget.isEmpty())
+                    {
+                        forgetReplacementEvent(room, replacementTarget);
+                        updateTimelineEvent(room, replacementTarget);
+                        return;
+                    }
                     const auto reactionTarget = reactionTargetForEvent(room, newEvent->id());
                     if (!reactionTarget.isEmpty())
                     {
@@ -1297,7 +1381,12 @@ void MatrixTimelineService::watchRoom(Quotient::Room *room)
                         emit pinnedMessagesChanged(chat);
                 }
                 else
+                {
+                    if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(newEvent);
+                        messageEvent && messageEvent->isReplaced())
+                        forgetReplacementEvent(room, newEvent->id());
                     updateTimelineEvent(room, newEvent->id());
+                }
             });
     connect(room, &Quotient::Room::memberAvatarUpdated, this, [this, room](const Quotient::RoomMember &member) {
         m_memberAvatarSources[room->id()].remove(member.id());
@@ -1335,6 +1424,13 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
             updateTimelineEvent(room, reactionTarget);
             continue;
         }
+        const auto replacementTarget = replacementTargetForEvent(room, timelineItem->id());
+        if (timelineItem->isRedacted() && !replacementTarget.isEmpty())
+        {
+            forgetReplacementEvent(room, replacementTarget);
+            updateTimelineEvent(room, replacementTarget);
+            continue;
+        }
 
         Quotient::RoomEventPtr decryptedEvent;
         auto encrypted = false;
@@ -1358,6 +1454,12 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
 
         if (const auto *redactionEvent = Quotient::eventCast<const Quotient::RedactionEvent>(event))
         {
+            const auto replacementTarget = replacementTargetForEvent(room, redactionEvent->redactedEvent());
+            if (!replacementTarget.isEmpty())
+            {
+                forgetReplacementEvent(room, replacementTarget);
+                updateTimelineEvent(room, replacementTarget);
+            }
             const auto reactionTarget = reactionTargetForEvent(room, redactionEvent->redactedEvent());
             if (!reactionTarget.isEmpty())
                 updateTimelineEvent(room, reactionTarget);
@@ -1367,6 +1469,15 @@ void MatrixTimelineService::handleNewMessages(Quotient::Room *room, int fromInde
         {
             rememberReactionEvent(room, timelineItem->id(), reactionEvent->eventId());
             updateTimelineEvent(room, reactionEvent->eventId());
+            continue;
+        }
+        if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+            messageEvent && !messageEvent->replacedEvent().isEmpty())
+        {
+            const auto *rawEvent = timelineItem.event()->originalEvent();
+            rememberReplacementEvent(
+                room, messageEvent->replacedEvent(), rawEvent ? *rawEvent : *timelineItem.event());
+            updateTimelineEvent(room, messageEvent->replacedEvent());
             continue;
         }
         if (shouldHideEventFromTimeline(*event))
@@ -1476,14 +1587,31 @@ ChatTimelinePage MatrixTimelineService::pageForRoom(const ChatTimelineRequest &r
         inspected = true;
         nextCursor = index;
 
-        if ((*it)->isRedacted() && !reactionTargetForEvent(room, (*it)->id()).isEmpty())
-            continue;
+        if ((*it)->isRedacted())
+        {
+            const auto replacementTarget = replacementTargetForEvent(room, (*it)->id());
+            if (!replacementTarget.isEmpty())
+            {
+                forgetReplacementEvent(room, replacementTarget);
+                continue;
+            }
+            if (!reactionTargetForEvent(room, (*it)->id()).isEmpty())
+                continue;
+        }
 
         Quotient::RoomEventPtr decryptedEvent;
         auto encrypted = false;
         const auto *event = eventForTimelineItem(room, *it, decryptedEvent, encrypted);
         if (!event)
             continue;
+
+        if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+            messageEvent && !messageEvent->replacedEvent().isEmpty())
+        {
+            const auto *rawEvent = it->event()->originalEvent();
+            rememberReplacementEvent(room, messageEvent->replacedEvent(), rawEvent ? *rawEvent : *it->event());
+            continue;
+        }
 
         if (shouldHideEventFromTimeline(*event))
             continue;
@@ -1513,6 +1641,15 @@ ChatTimelineItem MatrixTimelineService::itemForDetachedEvent(Quotient::Room *roo
                                                               const Quotient::RoomEvent &remoteEvent)
 {
     const auto eventId = remoteEvent.id();
+    if (remoteEvent.isRedacted())
+    {
+        const auto replacementTarget = replacementTargetForEvent(room, eventId);
+        if (!replacementTarget.isEmpty())
+        {
+            forgetReplacementEvent(room, replacementTarget);
+            return {};
+        }
+    }
     if (remoteEvent.isRedacted() && !reactionTargetForEvent(room, eventId).isEmpty())
         return {};
     const Quotient::RoomEvent *event = &remoteEvent;
@@ -1531,7 +1668,15 @@ ChatTimelineItem MatrixTimelineService::itemForDetachedEvent(Quotient::Room *roo
             m_sessionRecovery->requestFromBackup(room, *encryptedEvent);
     }
 
-    if (!event || shouldHideEventFromTimeline(*event))
+    if (!event)
+        return {};
+    if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+        messageEvent && !messageEvent->replacedEvent().isEmpty())
+    {
+        rememberReplacementEvent(room, messageEvent->replacedEvent(), remoteEvent);
+        return {};
+    }
+    if (shouldHideEventFromTimeline(*event))
         return {};
     auto item = itemForEvent(room, *event, eventId, 0, encrypted);
     item.sourceOrder = sourceOrderForEvent(remoteEvent, eventId, 0);
@@ -1541,8 +1686,27 @@ ChatTimelineItem MatrixTimelineService::itemForDetachedEvent(Quotient::Room *roo
 }
 
 ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event,
-                                                      const QString &eventId, qint64 timelineIndex, bool encrypted) const
+                                                      const QString &eventId, qint64 timelineIndex, bool encrypted,
+                                                      bool applyCachedReplacement) const
 {
+    if (const auto *messageEvent = applyCachedReplacement
+                                       ? Quotient::eventCast<const Quotient::RoomMessageEvent>(&event)
+                                       : nullptr;
+        messageEvent && messageEvent->replacedEvent().isEmpty())
+    {
+        const auto replacement = cachedReplacementEvent(room, eventId);
+        const auto *replacementMessage =
+            Quotient::eventCast<const Quotient::RoomMessageEvent>(replacement.get());
+        if (replacementMessage && replacementMessage->replacedEvent() == eventId &&
+            replacementMessage->senderId() == event.senderId() &&
+            messageEvent->replacedBy() != replacementMessage->id())
+        {
+            const auto effectiveEvent = event.makeReplaced(*replacementMessage);
+            if (effectiveEvent)
+                return itemForEvent(room, *effectiveEvent, eventId, timelineIndex, encrypted, false);
+        }
+    }
+
     ChatTimelineItem item;
     item.stableId = eventId;
     item.transactionId = event.transactionId();
@@ -1779,12 +1943,25 @@ ChatTimelineItem MatrixTimelineService::itemForEvent(Quotient::Room *room, const
             item.kind = ChatTimelineItemKind::MemberBanned;
             item.content.plainText = tr("banned %1 from the room.").arg(memberName);
         }
+        else if (memberEvent->isRejectedInvite())
+        {
+            if (event.senderId() == memberId)
+            {
+                item.kind = ChatTimelineItemKind::MemberLeft;
+                item.content.plainText = tr("rejected the invitation.");
+            }
+            else
+            {
+                item.kind = ChatTimelineItemKind::MemberKicked;
+                item.content.plainText = tr("revoked the invitation for %1.").arg(memberName);
+            }
+        }
         else if (memberEvent->isLeave() && event.senderId() != memberId)
         {
             item.kind = ChatTimelineItemKind::MemberKicked;
             item.content.plainText = tr("removed %1 from the room.").arg(memberName);
         }
-        else if (memberEvent->isLeave() || memberEvent->isRejectedInvite())
+        else if (memberEvent->isLeave())
         {
             item.kind = ChatTimelineItemKind::MemberLeft;
             item.content.plainText = tr("left the room.");
@@ -2038,6 +2215,15 @@ void MatrixTimelineService::updateTimelineEvent(Quotient::Room *room, const QStr
     {
         rememberReactionEvent(room, eventId, reactionEvent->eventId());
         updateTimelineEvent(room, reactionEvent->eventId());
+        return;
+    }
+    if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(event);
+        messageEvent && !messageEvent->replacedEvent().isEmpty())
+    {
+        const auto *rawEvent = timelineItem.event()->originalEvent();
+        rememberReplacementEvent(
+            room, messageEvent->replacedEvent(), rawEvent ? *rawEvent : *timelineItem.event());
+        updateTimelineEvent(room, messageEvent->replacedEvent());
         return;
     }
     if (shouldHideEventFromTimeline(*event))
@@ -2354,8 +2540,13 @@ bool MatrixTimelineService::shouldHideEventFromTimeline(const Quotient::RoomEven
     if (event.matrixType().startsWith(QStringLiteral("m.key.verification.")))
         return true;
     if (const auto *messageEvent = Quotient::eventCast<const Quotient::RoomMessageEvent>(&event);
-        messageEvent && messageEvent->rawMsgtype() == QStringLiteral("m.key.verification.request"))
-        return true;
+        messageEvent)
+    {
+        if (!messageEvent->replacedEvent().isEmpty())
+            return true;
+        if (messageEvent->rawMsgtype() == QStringLiteral("m.key.verification.request"))
+            return true;
+    }
 
     const auto eventType = event.matrixType();
     return eventType.startsWith(QStringLiteral("m.space."));

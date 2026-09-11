@@ -34,6 +34,7 @@
 #include <Quotient/events/eventcontent.h>
 #include <Quotient/events/roommessageevent.h>
 #include <Quotient/events/roomevent.h>
+#include <Quotient/jobs/basejob.h>
 #include <Quotient/room.h>
 #include <Quotient/user.h>
 
@@ -113,29 +114,35 @@ QFuture<ProtocolHistoryPage> MatrixHistoryService::requestHistoryForRoom(
 
     const auto requestedLimit = request.limit() > 0 ? request.limit() : 50;
     const auto loadLimit = std::max(requestedLimit, 50);
+    auto historyJob = room->getPreviousContent(loadLimit);
+    if (!historyJob)
+        return completedPage(pageForRoom(request, room));
+
     auto promise = std::make_shared<QPromise<ProtocolHistoryPage>>();
     auto future = promise->future();
     promise->start();
 
     const QPointer<Quotient::Room> watchedRoom{room};
-    room->getPreviousContent(loadLimit).then(
-        this,
-        [this, promise, request, watchedRoom] {
-            if (!watchedRoom)
-            {
-                ProtocolHistoryPage page;
-                page.setError(tr("Matrix room is no longer available."));
-                finishRequest(promise, std::move(page));
-                return;
-            }
-
-            finishRequest(promise, pageForRoom(request, watchedRoom.data()));
-        },
-        [this, promise] {
+    // Room installs its own success handler before returning the job. Waiting
+    // for BaseJob::success therefore guarantees that the fetched events have
+    // already been inserted into Room's timeline. A JobHandle continuation
+    // runs earlier, before Room handles success, and can produce an empty page.
+    connect(historyJob, &Quotient::BaseJob::success, this, [this, promise, request, watchedRoom] {
+        if (!watchedRoom)
+        {
             ProtocolHistoryPage page;
-            page.setError(tr("Could not retrieve Matrix history."));
+            page.setError(tr("Matrix room is no longer available."));
             finishRequest(promise, std::move(page));
-        });
+            return;
+        }
+
+        finishRequest(promise, pageForRoom(request, watchedRoom.data()));
+    });
+    connect(historyJob, &Quotient::BaseJob::failure, this, [this, promise] {
+        ProtocolHistoryPage page;
+        page.setError(tr("Could not retrieve Matrix history."));
+        finishRequest(promise, std::move(page));
+    });
     return future;
 }
 

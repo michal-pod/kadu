@@ -130,6 +130,12 @@ private:
     void rememberReactionEvent(Quotient::Room *room, const QString &reactionEventId,
                                const QString &targetEventId) const;
     QString reactionTargetForEvent(Quotient::Room *room, const QString &eventId) const;
+    void rememberReplacementEvent(Quotient::Room *room, const QString &targetEventId,
+                                  const Quotient::RoomEvent &rawEvent) const;
+    bool rememberReplacementEvent(Quotient::Room *room, const Quotient::RoomEvent &rawEvent) const;
+    QString replacementTargetForEvent(Quotient::Room *room, const QString &eventId) const;
+    void forgetReplacementEvent(Quotient::Room *room, const QString &targetEventId) const;
+    Quotient::RoomEventPtr cachedReplacementEvent(Quotient::Room *room, const QString &targetEventId) const;
     void watchRoom(Quotient::Room *room);
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handlePendingEventAdded(Quotient::Room *room, const Quotient::RoomEvent *event);
@@ -143,7 +149,7 @@ private:
     const Quotient::RoomEvent *eventForTimelineItem(Quotient::Room *room, const Quotient::TimelineItem &timelineItem,
                                                     Quotient::RoomEventPtr &decryptedEvent, bool &encrypted) const;
     ChatTimelineItem itemForEvent(Quotient::Room *room, const Quotient::RoomEvent &event, const QString &eventId,
-                                  qint64 timelineIndex, bool encrypted) const;
+                                  qint64 timelineIndex, bool encrypted, bool applyCachedReplacement = true) const;
     void updateTimelineEvent(Quotient::Room *room, const QString &eventId);
     void updateTimelineEventsForMember(Quotient::Room *room, const QString &memberId);
     void updateTimelineEventsForMegolmSession(Quotient::Room *room, const QString &sessionId);

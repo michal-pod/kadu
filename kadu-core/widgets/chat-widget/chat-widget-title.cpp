@@ -206,6 +206,9 @@ QString ChatWidgetTitle::chatTitle(const Chat &chat) const
     if (!chat.display().isEmpty())
         return chat.display();
 
+    if (chat.type() == QStringLiteral("Room"))
+        return chat.name();
+
     auto contactsCount = chat.contacts().count();
     if (contactsCount > 1)
         return tr("Conference [%1]").arg(contactsCount);
@@ -276,11 +279,15 @@ QIcon ChatWidgetTitle::chatIcon(const Chat &chat) const
     if (contactsCount == 1)
     {
         auto contact = chat.contacts().toContact();
-        if (contact)
+        if (contact && m_contactDataExtractor)
             return m_contactDataExtractor->data(contact, Qt::DecorationRole, false).value<QIcon>();
     }
-    else if (contactsCount > 1)
-        return m_iconsManager->iconByPath(m_chatTypeManager->chatType("ContactSet")->icon());
 
-    return m_iconsManager->iconByPath(KaduIcon("internet-group-chat"));
+    if (m_chatTypeManager)
+    {
+        if (auto *chatType = m_chatTypeManager->chatType(chat.type()))
+            return m_iconsManager ? m_iconsManager->iconByPath(chatType->icon()) : QIcon{};
+    }
+
+    return m_iconsManager ? m_iconsManager->iconByPath(KaduIcon("internet-group-chat")) : QIcon{};
 }

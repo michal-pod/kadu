@@ -27,10 +27,20 @@
 
 #include "exports.h"
 
+#include <QtCore/QString>
+#include <QtCore/QVector>
+
 class Chat;
 class Contact;
 
 enum class ChatState;
+
+struct KADUAPI ChatStatePeer
+{
+    QString id;
+    QString displayName;
+    ChatState state;
+};
 
 /**
  * @addtogroup Protocol
@@ -74,6 +84,11 @@ public:
      */
     virtual void sendState(const Chat &chat, ChatState state);
 
+    /**
+     * @short Return peer states that are already active when a chat view is opened.
+     */
+    virtual QVector<ChatStatePeer> activePeerStates(const Chat &chat) const;
+
 signals:
     /**
      * @short Signal emited when peer changed its chat state.
@@ -85,7 +100,8 @@ signals:
     /**
      * @short Signal emitted when a peer changed state in a particular chat.
      */
-    void peerStateChangedInChat(const Chat &chat, const Contact &contact, ChatState state);
+    void peerStateChangedInChat(
+        const Chat &chat, const QString &peerId, const QString &displayName, ChatState state);
 };
 
 /**

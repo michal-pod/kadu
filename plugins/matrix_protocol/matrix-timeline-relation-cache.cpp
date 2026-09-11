@@ -55,6 +55,7 @@ void MatrixTimelineRelationCache::setConnection(Quotient::Connection *connection
     m_saveTimer->stop();
     m_connection = connection;
     m_reactions.clear();
+    m_replacements.clear();
     m_cachePath.clear();
     m_loaded = false;
     m_dirty = false;
@@ -87,6 +88,74 @@ QString MatrixTimelineRelationCache::reactionTarget(const QString &roomId, const
         return {};
     const auto relationIterator = roomIterator->constFind(reactionEventId);
     return relationIterator == roomIterator->cend() ? QString{} : relationIterator->targetEventId;
+}
+
+void MatrixTimelineRelationCache::rememberReplacement(const QString &roomId, const QString &targetEventId,
+                                                        const QJsonObject &replacementEvent) const
+{
+    const auto replacementEventId = replacementEvent.value(QStringLiteral("event_id")).toString();
+    if (roomId.isEmpty() || targetEventId.isEmpty() || replacementEventId.isEmpty() || !ensureLoaded())
+        return;
+
+    const auto originTimestamp = replacementEvent.value(QStringLiteral("origin_server_ts")).toInteger();
+    auto &roomReplacements = m_replacements[roomId];
+    const auto existing = roomReplacements.constFind(targetEventId);
+    if (existing != roomReplacements.cend())
+    {
+        const auto existingEventId = existing->event.value(QStringLiteral("event_id")).toString();
+        if (existingEventId == replacementEventId)
+            return;
+        if (existing->originTimestamp > originTimestamp)
+            return;
+    }
+
+    roomReplacements.insert(
+        targetEventId, {replacementEvent, originTimestamp, QDateTime::currentMSecsSinceEpoch()});
+    pruneReplacements(roomId);
+    m_dirty = true;
+    scheduleSave();
+}
+
+QJsonObject MatrixTimelineRelationCache::replacement(const QString &roomId, const QString &targetEventId) const
+{
+    if (roomId.isEmpty() || targetEventId.isEmpty() || !ensureLoaded())
+        return {};
+
+    const auto roomIterator = m_replacements.constFind(roomId);
+    if (roomIterator == m_replacements.cend())
+        return {};
+    const auto replacementIterator = roomIterator->constFind(targetEventId);
+    return replacementIterator == roomIterator->cend() ? QJsonObject{} : replacementIterator->event;
+}
+
+QString MatrixTimelineRelationCache::replacementTarget(const QString &roomId,
+                                                         const QString &replacementEventId) const
+{
+    if (roomId.isEmpty() || replacementEventId.isEmpty() || !ensureLoaded())
+        return {};
+
+    const auto roomIterator = m_replacements.constFind(roomId);
+    if (roomIterator == m_replacements.cend())
+        return {};
+    for (auto replacementIterator = roomIterator->cbegin(); replacementIterator != roomIterator->cend();
+         ++replacementIterator)
+        if (replacementIterator->event.value(QStringLiteral("event_id")).toString() == replacementEventId)
+            return replacementIterator.key();
+    return {};
+}
+
+void MatrixTimelineRelationCache::forgetReplacement(const QString &roomId, const QString &targetEventId) const
+{
+    if (roomId.isEmpty() || targetEventId.isEmpty() || !ensureLoaded())
+        return;
+
+    auto roomIterator = m_replacements.find(roomId);
+    if (roomIterator == m_replacements.end() || !roomIterator->remove(targetEventId))
+        return;
+    if (roomIterator->isEmpty())
+        m_replacements.erase(roomIterator);
+    m_dirty = true;
+    scheduleSave();
 }
 
 bool MatrixTimelineRelationCache::ensureLoaded() const
@@ -126,6 +195,26 @@ bool MatrixTimelineRelationCache::ensureLoaded() const
         }
         pruneRoom(roomIterator.key());
     }
+
+    const auto replacementRooms = root.value(QStringLiteral("replacements")).toObject();
+    for (auto roomIterator = replacementRooms.begin(); roomIterator != replacementRooms.end(); ++roomIterator)
+    {
+        auto &roomReplacements = m_replacements[roomIterator.key()];
+        const auto replacements = roomIterator.value().toArray();
+        for (const auto &replacementValue : replacements)
+        {
+            const auto replacement = replacementValue.toObject();
+            const auto targetEventId = replacement.value(QStringLiteral("targetEventId")).toString();
+            const auto event = replacement.value(QStringLiteral("event")).toObject();
+            if (targetEventId.isEmpty() || event.value(QStringLiteral("event_id")).toString().isEmpty())
+                continue;
+            roomReplacements.insert(
+                targetEventId,
+                {event, replacement.value(QStringLiteral("originTimestamp")).toInteger(),
+                 replacement.value(QStringLiteral("observedAt")).toInteger()});
+        }
+        pruneReplacements(roomIterator.key());
+    }
     return true;
 }
 
@@ -155,6 +244,21 @@ void MatrixTimelineRelationCache::save() const
             rooms.insert(roomIterator.key(), relations);
     }
 
+    QJsonObject replacementRooms;
+    for (auto roomIterator = m_replacements.cbegin(); roomIterator != m_replacements.cend(); ++roomIterator)
+    {
+        QJsonArray replacements;
+        for (auto replacementIterator = roomIterator->cbegin(); replacementIterator != roomIterator->cend();
+             ++replacementIterator)
+            replacements.append(
+                QJsonObject{{QStringLiteral("targetEventId"), replacementIterator.key()},
+                            {QStringLiteral("event"), replacementIterator->event},
+                            {QStringLiteral("originTimestamp"), replacementIterator->originTimestamp},
+                            {QStringLiteral("observedAt"), replacementIterator->observedAt}});
+        if (!replacements.isEmpty())
+            replacementRooms.insert(roomIterator.key(), replacements);
+    }
+
     QDir{}.mkpath(QFileInfo{m_cachePath}.absolutePath());
     QSaveFile cacheFile{m_cachePath};
     if (!cacheFile.open(QIODevice::WriteOnly))
@@ -162,7 +266,8 @@ void MatrixTimelineRelationCache::save() const
 
     const QJsonObject root{{QStringLiteral("version"), CacheVersion},
                            {QStringLiteral("accountMxid"), m_connection->userId()},
-                           {QStringLiteral("rooms"), rooms}};
+                           {QStringLiteral("rooms"), rooms},
+                           {QStringLiteral("replacements"), replacementRooms}};
     const auto payload = QJsonDocument{root}.toJson(QJsonDocument::Compact);
     if (cacheFile.write(payload) != payload.size() || !cacheFile.commit())
         return;
@@ -183,4 +288,19 @@ void MatrixTimelineRelationCache::pruneRoom(const QString &roomId) const
     const auto removeCount = roomIterator->size() - RetainedRelationsPerRoom;
     for (auto index = 0; index < removeCount; ++index)
         roomIterator->remove(eventIds.at(index));
+}
+
+void MatrixTimelineRelationCache::pruneReplacements(const QString &roomId) const
+{
+    auto roomIterator = m_replacements.find(roomId);
+    if (roomIterator == m_replacements.end() || roomIterator->size() <= MaximumReplacementsPerRoom)
+        return;
+
+    auto targetEventIds = roomIterator->keys();
+    std::sort(targetEventIds.begin(), targetEventIds.end(), [&roomIterator](const QString &left, const QString &right) {
+        return roomIterator->value(left).observedAt < roomIterator->value(right).observedAt;
+    });
+    const auto removeCount = roomIterator->size() - RetainedReplacementsPerRoom;
+    for (auto index = 0; index < removeCount; ++index)
+        roomIterator->remove(targetEventIds.at(index));
 }

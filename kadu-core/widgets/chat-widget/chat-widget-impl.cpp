@@ -194,6 +194,7 @@ void ChatWidgetImpl::init()
     setAcceptDrops(true);
 
     createGui();
+    Title->update();
     configurationUpdated();
     m_chatViewModel->open();
 
@@ -207,12 +208,14 @@ void ChatWidgetImpl::init()
         // The legacy signal has no chat identity and is safe only for a one-contact chat.
         if (CurrentChat.contacts().count() == 1)
             connect(chatStateService, &ChatStateService::peerStateChanged, this,
-                    &ChatWidgetImpl::contactActivityChanged);
+                    [this](const Contact &contact, ChatState state) { contactActivityChanged(contact, state); });
         connect(chatStateService, &ChatStateService::peerStateChangedInChat, this,
-                [this](const Chat &stateChat, const Contact &contact, ChatState state) {
+                [this](const Chat &stateChat, const QString &peerId, const QString &displayName, ChatState state) {
                     if (stateChat == CurrentChat)
-                        contactActivityChanged(contact, state);
+                        chatPeerActivityChanged(peerId, displayName, state);
                 });
+        for (const auto &peer : chatStateService->activePeerStates(CurrentChat))
+            chatPeerActivityChanged(peer.id, peer.displayName, peer.state);
     }
 
     connect(CurrentChat, SIGNAL(updated()), this, SLOT(chatUpdated()));
@@ -387,6 +390,10 @@ void ChatWidgetImpl::configurationUpdated()
     QPalette palette = InputBox->inputBox()->palette();
     palette.setBrush(QPalette::Text, color);
     InputBox->inputBox()->setPalette(palette);
+
+    if (m_chatViewModel)
+        m_chatViewModel->setTypingUsers(
+            m_chatConfigurationHolder->contactStateChats() ? m_typingContacts.values() : QStringList{});
 }
 
 void ChatWidgetImpl::chatUpdated()
@@ -826,16 +833,12 @@ ChatState ChatWidgetImpl::chatState() const
 
 void ChatWidgetImpl::contactActivityChanged(const Contact &contact, ChatState state)
 {
-    if (CurrentContactActivity == state)
-        return;
-
     if (!CurrentChat.contacts().contains(contact))
         return;
 
-    CurrentContactActivity = state;
-    emit chatStateChanged(CurrentContactActivity);
+    chatPeerActivityChanged(contact.id(), contact.display(true), state);
 
-    if (CurrentContactActivity == ChatState::Gone)
+    if (state == ChatState::Gone)
     {
         auto msg = QString{"[ " + tr("%1 ended the conversation").arg(contact.ownerBuddy().display()) + " ]"};
         Message message = m_messageStorage->create();
@@ -847,6 +850,33 @@ void ChatWidgetImpl::contactActivityChanged(const Contact &contact, ChatState st
         message.setReceiveDate(QDateTime::currentDateTime());
 
         addMessage(message);
+    }
+}
+
+void ChatWidgetImpl::chatPeerActivityChanged(const QString &peerId, const QString &displayName, ChatState state)
+{
+    if (peerId.isEmpty())
+        return;
+
+    if (state == ChatState::Composing)
+    {
+        auto name = displayName;
+        if (name.isEmpty())
+            name = peerId;
+        m_typingContacts.insert(peerId, name);
+    }
+    else
+        m_typingContacts.remove(peerId);
+
+    if (m_chatViewModel)
+        m_chatViewModel->setTypingUsers(
+            m_chatConfigurationHolder->contactStateChats() ? m_typingContacts.values() : QStringList{});
+
+    const auto aggregateState = m_typingContacts.isEmpty() ? state : ChatState::Composing;
+    if (CurrentContactActivity != aggregateState)
+    {
+        CurrentContactActivity = aggregateState;
+        emit chatStateChanged(CurrentContactActivity);
     }
 }
 

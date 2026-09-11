@@ -613,7 +613,6 @@ Item {
                             width: parent.width
                             text: qsTr("edited")
                             color: root.ownEvent ? root.outgoingTextColor : root.textColor
-                            opacity: 0.70
                             font.family: root.configuredFontFamily
                             font.pointSize: Math.max(8, root.configuredFontPointSize - 2)
                             font.italic: true

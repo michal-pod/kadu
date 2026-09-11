@@ -38,3 +38,9 @@ void ChatStateService::sendState(const Chat &chat, ChatState state)
     if (contact)
         sendState(contact, state);
 }
+
+QVector<ChatStatePeer> ChatStateService::activePeerStates(const Chat &chat) const
+{
+    Q_UNUSED(chat)
+    return {};
+}

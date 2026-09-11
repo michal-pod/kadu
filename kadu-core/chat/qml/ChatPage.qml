@@ -887,12 +887,47 @@ Item {
         }
     }
 
+    Rectangle {
+        id: typingIndicator
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: statusBarContainer.top
+        readonly property bool active: root.chatViewModel &&
+                                       root.chatViewModel.typingIndicatorText.length > 0
+        implicitHeight: typingIndicatorLabel.implicitHeight + 10
+        height: active ? implicitHeight : 0
+        visible: height > 0
+        color: root.themeValue("typingIndicatorBackgroundColor",
+                               root.themeValue("backgroundColor", root.fallbackBackgroundColor))
+        clip: true
+        z: 4
+
+        Text {
+            id: typingIndicatorLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: root.themeValue("timelineMargin", 16)
+            anchors.rightMargin: root.themeValue("timelineMargin", 16)
+            text: root.chatViewModel ? root.chatViewModel.typingIndicatorText : ""
+            color: root.themeValue("typingIndicatorTextColor",
+                                   root.themeValue("textColor", root.fallbackTextColor))
+            font.italic: true
+            font.pixelSize: root.themeValue("typingIndicatorFontPixelSize", 12)
+            elide: Text.ElideRight
+            maximumLineCount: 1
+        }
+
+        Accessible.role: Accessible.StaticText
+        Accessible.name: root.chatViewModel ? root.chatViewModel.typingIndicatorText : ""
+    }
+
     ListView {
         id: timeline
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: pinnedMessagesContainer.bottom
-        anchors.bottom: statusBarContainer.top
+        anchors.bottom: typingIndicator.top
         anchors.margins: root.themeValue("timelineMargin", 16)
         clip: true
         interactive: !root.composerActive
@@ -1402,6 +1437,10 @@ Item {
                 root.scheduleScrollToBottom()
             if (!root.chatViewModel.loadingOlder && !root.chatViewModel.loadingNewer)
                 Qt.callLater(root.restoreOlderAnchor)
+        }
+        function onTypingIndicatorTextChanged() {
+            if (root.followingTail)
+                Qt.callLater(root.scheduleScrollToBottom)
         }
         function onTimelineActionsRevisionChanged() {
             root.timelineActionsCache = ({})

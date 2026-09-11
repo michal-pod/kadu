@@ -16,7 +16,6 @@ class QSplitter;
 class QTabWidget;
 
 class Application;
-class ChatConfigurationHolder;
 class ChatWidgetManager;
 class ChatWidget;
 class ChatWidgetSetTitle;
@@ -72,7 +71,6 @@ protected:
 
 private:
     QPointer<Application> m_application;
-    QPointer<ChatConfigurationHolder> m_chatConfigurationHolder;
     QPointer<ChatWidgetManager> m_chatWidgetManager;
     QPointer<Configuration> m_configuration;
     QPointer<FileTransferManager> m_fileTransferManager;
@@ -92,7 +90,6 @@ private:
 
 private slots:
     INJEQT_SET void setApplication(Application *application);
-    INJEQT_SET void setChatConfigurationHolder(ChatConfigurationHolder *chatConfigurationHolder);
     INJEQT_SET void setChatWidgetManager(ChatWidgetManager *chatWidgetManager);
     INJEQT_SET void setConfiguration(Configuration *configuration);
     INJEQT_SET void setFileTransferManager(FileTransferManager *fileTransferManager);

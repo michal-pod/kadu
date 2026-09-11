@@ -315,9 +315,6 @@ void Core::createDefaultConfiguration()
         "Chat", "UseDefaultEMailClient",
         m_injector.get<Configuration>()->deprecatedApi()->readEntry("Chat", "MailClient").isEmpty());
     m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "ContactStateChats", true);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "ContactStateWindowTitle", true);
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "ContactStateWindowTitleSyntax", QString());
-    m_injector.get<Configuration>()->deprecatedApi()->addVariable("Chat", "ContactStateWindowTitlePosition", 1);
 
     createAllDefaultToolbars();
 }

@@ -58,6 +58,9 @@ public:
     void setBlinkTitleWhenUnreadMessages(bool blinkTitleWhenUnreadMessages);
     void setBlinkIconWhenUnreadMessages(bool blinkIconWhenUnreadMessages);
 
+public slots:
+    void update();
+
 signals:
     void titleChanged(ChatWidget *chatWidget);
 
@@ -95,5 +98,4 @@ private slots:
     void startBlinking();
     void stopBlinking();
     void blink();
-    void update();
 };

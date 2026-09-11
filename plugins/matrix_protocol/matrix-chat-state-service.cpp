@@ -24,7 +24,6 @@
 #include "chat/chat-manager.h"
 #include "chat/chat-storage.h"
 #include "chat/type/chat-type-room.h"
-#include "contacts/contact-manager.h"
 #include "protocols/services/chat-state.h"
 
 #include <Quotient/connection.h>
@@ -68,11 +67,6 @@ void MatrixChatStateService::setConnection(Quotient::Connection *connection)
         watchRoom(room);
 }
 
-void MatrixChatStateService::setContactManager(ContactManager *contactManager)
-{
-    m_contactManager = contactManager;
-}
-
 void MatrixChatStateService::sendState(const Contact &contact, ChatState state)
 {
     Q_UNUSED(contact)
@@ -98,6 +92,24 @@ void MatrixChatStateService::sendState(const Chat &chat, ChatState state)
         m_connection->callApi<Quotient::SetTypingJob>(m_connection->userId(), roomId, true, TypingTimeout);
     else
         m_connection->callApi<Quotient::SetTypingJob>(m_connection->userId(), roomId, false);
+}
+
+QVector<ChatStatePeer> MatrixChatStateService::activePeerStates(const Chat &chat) const
+{
+    auto *room = roomForChat(chat);
+    if (!room)
+        return {};
+
+    QVector<ChatStatePeer> result;
+    const auto memberIds = m_typingMembers.value(room);
+    result.reserve(memberIds.size());
+    for (const auto &memberId : memberIds)
+    {
+        const auto member = room->member(memberId);
+        const auto displayName = member.isEmpty() ? memberId : member.disambiguatedName();
+        result.push_back({memberId, displayName, ChatState::Composing});
+    }
+    return result;
 }
 
 void MatrixChatStateService::setChatManager(ChatManager *chatManager)
@@ -154,7 +166,7 @@ void MatrixChatStateService::watchRoom(Quotient::Room *room)
 
 void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
 {
-    if (!m_connection || !m_contactManager || !room || room->joinState() != Quotient::JoinState::Join)
+    if (!m_connection || !room || room->joinState() != Quotient::JoinState::Join)
         return;
 
     QSet<QString> currentMembers;
@@ -165,27 +177,23 @@ void MatrixChatStateService::synchronizeTypingMembers(Quotient::Room *room)
     const auto chat = chatForRoom(room);
     if (!chat)
         return;
-    auto *details = qobject_cast<ChatDetailsRoom *>(chat.details());
-
     for (const auto &matrixId : previousMembers)
     {
         if (currentMembers.contains(matrixId))
             continue;
 
-        const auto contact = m_contactManager->byId(account(), matrixId, ActionCreateAndAdd);
-        if (details)
-            details->addContact(contact);
-        emit peerStateChangedInChat(chat, contact, ChatState::Paused);
+        const auto member = room->member(matrixId);
+        const auto displayName = member.isEmpty() ? matrixId : member.disambiguatedName();
+        emit peerStateChangedInChat(chat, matrixId, displayName, ChatState::Paused);
     }
     for (const auto &matrixId : currentMembers)
     {
         if (previousMembers.contains(matrixId))
             continue;
 
-        const auto contact = m_contactManager->byId(account(), matrixId, ActionCreateAndAdd);
-        if (details)
-            details->addContact(contact);
-        emit peerStateChangedInChat(chat, contact, ChatState::Composing);
+        const auto member = room->member(matrixId);
+        const auto displayName = member.isEmpty() ? matrixId : member.disambiguatedName();
+        emit peerStateChangedInChat(chat, matrixId, displayName, ChatState::Composing);
     }
 
     if (currentMembers.isEmpty())
