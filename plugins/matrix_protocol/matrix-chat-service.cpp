@@ -40,6 +40,7 @@
 
 #include <Quotient/connection.h>
 #include <Quotient/avatar.h>
+#include <Quotient/csapi/content-repo.h>
 #include <Quotient/csapi/pushrules.h>
 #include <Quotient/events/accountdataevents.h>
 #include <Quotient/events/encryptedevent.h>
@@ -49,7 +50,9 @@
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
 
+#include <QtCore/QBuffer>
 #include <QtCore/QDateTime>
+#include <QtCore/QDebug>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
@@ -74,6 +77,19 @@
 #include <limits>
 #include <memory>
 #include <optional>
+
+class MatrixUploadContentJob final : public Quotient::UploadContentJob
+{
+public:
+    MatrixUploadContentJob(QIODevice *content, const QString &fileName, const QString &contentType)
+            : Quotient::UploadContentJob{content, fileName, contentType}
+    {
+        connect(this, &Quotient::BaseJob::aboutToSendRequest, this, [content] {
+            if (!content->seek(0))
+                qWarning() << "Could not rewind Matrix upload source before sending";
+        }, Qt::DirectConnection);
+    }
+};
 
 namespace MatrixNotificationRules
 {
@@ -642,6 +658,87 @@ bool MatrixChatService::sendAttachmentToRoom(const Chat &chat, const QString &fi
     return true;
 }
 
+bool MatrixChatService::uploadAttachmentFile(
+    Quotient::Room *room, QObject *context, const QString &filePath, const QString &fileName,
+    const QString &contentType, const std::function<void(Quotient::FileSourceInfo)> &onUploaded,
+    const std::function<void()> &onFailed)
+{
+    if (!room || !context || !m_connection)
+    {
+        onFailed();
+        return false;
+    }
+
+    QIODevice *uploadSource = nullptr;
+    auto fileMetadata = Quotient::FileSourceInfo{QUrl{}};
+    auto uploadContentType = contentType;
+    if (room->usesEncryption())
+    {
+        QFile sourceFile{filePath};
+        if (!sourceFile.open(QIODevice::ReadOnly))
+        {
+            onFailed();
+            return false;
+        }
+
+        const auto plainPayload = sourceFile.readAll();
+        if (sourceFile.error() != QFileDevice::NoError)
+        {
+            onFailed();
+            return false;
+        }
+
+        auto [encryptedMetadata, encryptedPayload] = Quotient::encryptFile(plainPayload);
+        fileMetadata = std::move(encryptedMetadata);
+        auto *buffer = new QBuffer;
+        buffer->setData(encryptedPayload);
+        if (!buffer->open(QIODevice::ReadOnly))
+        {
+            delete buffer;
+            onFailed();
+            return false;
+        }
+        uploadSource = buffer;
+        uploadContentType = QStringLiteral("application/octet-stream");
+    }
+    else
+    {
+        auto *sourceFile = new QFile{filePath};
+        if (!sourceFile->open(QIODevice::ReadOnly))
+        {
+            delete sourceFile;
+            onFailed();
+            return false;
+        }
+        uploadSource = sourceFile;
+    }
+
+    // The encrypted event carries the original name and MIME type. Do not also
+    // expose the file name through the unencrypted media upload request.
+    const auto uploadedFileName = room->usesEncryption() ? QString{} : fileName;
+    auto job = m_connection->callApi<MatrixUploadContentJob>(
+        uploadSource, uploadedFileName, uploadContentType);
+    if (!job)
+    {
+        onFailed();
+        return false;
+    }
+
+    connect(job, &Quotient::BaseJob::success, context,
+            [job, fileMetadata = std::move(fileMetadata), onUploaded, onFailed]() mutable {
+                const auto contentUrl = QUrl{job->contentUri()};
+                if (!contentUrl.isValid() || contentUrl.scheme() != QStringLiteral("mxc"))
+                {
+                    onFailed();
+                    return;
+                }
+                Quotient::setUrlInSourceInfo(fileMetadata, contentUrl);
+                onUploaded(std::move(fileMetadata));
+            });
+    connect(job, &Quotient::BaseJob::failure, context, [onFailed] { onFailed(); });
+    return true;
+}
+
 void MatrixChatService::postAttachment(Quotient::Room *room, const QString &filePath, const QString &description)
 {
     const QFileInfo fileInfo{filePath};
@@ -669,9 +766,9 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
         thumbnailReader.setScaledSize(imageSize.scaled(QSize{320, 240}, Qt::KeepAspectRatio));
         const auto thumbnail = thumbnailReader.read();
         auto candidate = std::make_shared<QTemporaryFile>();
-        if (!thumbnail.isNull() && candidate->open() && thumbnail.save(candidate.get(), "PNG"))
+        if (!thumbnail.isNull() && candidate->open() && thumbnail.save(candidate.get(), "PNG")
+            && candidate->flush() && candidate->size() > 0)
         {
-            candidate->flush();
             thumbnailPayloadSize = candidate->size();
             thumbnailSize = thumbnail.size();
             candidate->close();
@@ -679,17 +776,20 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
         }
     }
 
-    const auto uploadId = m_connection->generateTxnId();
-    const auto thumbnailUploadId = thumbnailFile ? m_connection->generateTxnId() : QString{};
     const QPointer<Quotient::Room> uploadRoom{room};
     auto *uploadContext = new QObject{room};
     const auto uploadedFileMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
     const auto uploadedThumbnailMetadata = std::make_shared<std::optional<Quotient::FileSourceInfo>>();
+    const auto thumbnailPending = std::make_shared<bool>(thumbnailFile != nullptr);
+    const auto eventPosted = std::make_shared<bool>(false);
     const auto postEvent = [uploadRoom, plainText, fileInfo, mimeType, imageAttachment, imageSize, messageType,
                             thumbnailFile, thumbnailSize,
-                            thumbnailPayloadSize, uploadedFileMetadata, uploadedThumbnailMetadata, uploadContext] {
+                            thumbnailPayloadSize, uploadedFileMetadata, uploadedThumbnailMetadata, thumbnailPending,
+                            eventPosted, uploadContext] {
+        if (*eventPosted)
+            return;
         if (!uploadRoom || !uploadedFileMetadata->has_value() ||
-            (thumbnailFile && !uploadedThumbnailMetadata->has_value()))
+            (*thumbnailPending && !uploadedThumbnailMetadata->has_value()))
             return;
 
         std::unique_ptr<Quotient::EventContent::FileContentBase> content;
@@ -713,47 +813,36 @@ void MatrixChatService::postAttachment(Quotient::Room *room, const QString &file
 
         auto event = Quotient::makeEvent<Quotient::RoomMessageEvent>(
             plainText, messageType, std::move(content));
+        *eventPosted = true;
         uploadRoom->post(std::move(event));
         uploadContext->deleteLater();
     };
 
-    // Room::postFile() creates a pending event with the local file URL and replaces it after uploading. In the
-    // libQuotient version used by Kadu, the replacement leaves that local URL next to encrypted `file` metadata.
-    // Upload first and construct the event from FileSourceInfo so only the server media URL is serialised.
-    connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
-            [uploadId, uploadedFileMetadata, postEvent](
-                const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
-                if (completedId != uploadId)
-                    return;
-
-                *uploadedFileMetadata = fileMetadata;
+    // Encrypt each payload once and rewind that exact ciphertext for every automatic retry. Re-encrypting a retry
+    // would change its key and IV, while retrying libQuotient's already-consumed source could upload no data.
+    if (!uploadAttachmentFile(
+            room, uploadContext, fileInfo.absoluteFilePath(), fileInfo.fileName(), mimeType.name(),
+            [uploadedFileMetadata, postEvent](Quotient::FileSourceInfo fileMetadata) {
+                *uploadedFileMetadata = std::move(fileMetadata);
                 postEvent();
-            });
-    connect(room, &Quotient::Room::fileTransferFailed, uploadContext,
-            [uploadId, thumbnailUploadId, uploadContext](const QString &failedId, const QString &) {
-                if (failedId == uploadId || failedId == thumbnailUploadId)
-                    uploadContext->deleteLater();
-            });
+            },
+            [uploadContext] { uploadContext->deleteLater(); }))
+        return;
 
     if (thumbnailFile)
     {
-        connect(room, &Quotient::Room::fileTransferCompleted, uploadContext,
-                [thumbnailUploadId, uploadedThumbnailMetadata, postEvent](
-                    const QString &completedId, const QUrl &, const Quotient::FileSourceInfo &fileMetadata) {
-                    if (completedId != thumbnailUploadId)
-                        return;
-
-                    *uploadedThumbnailMetadata = fileMetadata;
-                    postEvent();
-                });
+        uploadAttachmentFile(
+            room, uploadContext, thumbnailFile->fileName(), QStringLiteral("thumbnail.png"),
+            QStringLiteral("image/png"),
+            [uploadedThumbnailMetadata, postEvent](Quotient::FileSourceInfo fileMetadata) {
+                *uploadedThumbnailMetadata = std::move(fileMetadata);
+                postEvent();
+            },
+            [thumbnailPending, postEvent] {
+                *thumbnailPending = false;
+                postEvent();
+            });
     }
-
-    // In the libQuotient version used by Kadu, Connection::uploadContent() opens the QFile only when the
-    // override content type is empty. Keep the MIME type above for Matrix event metadata, but let the upload
-    // path determine it and open its source file itself.
-    room->uploadFile(uploadId, QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
-    if (thumbnailFile)
-        room->uploadFile(thumbnailUploadId, QUrl::fromLocalFile(thumbnailFile->fileName()));
 }
 
 bool MatrixChatService::sendLocationToRoom(const Chat &chat, const QString &geoUri)

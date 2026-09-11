@@ -23,12 +23,14 @@
 #include "protocols/services/chat-service.h"
 
 #include <Quotient/events/eventrelation.h>
+#include <Quotient/events/filesourceinfo.h>
 
 #include <QtCore/QPointer>
 #include <QtCore/QPair>
 #include <QtCore/QSet>
 #include <QtCore/QVector>
 
+#include <functional>
 #include <optional>
 
 class ChatManager;
@@ -97,6 +99,10 @@ private:
                   const std::optional<Quotient::EventRelation> &relation = std::nullopt);
     void dumpTimeline(Quotient::Room *room);
     void postAttachment(Quotient::Room *room, const QString &filePath, const QString &description);
+    bool uploadAttachmentFile(
+        Quotient::Room *room, QObject *context, const QString &filePath, const QString &fileName,
+        const QString &contentType, const std::function<void(Quotient::FileSourceInfo)> &onUploaded,
+        const std::function<void()> &onFailed);
     void postLocation(Quotient::Room *room, const QString &geoUri);
     bool isSupportedRoom(const Quotient::Room *room) const;
     QString directPeerId(const Quotient::Room *room) const;
