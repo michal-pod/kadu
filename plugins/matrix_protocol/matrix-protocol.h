@@ -44,6 +44,7 @@ class MatrixHistoryService;
 class MatrixTimelineService;
 class MatrixRoomInvitationNotificationService;
 class MatrixSessionService;
+class MatrixSslCertificateService;
 class PluginInjectedFactory;
 class AggregatedAccountAvatarService;
 class AggregatedContactAvatarService;
@@ -125,6 +126,7 @@ private:
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
     QPointer<MatrixRoomInvitationNotificationService> m_roomInvitationNotificationService;
     QPointer<MatrixDeviceVerificationNotificationService> m_deviceVerificationNotificationService;
+    QPointer<MatrixSslCertificateService> m_sslCertificateService;
     QPointer<Quotient::Connection> m_connection;
     MatrixChatService *m_chatService = nullptr;
     MatrixChatStateService *m_chatStateService = nullptr;
@@ -139,6 +141,10 @@ private:
     bool m_accessTokenRejected = false;
     bool m_connectionReady = false;
     bool m_loginInProgress = false;
+    bool m_sslErrorPending = false;
+    bool m_loadingCachedState = false;
+    bool m_stateCacheInitialized = false;
+    bool m_restoreStateOnConnect = false;
     QPointer<MatrixRestoreRecoveryKeyDialog> m_recoveryDialog;
     QHash<QString, QPointer<MatrixDeviceVerificationDialog>> m_deviceVerificationDialogs;
     QHash<QString, QPointer<Quotient::KeyVerificationSession>> m_inRoomVerificationSessions;
@@ -153,6 +159,10 @@ private:
     void watchRoomForDebug(Quotient::Room *room);
     void dumpMatrixRooms();
     void handleConnectionError(const QString &message, const QString &details = {});
+    bool usesHomeserverHost(const QString &hostName) const;
+    void handleSslCertificateError(const QString &requestHost);
+    void handleSslCertificateDecision(const QString &requestHost, bool accepted);
+    void startLoggedInSession();
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
     void showDeviceVerificationDialog(Quotient::KeyVerificationSession *session);
@@ -174,6 +184,7 @@ private slots:
         MatrixRoomInvitationNotificationService *roomInvitationNotificationService);
     INJEQT_SET void setDeviceVerificationNotificationService(
         MatrixDeviceVerificationNotificationService *deviceVerificationNotificationService);
+    INJEQT_SET void setSslCertificateService(MatrixSslCertificateService *sslCertificateService);
     INJEQT_INIT void init();
 
 protected:

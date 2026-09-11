@@ -60,6 +60,7 @@ public:
 
     void setConnection(Quotient::Connection *connection);
     void setContactAvatarService(MatrixContactAvatarService *contactAvatarService);
+    void completeCachedStateLoading(bool cacheLoaded);
 
 public slots:
     virtual bool sendMessage(const Message &message) override;
@@ -109,6 +110,7 @@ private:
     void handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex);
     void handleRoomMessageEvent(Quotient::Room *room, const Quotient::RoomMessageEvent &event,
                                 const QString &eventId);
+    void synchronizeAfterSync();
     void refreshNotificationModes();
     void replaceNotificationModeRules(const Chat &chat, ChatNotificationMode mode);
     void deleteNotificationModeRules(

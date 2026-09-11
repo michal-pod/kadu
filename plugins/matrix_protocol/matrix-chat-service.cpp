@@ -60,6 +60,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QTemporaryFile>
+#include <QtCore/QTimer>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtCore/QVariantMap>
@@ -310,11 +311,19 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
                 m_notificationRulesLoaded = false;
             });
     connect(m_connection, &Quotient::Connection::syncDone, this, [this] {
-        m_initialSyncFinished = true;
-        for (auto *room : m_connection->allRooms())
-            synchronizeRoom(room);
-        if (!m_notificationRulesLoaded)
-            refreshNotificationModes();
+        if (m_initialSyncFinished)
+        {
+            synchronizeAfterSync();
+            return;
+        }
+
+        const QPointer<Quotient::Connection> synchronizedConnection{m_connection};
+        // libQuotient emits syncDone before applying the queued room updates. Keep
+        // notifications disabled until events from a cache-less initial sync are consumed.
+        QTimer::singleShot(0, this, [this, synchronizedConnection] {
+            if (synchronizedConnection && synchronizedConnection == m_connection)
+                synchronizeAfterSync();
+        });
     });
     connect(m_connection, &Quotient::Connection::accountDataChanged, this, [this](const QString &type) {
         if (type == QStringLiteral("m.push_rules"))
@@ -329,6 +338,24 @@ void MatrixChatService::setConnection(Quotient::Connection *connection)
 
     for (auto *room : m_connection->allRooms())
         watchRoom(room);
+}
+
+void MatrixChatService::completeCachedStateLoading(bool cacheLoaded)
+{
+    if (cacheLoaded)
+        synchronizeAfterSync();
+}
+
+void MatrixChatService::synchronizeAfterSync()
+{
+    if (!m_connection)
+        return;
+
+    m_initialSyncFinished = true;
+    for (auto *room : m_connection->allRooms())
+        synchronizeRoom(room);
+    if (!m_notificationRulesLoaded)
+        refreshNotificationModes();
 }
 
 void MatrixChatService::setContactAvatarService(MatrixContactAvatarService *contactAvatarService)
@@ -1006,6 +1033,10 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
     connect(room, &Quotient::Room::baseStateLoaded, this, [this, room] {
         m_loadedRooms.insert(room);
         synchronizeRoom(room);
+        // A room first seen in an incremental sync emits addedMessages before
+        // baseStateLoaded. Process its initial timeline once the room is usable.
+        if (m_initialSyncFinished)
+            handleNewMessages(room, room->minTimelineIndex(), room->maxTimelineIndex());
     });
     connect(room, &Quotient::Room::memberListChanged, this,
             [this, room] { synchronizeRoomMembers(room); });
@@ -1037,7 +1068,7 @@ void MatrixChatService::watchRoom(Quotient::Room *room)
 
 void MatrixChatService::handleNewMessages(Quotient::Room *room, int fromIndex, int toIndex)
 {
-    if (!m_connection || !m_loadedRooms.contains(room))
+    if (!m_connection || !m_initialSyncFinished || !m_loadedRooms.contains(room))
         return;
 
     if (!isSupportedRoom(room))

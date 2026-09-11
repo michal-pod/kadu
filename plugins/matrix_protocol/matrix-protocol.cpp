@@ -41,6 +41,7 @@
 #include "matrix-history-service.h"
 #include "matrix-room-members-model.h"
 #include "matrix-session-service.h"
+#include "matrix-ssl-certificate-service.h"
 #include "matrix-timeline-service.h"
 #include "matrix-room-invitation-notification-service.h"
 #include "gui/matrix-device-verification-dialog.h"
@@ -150,8 +151,19 @@ void MatrixProtocol::setDeviceVerificationNotificationService(
     m_deviceVerificationNotificationService = deviceVerificationNotificationService;
 }
 
+void MatrixProtocol::setSslCertificateService(MatrixSslCertificateService *sslCertificateService)
+{
+    m_sslCertificateService = sslCertificateService;
+}
+
 void MatrixProtocol::init()
 {
+    connect(m_sslCertificateService, &MatrixSslCertificateService::certificateError,
+            this, &MatrixProtocol::handleSslCertificateError);
+    connect(m_sslCertificateService, &MatrixSslCertificateService::certificateAccepted,
+            this, [this](const QString &requestHost) { handleSslCertificateDecision(requestHost, true); });
+    connect(m_sslCertificateService, &MatrixSslCertificateService::certificateRejected,
+            this, [this](const QString &requestHost) { handleSslCertificateDecision(requestHost, false); });
     createConnection();
     m_accountAvatarService = m_pluginInjectedFactory->makeInjected<MatrixAccountAvatarService>(account(), this);
     m_accountAvatarService->setConnection(m_connection);
@@ -221,6 +233,10 @@ void MatrixProtocol::createConnection()
     m_deviceVerificationDialogs.clear();
     m_recoveryKeyRestorePrompted = false;
     m_connectionReady = false;
+    m_sslErrorPending = false;
+    m_loadingCachedState = false;
+    m_stateCacheInitialized = false;
+    m_restoreStateOnConnect = false;
     for (auto *room : m_debugWatchedRooms)
         if (room)
             disconnect(room, nullptr, this, nullptr);
@@ -257,17 +273,7 @@ void MatrixProtocol::createConnection()
         account().setRememberPassword(false);
         account().setPassword({});
         account().setHasPassword(true);
-        if (!isConnecting())
-            return;
-        m_connection->callApi<Quotient::GetConfigAuthedJob>(Quotient::BackgroundRequest)
-            .then(this, [this](Quotient::GetConfigAuthedJob *job) {
-                if (job)
-                    m_maximumAttachmentSize = job->uploadSize().value_or(0);
-            });
-        if (m_contactAvatarService)
-            m_contactAvatarService->observeContact(m_connection->userId());
-        m_connection->syncLoop();
-        loggedIn();
+        startLoggedInSession();
     });
     connect(m_connection, &Quotient::Connection::syncDone, this, &MatrixProtocol::promptForRecoveryKeyRestore);
     // Temporary Matrix room/contact diagnostic. Uncomment while investigating list mapping.
@@ -288,7 +294,7 @@ void MatrixProtocol::createConnection()
     connect(m_connection, &Quotient::Connection::newRoom, this, &MatrixProtocol::watchVerificationRoom);
     connect(m_connection, &Quotient::Connection::invitedRoom, this,
             [this](Quotient::Room *room, Quotient::Room *) {
-                if (m_roomInvitationNotificationService)
+                if (!m_loadingCachedState && m_roomInvitationNotificationService)
                     m_roomInvitationNotificationService->notifyInvitation(account(), room);
             });
     connect(m_connection, &Quotient::Connection::loggedOut, this, [this] {
@@ -519,6 +525,9 @@ void MatrixProtocol::restoreRecoveryKey()
 void MatrixProtocol::handleConnectionError(const QString &message, const QString &details)
 {
     m_loginInProgress = false;
+    if (m_sslErrorPending)
+        return;
+
     const auto errorCode = QJsonDocument::fromJson(details.toUtf8()).object().value(QStringLiteral("errcode")).toString();
     if (errorCode == QStringLiteral("M_UNKNOWN_TOKEN") || errorCode == QStringLiteral("M_FORBIDDEN"))
     {
@@ -534,8 +543,89 @@ void MatrixProtocol::handleConnectionError(const QString &message, const QString
     connectionError();
 }
 
+bool MatrixProtocol::usesHomeserverHost(const QString &hostName) const
+{
+    if (hostName.isEmpty())
+        return false;
+
+    const auto configuredHost = QUrl{MatrixAccountData{account()}.homeserver()}.host();
+    const auto connectedHost = m_connection ? m_connection->homeserver().host() : QString{};
+    return hostName.compare(configuredHost, Qt::CaseInsensitive) == 0
+           || hostName.compare(connectedHost, Qt::CaseInsensitive) == 0;
+}
+
+void MatrixProtocol::handleSslCertificateError(const QString &requestHost)
+{
+    if (!usesHomeserverHost(requestHost) || m_sslErrorPending || (!isConnecting() && !isConnected()))
+        return;
+
+    m_sslErrorPending = true;
+    m_loginInProgress = false;
+    if (m_connection)
+        m_connection->stopSync();
+    sslError();
+}
+
+void MatrixProtocol::handleSslCertificateDecision(const QString &requestHost, bool accepted)
+{
+    if (!usesHomeserverHost(requestHost) || !m_sslErrorPending)
+        return;
+
+    m_sslErrorPending = false;
+    if (accepted)
+        emit stateMachineSslErrorResolved();
+    else
+        emit stateMachineSslErrorNotResolved();
+}
+
+void MatrixProtocol::startLoggedInSession()
+{
+    if (!m_connection || !isConnecting() || m_loadingCachedState)
+        return;
+
+    if (m_stateCacheInitialized)
+    {
+        m_connection->syncLoop();
+        loggedIn();
+        return;
+    }
+
+    m_loadingCachedState = true;
+    if (m_restoreStateOnConnect)
+        m_connection->loadState();
+    const auto cacheLoaded = m_restoreStateOnConnect && !m_connection->nextBatchToken().isEmpty();
+    const QPointer<Quotient::Connection> connectedConnection{m_connection};
+    // Cached room updates are queued by libQuotient. Apply them before starting
+    // the incremental sync, so cached invitations and timelines stay silent.
+    QTimer::singleShot(0, this, [this, connectedConnection, cacheLoaded] {
+        if (!connectedConnection || connectedConnection != m_connection)
+            return;
+
+        m_loadingCachedState = false;
+        if (!isConnecting())
+            return;
+        m_stateCacheInitialized = true;
+        if (m_chatService)
+            m_chatService->completeCachedStateLoading(cacheLoaded);
+        m_connection->callApi<Quotient::GetConfigAuthedJob>(Quotient::BackgroundRequest)
+            .then(this, [this](Quotient::GetConfigAuthedJob *job) {
+                if (job)
+                    m_maximumAttachmentSize = job->uploadSize().value_or(0);
+            });
+        if (m_contactAvatarService)
+            m_contactAvatarService->observeContact(m_connection->userId());
+        m_connection->syncLoop();
+        loggedIn();
+    });
+}
+
 void MatrixProtocol::login()
 {
+    if (m_sslErrorPending)
+    {
+        sslError();
+        return;
+    }
     if (m_loginInProgress)
         return;
     if (m_accessTokenRejected)
@@ -576,8 +666,7 @@ void MatrixProtocol::login()
     if (m_connection->isLoggedIn() && m_connectionReady)
     {
         // Resuming after a network interruption must not initialise Olm twice.
-        m_connection->syncLoop();
-        loggedIn();
+        startLoggedInSession();
         return;
     }
     if (accountData.deviceId().isEmpty())
@@ -616,6 +705,7 @@ void MatrixProtocol::login()
             return;
         }
 
+        m_restoreStateOnConnect = true;
         m_connection->assumeIdentity(
             account().id(), MatrixAccountData{account()}.deviceId(), QString::fromUtf8(accessToken));
     });
@@ -635,6 +725,7 @@ void MatrixProtocol::loginWithPassword()
 
     m_accessTokenRejected = false;
     m_loginInProgress = true;
+    m_restoreStateOnConnect = false;
     m_connection->loginWithPassword(account().id(), account().password(), QStringLiteral("Kadu"));
 }
 
@@ -851,6 +942,10 @@ void MatrixProtocol::discardConnection()
 {
     m_connectionReady = false;
     m_loginInProgress = false;
+    m_sslErrorPending = false;
+    m_loadingCachedState = false;
+    m_stateCacheInitialized = false;
+    m_restoreStateOnConnect = false;
     if (m_recoveryDialog)
         m_recoveryDialog->reject();
     if (m_connection)

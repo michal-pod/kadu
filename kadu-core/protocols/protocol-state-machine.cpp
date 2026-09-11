@@ -116,13 +116,13 @@ void ProtocolStateMachine::init()
     // in this case we assume that user still wants to log in even if connection failed badly
     LoggingInMaybeOnlineState->addTransition(CurrentProtocol, SIGNAL(stateMachineConnectionError()), WantToLogInState);
     LoggingInMaybeOnlineState->addTransition(CurrentProtocol, SIGNAL(stateMachineConnectionClosed()), WantToLogInState);
-    LoggingInMaybeOnlineState->addTransition(CurrentProtocol, SIGNAL(stateMachineSslError()), WantToLogInState);
+    LoggingInMaybeOnlineState->addTransition(CurrentProtocol, SIGNAL(stateMachineSslError()), WaitForSslErrorResult);
 
     LoggedInState->addTransition(m_networkManager, SIGNAL(offline()), WantToLogInState);
     LoggedInState->addTransition(CurrentProtocol, SIGNAL(stateMachineLogout()), LoggingOutState);
     LoggedInState->addTransition(CurrentProtocol, SIGNAL(stateMachineConnectionError()), LoggingInState);
     LoggedInState->addTransition(CurrentProtocol, SIGNAL(stateMachineConnectionClosed()), LoggedOutOnlineState);
-    LoggedInState->addTransition(CurrentProtocol, SIGNAL(stateMachineSslError()), LoggingInState);
+    LoggedInState->addTransition(CurrentProtocol, SIGNAL(stateMachineSslError()), WaitForSslErrorResult);
 
     PasswordRequiredState->addTransition(m_networkManager, SIGNAL(offline()), WantToLogInState);
     PasswordRequiredState->addTransition(CurrentProtocol, SIGNAL(stateMachineLogout()), LoggedOutOnlineState);
