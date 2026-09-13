@@ -26,7 +26,7 @@
 
 SendLocationAction::SendLocationAction(QObject *parent) : ActionDescription(parent)
 {
-    setIcon(KaduIcon{"applications-internet"});
+    setIcon(KaduIcon{"mark-location"});
     setName(QStringLiteral("sendLocationAction"));
     setText(tr("Send Location"));
     setType(ActionDescription::TypeChat);

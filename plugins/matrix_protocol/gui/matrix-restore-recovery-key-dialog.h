@@ -34,6 +34,7 @@ class QRadioButton;
 class QStackedWidget;
 class QTimer;
 class QVBoxLayout;
+class IconsManager;
 class MatrixDeviceVerificationWidget;
 
 namespace Quotient
@@ -47,7 +48,7 @@ class MatrixRestoreRecoveryKeyDialog final : public QDialog
 
 public:
     explicit MatrixRestoreRecoveryKeyDialog(
-        Quotient::Connection *connection, bool allowDeferral, QWidget *parent = nullptr);
+        Quotient::Connection *connection, IconsManager *iconsManager, bool allowDeferral, QWidget *parent = nullptr);
     void reject() override;
 
 signals:
@@ -65,6 +66,7 @@ private:
     };
 
     QPointer<Quotient::Connection> m_connection;
+    QPointer<IconsManager> m_iconsManager;
     QStackedWidget *m_pages = nullptr;
     QRadioButton *m_deviceChoice = nullptr;
     QRadioButton *m_recoveryKeyChoice = nullptr;
@@ -107,6 +109,7 @@ private:
     void failDeviceRecovery(const QString &message);
     void setRestoreInProgress(bool inProgress);
     void showError(const QString &message);
+    void setButtonIcon(QPushButton *button, const QString &name) const;
 
     void restore();
 };

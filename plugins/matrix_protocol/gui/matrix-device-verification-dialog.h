@@ -23,6 +23,7 @@
 
 class MatrixDeviceVerificationWidget;
 class QPushButton;
+class IconsManager;
 
 namespace Quotient
 {
@@ -34,9 +35,11 @@ class MatrixDeviceVerificationDialog final : public QDialog
     Q_OBJECT
 
 public:
-    explicit MatrixDeviceVerificationDialog(Quotient::KeyVerificationSession *session, QWidget *parent = nullptr);
+    explicit MatrixDeviceVerificationDialog(
+        Quotient::KeyVerificationSession *session, IconsManager *iconsManager, QWidget *parent = nullptr);
 
 private:
+    IconsManager *m_iconsManager = nullptr;
     MatrixDeviceVerificationWidget *m_verificationWidget = nullptr;
     QPushButton *m_closeButton = nullptr;
 

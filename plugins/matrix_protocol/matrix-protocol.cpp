@@ -532,7 +532,7 @@ void MatrixProtocol::showRecoveryDialog(bool allowDeferral)
         return;
     }
     m_recoveryKeyRestorePrompted = true;
-    auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection, allowDeferral};
+    auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection, m_iconsManager.data(), allowDeferral};
     m_recoveryDialog = dialog;
     connect(dialog, &MatrixRestoreRecoveryKeyDialog::keysRestored, this, [this] {
         if (m_timelineService)
@@ -821,7 +821,7 @@ void MatrixProtocol::showDeviceVerificationDialog(Quotient::KeyVerificationSessi
     if (!session || session->userVerification())
         return;
 
-    auto *dialog = new MatrixDeviceVerificationDialog{session};
+    auto *dialog = new MatrixDeviceVerificationDialog{session, m_iconsManager.data()};
     const auto deviceId = session->remoteDeviceId();
     m_deviceVerificationDialogs.insert(deviceId, dialog);
     connect(dialog, &QObject::destroyed, this, [this, deviceId, dialog] {

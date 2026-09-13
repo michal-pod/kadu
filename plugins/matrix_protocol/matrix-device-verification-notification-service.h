@@ -16,6 +16,7 @@
 #include <injeqt/injeqt.h>
 
 class Account;
+class IconsManager;
 class MatrixDeviceVerificationDialog;
 struct Notification;
 class NotificationCallbackRepository;
@@ -39,6 +40,7 @@ public:
     void notifyVerificationRequest(const Account &account, Quotient::KeyVerificationSession *session);
 
 private:
+    QPointer<IconsManager> m_iconsManager;
     QPointer<NotificationCallbackRepository> m_notificationCallbackRepository;
     QPointer<NotificationEventRepository> m_notificationEventRepository;
     QPointer<NotificationService> m_notificationService;
@@ -54,6 +56,7 @@ private:
     void rejectVerification(const Notification &notification);
 
 private slots:
+    INJEQT_SET void setIconsManager(IconsManager *iconsManager);
     INJEQT_SET void setNotificationCallbackRepository(NotificationCallbackRepository *notificationCallbackRepository);
     INJEQT_SET void setNotificationEventRepository(NotificationEventRepository *notificationEventRepository);
     INJEQT_SET void setNotificationService(NotificationService *notificationService);

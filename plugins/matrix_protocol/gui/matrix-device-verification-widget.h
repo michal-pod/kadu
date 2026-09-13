@@ -27,6 +27,7 @@
 class QLabel;
 class QPushButton;
 class QVBoxLayout;
+class IconsManager;
 
 class MatrixDeviceVerificationWidget final : public QWidget
 {
@@ -34,7 +35,7 @@ class MatrixDeviceVerificationWidget final : public QWidget
 
 public:
     explicit MatrixDeviceVerificationWidget(
-        Quotient::KeyVerificationSession *session, QWidget *parent = nullptr);
+        Quotient::KeyVerificationSession *session, IconsManager *iconsManager, QWidget *parent = nullptr);
 
     void cancelVerification();
 
@@ -44,6 +45,8 @@ signals:
 
 private:
     QPointer<Quotient::KeyVerificationSession> m_session;
+    QPointer<IconsManager> m_iconsManager;
+    QLabel *m_resultIconLabel = nullptr;
     QLabel *m_statusLabel = nullptr;
     QVBoxLayout *m_emojisLayout = nullptr;
     QPushButton *m_acceptButton = nullptr;
@@ -55,6 +58,7 @@ private:
     void updateState();
     void showSasEmojis();
     void clearSasEmojis();
+    void showResultIcon(bool success);
     void finishVerification();
     void rejectVerification();
 };

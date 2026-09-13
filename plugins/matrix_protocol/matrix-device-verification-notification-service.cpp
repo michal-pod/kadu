@@ -11,6 +11,7 @@
 #include "gui/matrix-device-verification-dialog.h"
 #include "html/html-conversion.h"
 #include "html/html-string.h"
+#include "icons/icons-manager.h"
 #include "notification/notification-callback-repository.h"
 #include "notification/notification-event-repository.h"
 #include "notification/notification-service.h"
@@ -34,6 +35,11 @@ MatrixDeviceVerificationNotificationService::MatrixDeviceVerificationNotificatio
 
 MatrixDeviceVerificationNotificationService::~MatrixDeviceVerificationNotificationService()
 {
+}
+
+void MatrixDeviceVerificationNotificationService::setIconsManager(IconsManager *iconsManager)
+{
+    m_iconsManager = iconsManager;
 }
 
 void MatrixDeviceVerificationNotificationService::setNotificationCallbackRepository(
@@ -126,7 +132,7 @@ void MatrixDeviceVerificationNotificationService::showVerificationDialog(const N
     if (!session || session->state() != Quotient::KeyVerificationSession::INCOMING)
         return;
 
-    auto *dialog = new MatrixDeviceVerificationDialog{session};
+    auto *dialog = new MatrixDeviceVerificationDialog{session, m_iconsManager.data()};
     m_dialogs.insert(key, dialog);
     connect(dialog, &QObject::destroyed, this, [this, key] { m_dialogs.remove(key); });
     dialog->show();

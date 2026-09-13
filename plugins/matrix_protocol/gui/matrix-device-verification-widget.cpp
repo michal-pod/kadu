@@ -20,6 +20,9 @@
 #include "matrix-device-verification-widget.h"
 #include "matrix-device-verification-widget.moc"
 
+#include "icons/icons-manager.h"
+#include "icons/kadu-icon.h"
+
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
@@ -49,11 +52,16 @@ QString MatrixDeviceVerificationWidget::errorMessage(Quotient::KeyVerificationSe
 }
 
 MatrixDeviceVerificationWidget::MatrixDeviceVerificationWidget(
-    Quotient::KeyVerificationSession *session, QWidget *parent)
-    : QWidget{parent}, m_session{session}
+    Quotient::KeyVerificationSession *session, IconsManager *iconsManager, QWidget *parent)
+    : QWidget{parent}, m_session{session}, m_iconsManager{iconsManager}
 {
     auto *layout = new QVBoxLayout{this};
     layout->setContentsMargins(0, 0, 0, 0);
+
+    m_resultIconLabel = new QLabel{this};
+    m_resultIconLabel->setAlignment(Qt::AlignCenter);
+    m_resultIconLabel->setVisible(false);
+    layout->addWidget(m_resultIconLabel);
 
     m_statusLabel = new QLabel{this};
     m_statusLabel->setTextFormat(Qt::PlainText);
@@ -70,6 +78,12 @@ MatrixDeviceVerificationWidget::MatrixDeviceVerificationWidget(
     m_acceptButton = new QPushButton{tr("Start verification"), this};
     m_confirmButton = new QPushButton{tr("They match"), this};
     m_mismatchButton = new QPushButton{tr("They do not match"), this};
+    if (m_iconsManager)
+    {
+        m_acceptButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("security-high")}));
+        m_confirmButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-ok")}));
+        m_mismatchButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-error")}));
+    }
     buttonsLayout->addWidget(m_acceptButton);
     buttonsLayout->addWidget(m_confirmButton);
     buttonsLayout->addWidget(m_mismatchButton);
@@ -94,6 +108,8 @@ MatrixDeviceVerificationWidget::MatrixDeviceVerificationWidget(
             if (!m_terminalState)
             {
                 const auto message = tr("The verification session is no longer available.");
+                showResultIcon(false);
+                m_statusLabel->setAlignment(Qt::AlignCenter);
                 m_statusLabel->setText(message);
                 emit verificationFailed(message);
             }
@@ -126,7 +142,7 @@ void MatrixDeviceVerificationWidget::showSasEmojis()
         const auto &emoji = emojis.at(index);
         auto *emojiLabel = new QLabel{emoji.emoji};
         auto font = emojiLabel->font();
-        font.setPointSize(font.pointSize() + 10);
+        font.setPointSize(font.pointSize() + 14);
         emojiLabel->setFont(font);
         emojiLabel->setAlignment(Qt::AlignCenter);
 
@@ -141,15 +157,32 @@ void MatrixDeviceVerificationWidget::showSasEmojis()
     m_emojisLayout->addWidget(emojisWidget);
 }
 
+void MatrixDeviceVerificationWidget::showResultIcon(bool success)
+{
+    if (!m_iconsManager)
+    {
+        m_resultIconLabel->setVisible(false);
+        return;
+    }
+
+    const auto iconName = success ? QStringLiteral("dialog-ok") : QStringLiteral("dialog-error");
+    m_resultIconLabel->setPixmap(m_iconsManager->iconByPath(KaduIcon{iconName}).pixmap(32, 32));
+    m_resultIconLabel->setVisible(true);
+}
+
 void MatrixDeviceVerificationWidget::updateState()
 {
     clearSasEmojis();
+    m_resultIconLabel->setVisible(false);
+    m_statusLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_acceptButton->setVisible(false);
     m_confirmButton->setVisible(false);
     m_mismatchButton->setVisible(false);
 
     if (!m_session)
     {
+        showResultIcon(false);
+        m_statusLabel->setAlignment(Qt::AlignCenter);
         m_statusLabel->setText(tr("The verification session is no longer available."));
         return;
     }
@@ -185,19 +218,23 @@ void MatrixDeviceVerificationWidget::updateState()
                                    .arg(m_session->remoteDeviceId()));
         break;
     case Quotient::KeyVerificationSession::DONE:
+        showResultIcon(true);
+        m_statusLabel->setAlignment(Qt::AlignCenter);
+        m_statusLabel->setText(tr("Device %1 was verified.").arg(m_session->remoteDeviceId()));
         if (!m_terminalState)
         {
             m_terminalState = true;
-            m_statusLabel->setText(tr("Device %1 was verified.").arg(m_session->remoteDeviceId()));
             emit verificationSucceeded();
         }
         break;
     case Quotient::KeyVerificationSession::CANCELED:
+        showResultIcon(false);
+        m_statusLabel->setAlignment(Qt::AlignCenter);
+        m_statusLabel->setText(errorMessage(m_session->error()));
         if (!m_terminalState)
         {
             m_terminalState = true;
             const auto message = errorMessage(m_session->error());
-            m_statusLabel->setText(message);
             emit verificationFailed(message);
         }
         break;

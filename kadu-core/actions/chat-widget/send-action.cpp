@@ -29,7 +29,7 @@ SendAction::SendAction(QObject *parent)
         :   // using C++ initializers breaks Qt's lupdate
           ActionDescription(parent)
 {
-    setIcon(KaduIcon{"go-next"});
+    setIcon(KaduIcon{"mail-send"});
     setName(QStringLiteral("sendAction"));
     setText(tr("&Send"));
     setType(ActionDescription::TypeChat);

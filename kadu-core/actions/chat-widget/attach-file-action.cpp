@@ -26,7 +26,7 @@
 
 AttachFileAction::AttachFileAction(QObject *parent) : ActionDescription(parent)
 {
-    setIcon(KaduIcon{"document-send"});
+    setIcon(KaduIcon{"mail-attachment"});
     setName(QStringLiteral("attachFileAction"));
     setText(tr("Attach File"));
     setType(ActionDescription::TypeChat);

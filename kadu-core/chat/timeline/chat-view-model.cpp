@@ -360,7 +360,7 @@ QVariantList ChatViewModel::chatHeaderActions() const
 
     return {QVariantMap{{QStringLiteral("id"), QStringLiteral("showPinnedMessages")},
                         {QStringLiteral("text"), tr("Pinned messages")},
-                        {QStringLiteral("iconName"), QStringLiteral("list-add")}}};
+                        {QStringLiteral("iconName"), QStringLiteral("window-pin")}}};
 }
 
 ChatViewModel::ComposerMode ChatViewModel::composerMode() const
@@ -473,22 +473,22 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Reply)},
                                    {QStringLiteral("key"), QStringLiteral("reply")},
                                    {QStringLiteral("text"), tr("Reply")},
-                                   {QStringLiteral("iconName"), QStringLiteral("go-previous")}});
+                                   {QStringLiteral("iconName"), QStringLiteral("mail-reply-sender")}});
     if (available.testFlag(ChatTimelineAction::Edit))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Edit)},
                                    {QStringLiteral("key"), QStringLiteral("edit")},
                                    {QStringLiteral("text"), tr("Edit message")},
-                                   {QStringLiteral("iconName"), QStringLiteral("document-open")}});
+                                   {QStringLiteral("iconName"), QStringLiteral("document-edit")}});
     if (available.testFlag(ChatTimelineAction::SaveAttachment))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::SaveAttachment)},
                                    {QStringLiteral("key"), QStringLiteral("saveAttachment")},
                                    {QStringLiteral("text"), tr("Save attachment")},
-                                   {QStringLiteral("iconName"), QStringLiteral("document-open")}});
+                                   {QStringLiteral("iconName"), QStringLiteral("document-save")}});
     if (available.testFlag(ChatTimelineAction::Delete))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Delete)},
                                    {QStringLiteral("key"), QStringLiteral("delete")},
                                    {QStringLiteral("text"), tr("Delete message")},
-                                   {QStringLiteral("iconName"), QStringLiteral("edit-delete")},
+                                   {QStringLiteral("iconName"), QStringLiteral("user-trash")},
                                    {QStringLiteral("confirmationText"), tr("Do you want to delete this message?")},
                                    {QStringLiteral("confirmationActionText"), tr("Delete")},
                                    {QStringLiteral("destructive"), true}});
@@ -496,17 +496,17 @@ QVariantList ChatViewModel::timelineActions(const QString &stableId) const
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::ShowSource)},
                                    {QStringLiteral("key"), QStringLiteral("showSource")},
                                    {QStringLiteral("text"), tr("Show source")},
-                                   {QStringLiteral("iconName"), QStringLiteral("help-contents")}});
+                                   {QStringLiteral("iconName"), QStringLiteral("text-x-script")}});
     if (available.testFlag(ChatTimelineAction::Pin))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Pin)},
                                    {QStringLiteral("key"), QStringLiteral("pin")},
                                    {QStringLiteral("text"), tr("Pin message")},
-                                   {QStringLiteral("iconName"), QStringLiteral("list-add")}});
+                                   {QStringLiteral("iconName"), QStringLiteral("window-pin")}});
     if (available.testFlag(ChatTimelineAction::Unpin))
         actions.append(QVariantMap{{QStringLiteral("id"), static_cast<int>(ChatTimelineAction::Unpin)},
                                    {QStringLiteral("key"), QStringLiteral("unpin")},
                                    {QStringLiteral("text"), tr("Unpin message")},
-                                   {QStringLiteral("iconName"), QStringLiteral("list-remove")},
+                                   {QStringLiteral("iconName"), QStringLiteral("window-unpin")},
                                    {QStringLiteral("confirmationText"), tr("Do you want to unpin this message?")},
                                    {QStringLiteral("confirmationActionText"), tr("Unpin")},
                                    {QStringLiteral("destructive"), true}});

@@ -22,30 +22,46 @@
 
 #include "matrix-device-verification-widget.h"
 
+#include "icons/icons-manager.h"
+#include "icons/kadu-icon.h"
+
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QVBoxLayout>
 
 MatrixDeviceVerificationDialog::MatrixDeviceVerificationDialog(
-    Quotient::KeyVerificationSession *session, QWidget *parent)
-    : QDialog{parent}
+    Quotient::KeyVerificationSession *session, IconsManager *iconsManager, QWidget *parent)
+    : QDialog{parent}, m_iconsManager{iconsManager}
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Verify Matrix Device"));
 
+    if (m_iconsManager)
+        setWindowIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("security-high")}));
+
     auto *layout = new QVBoxLayout{this};
-    m_verificationWidget = new MatrixDeviceVerificationWidget{session, this};
+    m_verificationWidget = new MatrixDeviceVerificationWidget{session, m_iconsManager, this};
     layout->addWidget(m_verificationWidget);
 
     auto *buttons = new QDialogButtonBox{Qt::Horizontal, this};
     m_closeButton = buttons->addButton(QDialogButtonBox::Close);
     m_closeButton->setText(tr("Cancel"));
+    if (m_iconsManager)
+        m_closeButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-cancel")}));
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(m_verificationWidget, &MatrixDeviceVerificationWidget::verificationSucceeded,
-            this, [this] { m_closeButton->setText(tr("Close")); });
+            this, [this] {
+                m_closeButton->setText(tr("Close"));
+                if (m_iconsManager)
+                    m_closeButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-ok")}));
+            });
     connect(m_verificationWidget, &MatrixDeviceVerificationWidget::verificationFailed,
-            this, [this] { m_closeButton->setText(tr("Close")); });
+            this, [this] {
+                m_closeButton->setText(tr("Close"));
+                if (m_iconsManager)
+                    m_closeButton->setIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-ok")}));
+            });
 }
 
 void MatrixDeviceVerificationDialog::reject()

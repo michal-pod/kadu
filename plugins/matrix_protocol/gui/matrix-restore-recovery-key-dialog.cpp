@@ -22,6 +22,9 @@
 
 #include "matrix-device-verification-widget.h"
 
+#include "icons/icons-manager.h"
+#include "icons/kadu-icon.h"
+
 #include <Quotient/connection.h>
 #include <Quotient/csapi/device_management.h>
 #include <Quotient/database.h>
@@ -35,7 +38,6 @@
 #include <QtCore/QLocale>
 #include <QtCore/QTimer>
 
-#include <QtWidgets/QApplication>
 #include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
@@ -48,7 +50,6 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QRadioButton>
 #include <QtWidgets/QStackedWidget>
-#include <QtWidgets/QStyle>
 #include <QtWidgets/QVBoxLayout>
 
 namespace MatrixRecoveryDetails
@@ -128,12 +129,14 @@ RestoredSecrets restoreSecrets(QString encodedKey, const QJsonObject &accountDat
 }
 
 MatrixRestoreRecoveryKeyDialog::MatrixRestoreRecoveryKeyDialog(
-    Quotient::Connection *connection, bool allowDeferral, QWidget *parent)
-    : QDialog{parent}, m_connection{connection}, m_allowDeferral{allowDeferral}
+    Quotient::Connection *connection, IconsManager *iconsManager, bool allowDeferral, QWidget *parent)
+    : QDialog{parent}, m_connection{connection}, m_iconsManager{iconsManager}, m_allowDeferral{allowDeferral}
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Recover Matrix Encryption Keys"));
     setMinimumWidth(560);
+    if (m_iconsManager)
+        setWindowIcon(m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-password")}));
 
     auto *layout = new QVBoxLayout{this};
     m_pages = new QStackedWidget{this};
@@ -150,9 +153,9 @@ MatrixRestoreRecoveryKeyDialog::MatrixRestoreRecoveryKeyDialog(
     m_primaryButton = buttons->addButton(tr("Continue"), QDialogButtonBox::AcceptRole);
     m_cancelButton = buttons->addButton(
         m_allowDeferral ? tr("Do this later") : tr("Cancel"), QDialogButtonBox::RejectRole);
-    m_backButton->setIcon(qApp->style()->standardIcon(QStyle::SP_ArrowBack));
-    m_primaryButton->setIcon(qApp->style()->standardIcon(QStyle::SP_DialogApplyButton));
-    m_cancelButton->setIcon(qApp->style()->standardIcon(QStyle::SP_DialogCancelButton));
+    setButtonIcon(m_backButton, QStringLiteral("go-previous"));
+    setButtonIcon(m_primaryButton, QStringLiteral("go-next"));
+    setButtonIcon(m_cancelButton, QStringLiteral("dialog-cancel"));
     layout->addWidget(buttons);
 
     connect(m_backButton, &QPushButton::clicked, this, &MatrixRestoreRecoveryKeyDialog::back);
@@ -251,7 +254,7 @@ QWidget *MatrixRestoreRecoveryKeyDialog::createDevicesPage()
     m_devicesStatusLabel->setWordWrap(true);
     layout->addWidget(m_devicesStatusLabel);
     auto *refreshButton = new QPushButton{tr("Refresh devices"), page};
-    refreshButton->setIcon(qApp->style()->standardIcon(QStyle::SP_BrowserReload));
+    setButtonIcon(refreshButton, QStringLiteral("view-refresh"));
     layout->addWidget(refreshButton, 0, Qt::AlignLeft);
     connect(refreshButton, &QPushButton::clicked, this, &MatrixRestoreRecoveryKeyDialog::loadDevices);
     connect(m_devices, &QListWidget::itemSelectionChanged, this, [this] {
@@ -261,6 +264,10 @@ QWidget *MatrixRestoreRecoveryKeyDialog::createDevicesPage()
         m_primaryButton->setText(
             usable && m_verifiedDevices.value(item->data(Qt::UserRole).toString())
                 ? tr("Request keys") : tr("Verify device"));
+        setButtonIcon(
+            m_primaryButton,
+            usable && m_verifiedDevices.value(item->data(Qt::UserRole).toString())
+                ? QStringLiteral("dialog-password") : QStringLiteral("security-high"));
     });
     connect(m_devices, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
         if (item && item->flags().testFlag(Qt::ItemIsEnabled))
@@ -292,6 +299,9 @@ QWidget *MatrixRestoreRecoveryKeyDialog::createRecoveryKeyPage()
     m_recoveryKeyEdit = new QLineEdit{page};
     m_recoveryKeyEdit->setEchoMode(QLineEdit::Password);
     m_recoveryKeyEdit->setPlaceholderText(tr("Recovery key"));
+    if (m_iconsManager)
+        m_recoveryKeyEdit->addAction(
+            m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-password")}), QLineEdit::LeadingPosition);
     layout->addWidget(m_recoveryKeyEdit);
     m_showRecoveryKey = new QCheckBox{tr("Show recovery key"), page};
     layout->addWidget(m_showRecoveryKey);
@@ -331,6 +341,14 @@ QWidget *MatrixRestoreRecoveryKeyDialog::createCompletePage()
 {
     auto *page = new QWidget{m_pages};
     auto *layout = new QVBoxLayout{page};
+    if (m_iconsManager)
+    {
+        auto *resultIcon = new QLabel{page};
+        resultIcon->setAlignment(Qt::AlignCenter);
+        resultIcon->setPixmap(
+            m_iconsManager->iconByPath(KaduIcon{QStringLiteral("dialog-ok")}).pixmap(32, 32));
+        layout->addWidget(resultIcon);
+    }
     auto *heading = new QLabel{tr("Encryption keys recovered"), page};
     auto font = heading->font();
     font.setBold(true);
@@ -363,7 +381,7 @@ void MatrixRestoreRecoveryKeyDialog::updateButtons(Page page)
                                 || page == Page::RecoveryKey || page == Page::Complete);
     m_cancelButton->setVisible(page != Page::Complete);
     m_cancelButton->setEnabled(true);
-    m_primaryButton->setIcon(qApp->style()->standardIcon(QStyle::SP_DialogApplyButton));
+    setButtonIcon(m_primaryButton, QStringLiteral("go-next"));
 
     switch (page)
     {
@@ -375,15 +393,21 @@ void MatrixRestoreRecoveryKeyDialog::updateButtons(Page page)
         m_primaryButton->setText(tr("Verify device"));
         m_primaryButton->setEnabled(
             m_devices->currentItem() && m_devices->currentItem()->flags().testFlag(Qt::ItemIsEnabled));
+        setButtonIcon(
+            m_primaryButton,
+            m_devices->currentItem()
+                    && m_verifiedDevices.value(m_devices->currentItem()->data(Qt::UserRole).toString())
+                ? QStringLiteral("dialog-password") : QStringLiteral("security-high"));
         break;
     case Page::RecoveryKey:
         m_primaryButton->setText(tr("Restore"));
         m_primaryButton->setEnabled(!m_restoring);
+        setButtonIcon(m_primaryButton, QStringLiteral("dialog-password"));
         break;
     case Page::Complete:
         m_primaryButton->setText(tr("Close"));
         m_primaryButton->setEnabled(true);
-        m_primaryButton->setIcon(qApp->style()->standardIcon(QStyle::SP_DialogCloseButton));
+        setButtonIcon(m_primaryButton, QStringLiteral("dialog-ok"));
         break;
     case Page::Verification:
     case Page::Waiting:
@@ -416,8 +440,11 @@ void MatrixRestoreRecoveryKeyDialog::primaryAction()
 
 void MatrixRestoreRecoveryKeyDialog::back()
 {
-    if (!m_restoring)
-        setPage(Page::Choice);
+    if (m_restoring)
+        return;
+
+    const auto page = static_cast<Page>(m_pages->currentIndex());
+    setPage(page == Page::Verification ? Page::Devices : Page::Choice);
 }
 
 void MatrixRestoreRecoveryKeyDialog::loadDevices()
@@ -461,6 +488,14 @@ void MatrixRestoreRecoveryKeyDialog::loadDevices()
                 details += tr(" — encryption keys unavailable");
 
             auto *item = new QListWidgetItem{QStringLiteral("%1\n%2").arg(name, details), m_devices};
+            if (m_iconsManager)
+            {
+                const auto iconName = verified
+                                          ? QStringLiteral("security-high")
+                                          : knownForEncryption ? QStringLiteral("computer")
+                                                               : QStringLiteral("security-low");
+                item->setIcon(m_iconsManager->iconByPath(KaduIcon{iconName}));
+            }
             item->setData(Qt::UserRole, device.deviceId);
             if (!knownForEncryption)
             {
@@ -529,14 +564,15 @@ void MatrixRestoreRecoveryKeyDialog::startDeviceVerification()
         m_verificationWidget->deleteLater();
     }
     m_verificationWidget = new MatrixDeviceVerificationWidget{
-        session, m_pages->widget(static_cast<int>(Page::Verification))};
+        session, m_iconsManager.data(), m_pages->widget(static_cast<int>(Page::Verification))};
     m_verificationLayout->addWidget(m_verificationWidget);
     connect(m_verificationWidget, &MatrixDeviceVerificationWidget::verificationSucceeded,
             this, &MatrixRestoreRecoveryKeyDialog::startDeviceRecovery);
     connect(m_verificationWidget, &MatrixDeviceVerificationWidget::verificationFailed, this,
             [this](const QString &message) {
-                setPage(Page::Devices);
                 m_devicesStatusLabel->setText(message);
+                m_backButton->setVisible(true);
+                m_backButton->setEnabled(true);
             });
     setPage(Page::Verification);
 }
@@ -615,9 +651,17 @@ void MatrixRestoreRecoveryKeyDialog::setRestoreInProgress(bool inProgress)
 
 void MatrixRestoreRecoveryKeyDialog::showError(const QString &message)
 {
+    m_restoring = false;
+    setRestoreInProgress(false);
     m_statusLabel->setText(message);
+    m_recoveryKeyEdit->clear();
     m_recoveryKeyEdit->setFocus();
-    m_recoveryKeyEdit->selectAll();
+}
+
+void MatrixRestoreRecoveryKeyDialog::setButtonIcon(QPushButton *button, const QString &name) const
+{
+    if (button && m_iconsManager)
+        button->setIcon(m_iconsManager->iconByPath(KaduIcon{name}));
 }
 
 void MatrixRestoreRecoveryKeyDialog::restore()
@@ -659,7 +703,6 @@ void MatrixRestoreRecoveryKeyDialog::restore()
             return;
         if (!result.error.isEmpty())
         {
-            setRestoreInProgress(false);
             showError(result.error);
             return;
         }
@@ -674,7 +717,6 @@ void MatrixRestoreRecoveryKeyDialog::restore()
             database->storeEncrypted(name, secret);
             if (database->loadEncrypted(name) != secret)
             {
-                setRestoreInProgress(false);
                 showError(tr("The encryption keys could not be saved. Check that the profile directory is writable and try again."));
                 return;
             }
