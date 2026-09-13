@@ -112,8 +112,12 @@ public:
     void joinRoom(const QString &roomIdOrAlias);
     void rejectRoomInvitation(const QString &roomId);
     QStringList availableVerificationDevices() const;
+    bool recoveryKeyRestoreRequired() const;
     void verifyDevice(const QString &deviceId);
     void restoreRecoveryKey();
+
+signals:
+    void recoveryKeyRestoreStateChanged();
 
 private:
     QPointer<ChatServiceRepository> m_chatServiceRepository;
@@ -167,6 +171,7 @@ private:
     void startLoggedInSession();
     void loginWithPassword();
     void promptForRecoveryKeyRestore();
+    void showRecoveryDialog(bool allowDeferral);
     void showDeviceVerificationDialog(Quotient::KeyVerificationSession *session);
     void watchVerificationRoom(Quotient::Room *room);
     void scheduleVerificationRefresh(Quotient::Room *room);

@@ -20,6 +20,8 @@
 #include "matrix-add-account-widget.h"
 #include "matrix-add-account-widget.moc"
 
+#include "matrix-account-form-utils.h"
+
 #include "accounts/account-manager.h"
 #include "accounts/account-storage.h"
 #include "identities/identity-manager.h"
@@ -28,10 +30,9 @@
 #include "widgets/simple-configuration-value-state-notifier.h"
 
 #include "../matrix-account-data.h"
-#include "../matrix-id-validator.h"
 
-#include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLabel>
@@ -79,21 +80,23 @@ void MatrixAddAccountWidget::createGui()
     auto form = new QFormLayout;
     mainLayout->addLayout(form);
 
-    m_matrixId = new QLineEdit{this};
-    m_matrixId->setValidator(new MatrixIdValidator{m_matrixId});
-    m_matrixId->setPlaceholderText("@alice:example.org");
-    connect(m_matrixId, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
-    form->addRow(tr("Matrix ID:"), m_matrixId);
-
-    m_homeserver = new QLineEdit{this};
-    m_homeserver->setPlaceholderText("https://matrix.org");
-    connect(m_homeserver, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
-    form->addRow(tr("Homeserver:"), m_homeserver);
+    m_login = new QLineEdit{this};
+    m_login->setPlaceholderText(tr("alice"));
+    connect(m_login, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
+    form->addRow(tr("Login:"), m_login);
 
     m_password = new QLineEdit{this};
     m_password->setEchoMode(QLineEdit::Password);
     connect(m_password, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
     form->addRow(tr("Password:"), m_password);
+
+    m_homeserver = new QComboBox{this};
+    m_homeserver->setEditable(true);
+    m_homeserver->setInsertPolicy(QComboBox::NoInsert);
+    m_homeserver->addItems(MatrixAccountForm::suggestedHomeservers());
+    m_homeserver->lineEdit()->setPlaceholderText(tr("example.org"));
+    connect(m_homeserver, SIGNAL(editTextChanged(QString)), this, SLOT(dataChanged()));
+    form->addRow(tr("Homeserver:"), m_homeserver);
 
     m_identity = m_pluginInjectedFactory->makeInjected<IdentitiesComboBox>(this);
     connect(m_identity, SIGNAL(currentIndexChanged(int)), this, SLOT(dataChanged()));
@@ -125,8 +128,8 @@ void MatrixAddAccountWidget::createGui()
 
 void MatrixAddAccountWidget::resetGui()
 {
-    m_matrixId->clear();
-    m_homeserver->setText("https://matrix.org");
+    m_login->clear();
+    m_homeserver->setCurrentText(QStringLiteral("matrix.org"));
     m_password->clear();
     m_identityManager->removeUnused();
     m_identity->setCurrentIndex(0);
@@ -135,10 +138,12 @@ void MatrixAddAccountWidget::resetGui()
 
 bool MatrixAddAccountWidget::validHomeserver() const
 {
-    const auto value = m_homeserver->text().trimmed();
-    const auto url = QUrl::fromUserInput(value);
-    return !value.isEmpty() && url.isValid() && !url.host().isEmpty() &&
-           (url.scheme() == "https" || url.scheme() == "http");
+    return MatrixAccountForm::isHomeserverHostValid(m_homeserver->currentText());
+}
+
+QString MatrixAddAccountWidget::matrixId() const
+{
+    return MatrixAccountForm::matrixId(m_login->text(), m_homeserver->currentText());
 }
 
 void MatrixAddAccountWidget::apply()
@@ -147,12 +152,12 @@ void MatrixAddAccountWidget::apply()
         return;
 
     auto account = m_accountStorage->create("matrix");
-    account.setId(m_matrixId->text().trimmed());
+    account.setId(matrixId());
     account.setPassword(m_password->text());
     account.setHasPassword(!m_password->text().isEmpty());
     account.setRememberPassword(false);
     account.setAccountIdentity(m_identity->currentIdentity());
-    MatrixAccountData{account}.setHomeserver(m_homeserver->text().trimmed());
+    MatrixAccountData{account}.setHomeserver(MatrixAccountForm::homeserverUrl(m_homeserver->currentText()));
 
     resetGui();
     emit accountCreated(account);
@@ -165,12 +170,12 @@ void MatrixAddAccountWidget::cancel()
 
 void MatrixAddAccountWidget::dataChanged()
 {
-    const auto valid = m_matrixId->hasAcceptableInput() && validHomeserver() && !m_password->text().isEmpty() &&
-                       m_identity->currentIdentity() &&
-                       !m_accountManager->byId("matrix", m_matrixId->text().trimmed());
+    const auto valid = MatrixAccountForm::isLoginValid(m_login->text()) && validHomeserver()
+                       && !m_password->text().isEmpty() && m_identity->currentIdentity()
+                       && !m_accountManager->byId("matrix", matrixId());
     m_addAccountButton->setEnabled(valid);
 
-    const auto untouched = m_matrixId->text().isEmpty() && m_homeserver->text() == "https://matrix.org" &&
+    const auto untouched = m_login->text().isEmpty() && m_homeserver->currentText() == QStringLiteral("matrix.org") &&
                            m_password->text().isEmpty() && m_identity->currentIndex() == 0;
     simpleStateNotifier()->setState(untouched ? StateNotChanged : valid ? StateChangedDataValid : StateChangedDataInvalid);
 }

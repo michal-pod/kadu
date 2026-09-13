@@ -48,16 +48,17 @@ private:
     QPointer<IdentityManager> m_identityManager;
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
 
-    QLineEdit *m_matrixId = nullptr;
+    QLineEdit *m_login = nullptr;
     QLineEdit *m_homeserver = nullptr;
     QLineEdit *m_password = nullptr;
     IdentitiesComboBox *m_identity = nullptr;
     QPushButton *m_applyButton = nullptr;
     QPushButton *m_cancelButton = nullptr;
+    QPushButton *m_recoverKeysButton = nullptr;
 
     void createGui();
     void loadAccountData();
-    bool validHomeserver() const;
+    void updateRecoveryButton();
 
 private slots:
     INJEQT_SET void setAccountManager(AccountManager *accountManager);

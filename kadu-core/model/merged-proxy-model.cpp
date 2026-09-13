@@ -48,8 +48,7 @@ void MergedProxyModel::connectModels()
         connect(model, SIGNAL(layoutChanged()), this, SIGNAL(layoutChanged()), Qt::DirectConnection);
 
         connect(
-            model, SIGNAL(dataChanged(QModelIndex, QModelIndex)), this, SLOT(dataChangedSlot(QModelIndex, QModelIndex)),
-            Qt::DirectConnection);
+            model, &QAbstractItemModel::dataChanged, this, &MergedProxyModel::dataChangedSlot, Qt::DirectConnection);
 
         connect(
             model, SIGNAL(rowsAboutToBeInserted(QModelIndex, int, int)), this,
@@ -124,12 +123,13 @@ int MergedProxyModel::modelRowOffset(QAbstractItemModel *model) const
     return Boundaries.value(model).first;
 }
 
-void MergedProxyModel::dataChangedSlot(const QModelIndex &topLeft, const QModelIndex &bottomRight)
+void MergedProxyModel::dataChangedSlot(
+    const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles)
 {
     const QModelIndex &proxyTopLeft = mapFromSource(topLeft);
     const QModelIndex &proxyBottomRight = mapFromSource(bottomRight);
 
-    emit dataChanged(proxyTopLeft, proxyBottomRight);
+    emit dataChanged(proxyTopLeft, proxyBottomRight, roles);
 }
 
 void MergedProxyModel::rowsAboutToBeInsertedSlot(const QModelIndex &parent, int first, int last)

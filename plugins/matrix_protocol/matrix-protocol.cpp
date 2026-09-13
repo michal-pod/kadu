@@ -323,6 +323,7 @@ void MatrixProtocol::createConnection()
         if (m_timelineService)
             m_timelineService->setConnection(nullptr);
         m_recoveryKeyRestorePrompted = false;
+        emit recoveryKeyRestoreStateChanged();
         loggedOut();
     });
     connect(
@@ -489,6 +490,7 @@ void MatrixProtocol::dumpMatrixRooms()
 
 void MatrixProtocol::promptForRecoveryKeyRestore()
 {
+    emit recoveryKeyRestoreStateChanged();
     if (!m_connection || m_recoveryKeyRestorePrompted || !m_connection->encryptionEnabled()
         || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key"))
         || !m_connection->hasAccountData(QStringLiteral("m.megolm_backup.v1")))
@@ -498,10 +500,15 @@ void MatrixProtocol::promptForRecoveryKeyRestore()
     if (!database || !database->loadEncrypted(QStringLiteral("m.megolm_backup.v1")).isEmpty())
         return;
 
-    restoreRecoveryKey();
+    showRecoveryDialog(true);
 }
 
 void MatrixProtocol::restoreRecoveryKey()
+{
+    showRecoveryDialog(false);
+}
+
+void MatrixProtocol::showRecoveryDialog(bool allowDeferral)
 {
     if (m_recoveryDialog)
     {
@@ -513,23 +520,24 @@ void MatrixProtocol::restoreRecoveryKey()
     if (!isConnected() || !m_connection || !m_connectionReady
         || !m_connection->isLoggedIn() || !m_connection->encryptionEnabled())
     {
-        QMessageBox::information(nullptr, tr("Restore Matrix Recovery Key"),
+        QMessageBox::information(nullptr, tr("Recover Matrix Encryption Keys"),
                                  tr("Connect the Matrix account with encryption enabled before restoring its keys."));
         return;
     }
     if (!m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key"))
         || !m_connection->hasAccountData(QStringLiteral("m.megolm_backup.v1")))
     {
-        QMessageBox::information(nullptr, tr("Restore Matrix Recovery Key"),
+        QMessageBox::information(nullptr, tr("Recover Matrix Encryption Keys"),
                                  tr("No recovery data is available yet. Wait for synchronisation or check the key backup on your other device."));
         return;
     }
     m_recoveryKeyRestorePrompted = true;
-    auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection};
+    auto *dialog = new MatrixRestoreRecoveryKeyDialog{m_connection, allowDeferral};
     m_recoveryDialog = dialog;
     connect(dialog, &MatrixRestoreRecoveryKeyDialog::keysRestored, this, [this] {
         if (m_timelineService)
             m_timelineService->refreshEncryptedEvents();
+        emit recoveryKeyRestoreStateChanged();
     });
     dialog->show();
 }
@@ -770,6 +778,18 @@ QStringList MatrixProtocol::availableVerificationDevices() const
     return devices;
 }
 
+bool MatrixProtocol::recoveryKeyRestoreRequired() const
+{
+    if (!isConnected() || !m_connection || !m_connectionReady || !m_connection->isLoggedIn()
+        || !m_connection->encryptionEnabled()
+        || !m_connection->hasAccountData(QStringLiteral("m.secret_storage.default_key"))
+        || !m_connection->hasAccountData(QStringLiteral("m.megolm_backup.v1")))
+        return false;
+
+    auto *database = m_connection->database();
+    return database && database->loadEncrypted(QStringLiteral("m.megolm_backup.v1")).isEmpty();
+}
+
 void MatrixProtocol::verifyDevice(const QString &deviceId)
 {
     if (auto *dialog = m_deviceVerificationDialogs.value(deviceId).data())
@@ -948,6 +968,7 @@ void MatrixProtocol::logout()
         m_recoveryDialog->reject();
     detachConnectionServices();
     loggedOut();
+    emit recoveryKeyRestoreStateChanged();
 }
 
 void MatrixProtocol::discardConnection()
@@ -968,6 +989,7 @@ void MatrixProtocol::discardConnection()
         m_connection->deleteLater();
         m_connection = nullptr;
     }
+    emit recoveryKeyRestoreStateChanged();
 }
 
 void MatrixProtocol::detachConnectionServices()

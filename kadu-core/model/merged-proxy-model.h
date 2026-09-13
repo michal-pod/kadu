@@ -147,7 +147,7 @@ class MergedProxyModel : public QAbstractItemModel
     void disconnectModels();
 
 private slots:
-    void dataChangedSlot(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void dataChangedSlot(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles);
 
     void rowsAboutToBeInsertedSlot(const QModelIndex &parent, int first, int last);
     void rowsInsertedSlot(const QModelIndex &parent, int first, int last);

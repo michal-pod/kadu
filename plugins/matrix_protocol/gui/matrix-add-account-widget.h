@@ -26,6 +26,7 @@
 
 class AccountManager;
 class AccountStorage;
+class QComboBox;
 class IdentitiesComboBox;
 class IdentityManager;
 class PluginInjectedFactory;
@@ -51,14 +52,15 @@ private:
     QPointer<PluginInjectedFactory> m_pluginInjectedFactory;
     bool m_showButtons;
 
-    QLineEdit *m_matrixId = nullptr;
-    QLineEdit *m_homeserver = nullptr;
+    QLineEdit *m_login = nullptr;
+    QComboBox *m_homeserver = nullptr;
     QLineEdit *m_password = nullptr;
     IdentitiesComboBox *m_identity = nullptr;
     QPushButton *m_addAccountButton = nullptr;
 
     void createGui();
     void resetGui();
+    QString matrixId() const;
     bool validHomeserver() const;
 
 private slots:

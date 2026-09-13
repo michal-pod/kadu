@@ -20,6 +20,8 @@
 #include "matrix-edit-account-widget.h"
 #include "matrix-edit-account-widget.moc"
 
+#include "matrix-account-form-utils.h"
+
 #include "accounts/account-manager.h"
 #include "accounts/account-shared.h"
 #include "identities/identity-manager.h"
@@ -30,10 +32,8 @@
 #include "widgets/simple-configuration-value-state-notifier.h"
 
 #include "../matrix-account-data.h"
-#include "../matrix-id-validator.h"
 #include "../matrix-protocol.h"
 
-#include <QtCore/QUrl>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
@@ -82,20 +82,21 @@ void MatrixEditAccountWidget::createGui()
     auto form = new QFormLayout;
     generalLayout->addLayout(form, 1);
 
-    m_matrixId = new QLineEdit{general};
-    m_matrixId->setValidator(new MatrixIdValidator{m_matrixId});
-    connect(m_matrixId, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
-    form->addRow(tr("Matrix ID:"), m_matrixId);
-
-    m_homeserver = new QLineEdit{general};
-    connect(m_homeserver, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
-    form->addRow(tr("Homeserver:"), m_homeserver);
+    m_login = new QLineEdit{general};
+    m_login->setReadOnly(true);
+    m_login->setToolTip(tr("The login of an existing Matrix account cannot be changed."));
+    form->addRow(tr("Login:"), m_login);
 
     m_password = new QLineEdit{general};
     m_password->setEchoMode(QLineEdit::Password);
     m_password->setPlaceholderText(tr("Leave empty to keep using the current session"));
     connect(m_password, SIGNAL(textEdited(QString)), this, SLOT(dataChanged()));
     form->addRow(tr("Password:"), m_password);
+
+    m_homeserver = new QLineEdit{general};
+    m_homeserver->setReadOnly(true);
+    m_homeserver->setToolTip(tr("The homeserver of an existing Matrix account cannot be changed."));
+    form->addRow(tr("Homeserver:"), m_homeserver);
 
     m_identity = m_pluginInjectedFactory->makeInjected<IdentitiesComboBox>(general);
     connect(m_identity, SIGNAL(currentIndexChanged(int)), this, SLOT(dataChanged()));
@@ -108,12 +109,16 @@ void MatrixEditAccountWidget::createGui()
     info->setWordWrap(true);
     form->addRow(QString{}, info);
 
-    auto *restoreKeysButton = new QPushButton{tr("Restore recovery key..."), general};
-    form->addRow(QString{}, restoreKeysButton);
-    connect(restoreKeysButton, &QPushButton::clicked, this, [this] {
+    m_recoverKeysButton = new QPushButton{tr("Recover encryption keys..."), general};
+    form->addRow(m_recoverKeysButton);
+    connect(m_recoverKeysButton, &QPushButton::clicked, this, [this] {
         if (auto *protocol = qobject_cast<MatrixProtocol *>(account().protocolHandler()))
             protocol->restoreRecoveryKey();
     });
+    if (auto *protocol = qobject_cast<MatrixProtocol *>(account().protocolHandler()))
+        connect(protocol, &MatrixProtocol::recoveryKeyRestoreStateChanged,
+                this, &MatrixEditAccountWidget::updateRecoveryButton);
+    updateRecoveryButton();
 
     auto *avatarWidget = m_pluginInjectedFactory->makeInjected<AccountAvatarWidget>(account(), general);
     generalLayout->addWidget(avatarWidget, 0, Qt::AlignTop);
@@ -144,18 +149,19 @@ void MatrixEditAccountWidget::createGui()
 void MatrixEditAccountWidget::loadAccountData()
 {
     m_identity->setCurrentIdentity(account().accountIdentity());
-    m_matrixId->setText(account().id());
-    m_homeserver->setText(MatrixAccountData{account()}.homeserver());
+    m_login->setText(MatrixAccountForm::loginFromMatrixId(account().id()));
+    m_homeserver->setText(MatrixAccountForm::homeserverHost(MatrixAccountData{account()}.homeserver()));
     m_password->clear();
     simpleStateNotifier()->setState(StateNotChanged);
 }
 
-bool MatrixEditAccountWidget::validHomeserver() const
+void MatrixEditAccountWidget::updateRecoveryButton()
 {
-    const auto value = m_homeserver->text().trimmed();
-    const auto url = QUrl::fromUserInput(value);
-    return !value.isEmpty() && url.isValid() && !url.host().isEmpty() &&
-           (url.scheme() == "https" || url.scheme() == "http");
+    if (!m_recoverKeysButton)
+        return;
+
+    const auto *protocol = qobject_cast<MatrixProtocol *>(account().protocolHandler());
+    m_recoverKeysButton->setVisible(protocol && protocol->recoveryKeyRestoreRequired());
 }
 
 void MatrixEditAccountWidget::apply()
@@ -164,12 +170,10 @@ void MatrixEditAccountWidget::apply()
         return;
 
     applyAccountConfigurationWidgets();
-    account().setId(m_matrixId->text().trimmed());
     account().setPassword(m_password->text());
     account().setHasPassword(true);
     account().setRememberPassword(false);
     account().setAccountIdentity(m_identity->currentIdentity());
-    MatrixAccountData{account()}.setHomeserver(m_homeserver->text().trimmed());
     account().data()->forceEmitUpdated();
 
     m_identityManager->removeUnused();
@@ -198,16 +202,12 @@ void MatrixEditAccountWidget::removeAccount()
 
 void MatrixEditAccountWidget::dataChanged()
 {
-    const auto accountData = MatrixAccountData{account()};
-    const auto sameIdExists = m_accountManager->byId(account().protocolName(), m_matrixId->text().trimmed()) &&
-                              m_accountManager->byId(account().protocolName(), m_matrixId->text().trimmed()) != account();
     const auto unchanged = account().accountIdentity() == m_identity->currentIdentity() &&
-                           account().id() == m_matrixId->text().trimmed() &&
-                           accountData.homeserver() == m_homeserver->text().trimmed() && m_password->text().isEmpty();
+                           m_password->text().isEmpty();
 
     if (unchanged)
         simpleStateNotifier()->setState(StateNotChanged);
-    else if (!m_matrixId->hasAcceptableInput() || !validHomeserver() || !m_identity->currentIdentity() || sameIdExists)
+    else if (!m_identity->currentIdentity())
         simpleStateNotifier()->setState(StateChangedDataInvalid);
     else
         simpleStateNotifier()->setState(StateChangedDataValid);

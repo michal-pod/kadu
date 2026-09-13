@@ -19,27 +19,16 @@
 
 #pragma once
 
-#include <QtWidgets/QDialog>
+#include <QtCore/QString>
+#include <QtCore/QStringList>
 
-class MatrixDeviceVerificationWidget;
-class QPushButton;
-
-namespace Quotient
+namespace MatrixAccountForm
 {
-class KeyVerificationSession;
+QStringList suggestedHomeservers();
+QString loginFromMatrixId(const QString &matrixId);
+QString matrixId(const QString &login, const QString &serverName);
+QString homeserverHost(const QString &homeserverUrl);
+QString homeserverUrl(const QString &homeserverHost);
+bool isLoginValid(const QString &login);
+bool isHomeserverHostValid(const QString &homeserverHost);
 }
-
-class MatrixDeviceVerificationDialog final : public QDialog
-{
-    Q_OBJECT
-
-public:
-    explicit MatrixDeviceVerificationDialog(Quotient::KeyVerificationSession *session, QWidget *parent = nullptr);
-
-private:
-    MatrixDeviceVerificationWidget *m_verificationWidget = nullptr;
-    QPushButton *m_closeButton = nullptr;
-
-protected:
-    void reject() override;
-};

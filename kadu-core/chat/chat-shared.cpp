@@ -304,6 +304,8 @@ void ChatShared::loadDetails()
         if (!Details)
             return;
 
+        // Models observe ChatShared, including changes to a room's avatar and description.
+        connect(Details, &ChatDetails::updated, this, &ChatShared::updated);
         connect(Details, SIGNAL(connected()), this, SIGNAL(connected()));
         connect(Details, SIGNAL(disconnected()), this, SIGNAL(disconnected()));
         connect(Details, SIGNAL(contactAboutToBeAdded(Contact)), this, SIGNAL(contactAboutToBeAdded(Contact)));
