@@ -1,9 +1,7 @@
 /*
  * %kadu copyright begin%
- * Copyright 2010, 2011 Piotr Galiszewski (piotr.galiszewski@kadu.im)
- * Copyright 2011 Piotr Dąbrowski (ultr@ultr.pl)
- * Copyright 2010, 2014 Bartosz Brachaczek (b.brachaczek@gmail.com)
- * Copyright 2009, 2010, 2011, 2012, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2016 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -22,72 +20,55 @@
 
 #pragma once
 
-#include "open-chat-with-runner.h"
-#include "os/generic/desktop-aware-object.h"
+#include "chat/chat.h"
+#include "exports.h"
 
 #include <QtCore/QPointer>
-#include <QtWidgets/QWidget>
+#include <QtWidgets/QDialog>
 #include <injeqt/injeqt.h>
 
-class BuddyListModel;
-class BuddyManager;
-class ChatManager;
-class ChatStorage;
+class AccountsComboBox;
 class ChatWidgetManager;
 class Configuration;
+class ConversationStartForm;
+class IconsManager;
 class InjectedFactory;
-class LineEditWithClearButton;
-class ModelChain;
-class PathsProvider;
-
 class QLabel;
 class QPushButton;
-class QQuickWidget;
 class QVBoxLayout;
 
-class KADUAPI OpenChatWith : public QWidget, DesktopAwareObject
+class KADUAPI OpenChatWith : public QDialog
 {
     Q_OBJECT
 
-protected:
-    virtual void keyPressEvent(QKeyEvent *e);
-
 public:
     explicit OpenChatWith(QWidget *parent = nullptr);
-    virtual ~OpenChatWith();
+    ~OpenChatWith() override;
 
+public slots:
     void show();
 
 private:
-    QPointer<BuddyManager> m_buddyManager;
-    QPointer<ChatManager> m_chatManager;
-    QPointer<ChatStorage> m_chatStorage;
     QPointer<ChatWidgetManager> m_chatWidgetManager;
     QPointer<Configuration> m_configuration;
+    QPointer<IconsManager> m_iconsManager;
     QPointer<InjectedFactory> m_injectedFactory;
-    QPointer<PathsProvider> m_pathsProvider;
+    AccountsComboBox *m_accountCombo = nullptr;
+    QWidget *m_formHost = nullptr;
+    QVBoxLayout *m_formLayout = nullptr;
+    ConversationStartForm *m_form = nullptr;
+    QLabel *m_placeholder = nullptr;
+    QPushButton *m_primaryButton = nullptr;
 
-    QQuickWidget *BuddiesView;
-    LineEditWithClearButton *ContactID;
-    QVBoxLayout *MainLayout;
-    OpenChatWithRunner *OpenChatRunner;
-
-    BuddyListModel *ListModel;
-    ModelChain *Chain;
-
-    void focusQml();
+    void createGui();
+    void refreshState();
+    void openChat(const Chat &chat);
 
 private slots:
-    INJEQT_SET void setBuddyManager(BuddyManager *buddyManager);
-    INJEQT_SET void setChatManager(ChatManager *chatManager);
-    INJEQT_SET void setChatStorage(ChatStorage *chatStorage);
+    void rebuildForm();
     INJEQT_SET void setChatWidgetManager(ChatWidgetManager *chatWidgetManager);
     INJEQT_SET void setConfiguration(Configuration *configuration);
+    INJEQT_SET void setIconsManager(IconsManager *iconsManager);
     INJEQT_SET void setInjectedFactory(InjectedFactory *injectedFactory);
-    INJEQT_SET void setPathsProvider(PathsProvider *pathsProvider);
     INJEQT_INIT void init();
-
-    void inputAccepted();
-    void inputChanged(const QString &text);
-    void itemActivated(int index);
 };

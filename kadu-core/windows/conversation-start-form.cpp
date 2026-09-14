@@ -17,19 +17,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "matrix-module.h"
+#include "conversation-start-form.h"
+#include "conversation-start-form.moc"
 
-#include "matrix-plugin-object.h"
-#include "matrix-protocol-factory.h"
-#include "matrix-device-verification-notification-service.h"
-#include "matrix-room-invitation-notification-service.h"
-#include "matrix-ssl-certificate-service.h"
-
-MatrixModule::MatrixModule()
+ConversationStartForm::ConversationStartForm(QWidget *parent) : QWidget{parent}
 {
-    add_type<MatrixPluginObject>();
-    add_type<MatrixDeviceVerificationNotificationService>();
-    add_type<MatrixRoomInvitationNotificationService>();
-    add_type<MatrixSslCertificateService>();
-    add_type<MatrixProtocolFactory>();
+}
+
+ConversationStartForm::~ConversationStartForm() = default;
+
+bool ConversationStartForm::operationInProgress() const
+{
+    return false;
 }

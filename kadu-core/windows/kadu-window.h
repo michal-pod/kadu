@@ -47,7 +47,6 @@ class QVBoxLayout;
 class ActionDescription;
 class AddConferenceAction;
 class AddGroupAction;
-class AddRoomChatAction;
 class AddUserAction;
 class Application;
 class BuddyInfoPanel;
@@ -99,7 +98,6 @@ public:
 private:
     QPointer<AddConferenceAction> m_addConferenceAction;
     QPointer<AddGroupAction> m_addGroupAction;
-    QPointer<AddRoomChatAction> m_addRoomChatAction;
     QPointer<AddUserAction> m_addUserAction;
     QPointer<Application> m_application;
     QPointer<ChatWidgetManager> m_chatWidgetManager;
@@ -164,7 +162,6 @@ private:
 private slots:
     INJEQT_SET void setAddConferenceAction(AddConferenceAction *addConferenceAction);
     INJEQT_SET void setAddGroupAction(AddGroupAction *addGroupAction);
-    INJEQT_SET void setAddRoomChatAction(AddRoomChatAction *addRoomChatAction);
     INJEQT_SET void setAddUserAction(AddUserAction *addUserAction);
     INJEQT_SET void setApplication(Application *application);
     INJEQT_SET void setChatWidgetManager(ChatWidgetManager *chatWidgetManager);

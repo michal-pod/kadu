@@ -1,10 +1,7 @@
 /*
  * %kadu copyright begin%
- * Copyright 2009, 2010, 2011 Piotr Galiszewski (piotr.galiszewski@kadu.im)
- * Copyright 2009, 2010 Wojciech Treter (juzefwt@gmail.com)
- * Copyright 2010, 2011 Piotr Dąbrowski (ultr@ultr.pl)
- * Copyright 2010, 2011, 2012, 2013, 2014 Bartosz Brachaczek (b.brachaczek@gmail.com)
- * Copyright 2009, 2010, 2011, 2012, 2013, 2014 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2016 Rafał Przemysław Malinowski (rafal.przemyslaw.malinowski@gmail.com)
+ * Copyright 2026 Kadu Qt6 port
  * %kadu copyright end%
  *
  * This program is free software; you can redistribute it and/or
@@ -24,69 +21,47 @@
 #include "open-chat-with.h"
 #include "open-chat-with.moc"
 
-#include "open-chat-with-contact-list-runner.h"
-#include "open-chat-with-runner-manager.h"
-
-#include "activate.h"
-#include "buddies/buddy-manager.h"
-#include "buddies/buddy-set.h"
-#include "buddies/model/buddy-list-model.h"
-#include "chat/chat-manager.h"
-#include "chat/chat-storage.h"
-#include "chat/type/chat-type-contact.h"
-#include "configuration/configuration-api.h"
+#include "accounts/account.h"
+#include "accounts/filter/abstract-account-filter.h"
 #include "configuration/configuration.h"
-#include "contacts/contact.h"
+#include "configuration/config-file-variant-wrapper.h"
 #include "core/injected-factory.h"
-#include "misc/paths-provider.h"
-#include "model/model-chain.h"
-#include "model/roles.h"
-#include "talkable/model/talkable-proxy-model.h"
+#include "icons/icons-manager.h"
+#include "icons/kadu-icon.h"
+#include "os/generic/window-geometry-manager.h"
+#include "protocols/protocol.h"
+#include "widgets/accounts-combo-box.h"
 #include "widgets/chat-widget/chat-widget-manager.h"
-#include "widgets/filtered-tree-view.h"
-#include "widgets/line-edit-with-clear-button.h"
+#include "windows/conversation-start-form.h"
 
-#include <QtCore/QTimer>
-#include <QtGui/QKeyEvent>
-#include <QtQml/QQmlContext>
-#include <QtQuick/QQuickItem>
-#include <QtQuickWidgets/QQuickWidget>
-#include <QtWidgets/QApplication>
-#include <QtGui/QGuiApplication>
-#include <QtGui/QScreen>
 #include <QtWidgets/QDialogButtonBox>
-#include <QtWidgets/QGraphicsObject>
+#include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QPushButton>
-#include <QtWidgets/QStyle>
 #include <QtWidgets/QVBoxLayout>
 
-OpenChatWith::OpenChatWith(QWidget *parent) : QWidget{parent, Qt::Window}, DesktopAwareObject{this}
+class ConversationStartAccountFilter final : public AbstractAccountFilter
 {
+public:
+    explicit ConversationStartAccountFilter(QObject *parent = nullptr) : AbstractAccountFilter{parent}
+    {
+    }
+
+    bool acceptAccount(Account account) override
+    {
+        auto *protocol = account ? account.protocolHandler() : nullptr;
+        return protocol && protocol->supportsConversationStart();
+    }
+};
+
+OpenChatWith::OpenChatWith(QWidget *parent) : QDialog{parent}
+{
+    setAttribute(Qt::WA_DeleteOnClose);
+    setWindowRole(QStringLiteral("kadu-start-conversation"));
+    setWindowTitle(tr("Start Conversation"));
 }
 
-OpenChatWith::~OpenChatWith()
-{
-    OpenChatWithRunnerManager::instance()->unregisterRunner(OpenChatRunner);
-
-    delete OpenChatRunner;
-    OpenChatRunner = 0;
-}
-
-void OpenChatWith::setBuddyManager(BuddyManager *buddyManager)
-{
-    m_buddyManager = buddyManager;
-}
-
-void OpenChatWith::setChatManager(ChatManager *chatManager)
-{
-    m_chatManager = chatManager;
-}
-
-void OpenChatWith::setChatStorage(ChatStorage *chatStorage)
-{
-    m_chatStorage = chatStorage;
-}
+OpenChatWith::~OpenChatWith() = default;
 
 void OpenChatWith::setChatWidgetManager(ChatWidgetManager *chatWidgetManager)
 {
@@ -98,168 +73,117 @@ void OpenChatWith::setConfiguration(Configuration *configuration)
     m_configuration = configuration;
 }
 
+void OpenChatWith::setIconsManager(IconsManager *iconsManager)
+{
+    m_iconsManager = iconsManager;
+}
+
 void OpenChatWith::setInjectedFactory(InjectedFactory *injectedFactory)
 {
     m_injectedFactory = injectedFactory;
 }
 
-void OpenChatWith::setPathsProvider(PathsProvider *pathsProvider)
-{
-    m_pathsProvider = pathsProvider;
-}
-
 void OpenChatWith::init()
 {
-    setWindowRole("kadu-open-chat-with");
-
-    setWindowTitle(tr("Open chat with..."));
-    setAttribute(Qt::WA_DeleteOnClose);
-
-    auto const targetScreen = screen() ? screen() : QGuiApplication::primaryScreen();
-    QRect availableGeometry = targetScreen->availableGeometry();
-    int width = static_cast<int>(0.25f * availableGeometry.width());
-    int height = static_cast<int>(0.6f * availableGeometry.height());
-    setGeometry(availableGeometry.center().x() - width / 2, availableGeometry.center().y() - height / 2, width, height);
-
-    MainLayout = new QVBoxLayout(this);
-
-    QWidget *idWidget = new QWidget(this);
-
-    QHBoxLayout *idLayout = new QHBoxLayout(idWidget);
-    idLayout->setContentsMargins(0, 0, 0, 0);
-    idLayout->addWidget(new QLabel(tr("User name:"), idWidget));
-
-    ContactID = m_injectedFactory->makeInjected<LineEditWithClearButton>(this);
-    connect(ContactID, SIGNAL(textChanged(const QString &)), this, SLOT(inputChanged(const QString &)));
-    idLayout->addWidget(ContactID);
-
-    MainLayout->addWidget(idWidget);
-
-    BuddiesView = new QQuickWidget();
-
-    Chain = new ModelChain(this);
-    ListModel = m_injectedFactory->makeInjected<BuddyListModel>(Chain);
-    Chain->setBaseModel(ListModel);
-    Chain->addProxyModel(m_injectedFactory->makeInjected<TalkableProxyModel>(Chain));
-
-    QQmlContext *declarativeContext = BuddiesView->rootContext();
-    declarativeContext->setContextProperty("buddies", Chain->lastModel());
-
-    BuddiesView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    BuddiesView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    BuddiesView->setSource(QUrl("file:///" + m_pathsProvider->dataPath() + "qml/openChatWith.qml"));
-
-    if (BuddiesView->rootObject())
-        connect(BuddiesView->rootObject(), SIGNAL(itemActivated(int)), this, SLOT(itemActivated(int)));
-
-    MainLayout->addWidget(BuddiesView);
-
-    QDialogButtonBox *buttons = new QDialogButtonBox(Qt::Horizontal, this);
-
-    QPushButton *okButton = new QPushButton(qApp->style()->standardIcon(QStyle::SP_DialogOkButton), tr("&Ok"), this);
-    buttons->addButton(okButton, QDialogButtonBox::AcceptRole);
-    QPushButton *cancelButton =
-        new QPushButton(qApp->style()->standardIcon(QStyle::SP_DialogCancelButton), tr("&Cancel"), this);
-    buttons->addButton(cancelButton, QDialogButtonBox::RejectRole);
-
-    connect(okButton, SIGNAL(clicked(bool)), this, SLOT(inputAccepted()));
-    connect(cancelButton, SIGNAL(clicked(bool)), this, SLOT(close()));
-
-    MainLayout->addSpacing(16);
-    MainLayout->addWidget(buttons);
-
-    OpenChatRunner = m_injectedFactory->makeInjected<OpenChatWithContactListRunner>();
-    OpenChatWithRunnerManager::instance()->registerRunner(OpenChatRunner);
-
-    inputChanged(QString());
+    createGui();
+    new WindowGeometryManager(
+        new ConfigFileVariantWrapper(m_configuration, "General", "StartConversationWindowGeometry"),
+        QRect{0, 50, 620, 640}, this);
 }
 
-void OpenChatWith::keyPressEvent(QKeyEvent *e)
+void OpenChatWith::createGui()
 {
-    switch (e->key())
+    auto *mainLayout = new QVBoxLayout{this};
+    auto *accountLayout = new QFormLayout;
+    mainLayout->addLayout(accountLayout);
+
+    m_accountCombo = m_injectedFactory->makeInjected<AccountsComboBox>(
+        true, AccountsComboBox::NotVisibleWithOneRowSourceModel, this);
+    m_accountCombo->setIncludeIdInDisplay(true);
+    m_accountCombo->addFilter(new ConversationStartAccountFilter{m_accountCombo});
+    accountLayout->addRow(tr("Account:"), m_accountCombo);
+
+    m_formHost = new QWidget{this};
+    m_formLayout = new QVBoxLayout{m_formHost};
+    m_formLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->addWidget(m_formHost, 1);
+
+    auto *buttons = new QDialogButtonBox{this};
+    m_primaryButton = new QPushButton{
+        m_iconsManager->iconByPath(KaduIcon{QStringLiteral("internet-group-chat")}), tr("Open"), this};
+    m_primaryButton->setDefault(true);
+    buttons->addButton(m_primaryButton, QDialogButtonBox::AcceptRole);
+    buttons->addButton(QDialogButtonBox::Cancel);
+    mainLayout->addWidget(buttons);
+
+    connect(m_accountCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(rebuildForm()));
+    connect(m_primaryButton, &QPushButton::clicked, this, [this] {
+        if (m_form)
+            m_form->performPrimaryAction();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    rebuildForm();
+}
+
+void OpenChatWith::rebuildForm()
+{
+    if (m_placeholder)
     {
-    case Qt::Key_Enter:
-    case Qt::Key_Return:
-        e->accept();
-        inputAccepted();
-        return;
-        break;
-    case Qt::Key_Escape:
-        e->accept();
-        close();
-        return;
-        break;
-    case Qt::Key_Down:
-    case Qt::Key_Up:
-    case Qt::Key_PageDown:
-    case Qt::Key_PageUp:
-        BuddiesView->setFocus();
-        QCoreApplication::sendEvent(BuddiesView, e);
-        focusQml();
-        e->accept();
-        return;
+        m_formLayout->removeWidget(m_placeholder);
+        delete m_placeholder;
+        m_placeholder = nullptr;
+    }
+    if (m_form)
+    {
+        m_formLayout->removeWidget(m_form);
+        delete m_form;
+        m_form = nullptr;
     }
 
-    if (FilteredTreeView::shouldEventGoToFilter(e))
+    const auto account = m_accountCombo->currentAccount();
+    auto *protocol = account ? account.protocolHandler() : nullptr;
+    if (protocol && protocol->supportsConversationStart())
+        m_form = protocol->createConversationStartForm(m_formHost);
+
+    if (m_form)
     {
-        ContactID->setText(ContactID->text() + e->text());
-        ContactID->setFocus(Qt::OtherFocusReason);
-        e->accept();
-        return;
+        m_formLayout->addWidget(m_form);
+        connect(m_form, &ConversationStartForm::stateChanged, this, &OpenChatWith::refreshState);
+        connect(m_form, &ConversationStartForm::chatReady, this, &OpenChatWith::openChat);
     }
-
-    QWidget::keyPressEvent(e);
+    else
+    {
+        m_placeholder = new QLabel{tr("No account currently supports starting conversations here."), m_formHost};
+        m_placeholder->setWordWrap(true);
+        m_formLayout->addWidget(m_placeholder);
+    }
+    refreshState();
 }
 
-void OpenChatWith::focusQml()
+void OpenChatWith::refreshState()
 {
-    auto rootObject = dynamic_cast<QObject *>(BuddiesView->rootObject());
-    if (!rootObject)
-        return;
-
-    auto mainWidget = rootObject->findChild<QObject *>("mainWidget");
-    if (!mainWidget)
-        return;
-
-    mainWidget->setProperty("focus", true);
+    m_primaryButton->setText(m_form ? m_form->primaryActionText() : tr("Open"));
+    m_primaryButton->setEnabled(m_form && m_form->primaryActionEnabled());
+    m_accountCombo->setEnabled(!m_form || !m_form->operationInProgress());
 }
 
-void OpenChatWith::inputChanged(const QString &text)
+void OpenChatWith::openChat(const Chat &chat)
 {
-    BuddyList matchingContacts = text.isEmpty() ? m_buddyManager->items().toList()
-                                                : OpenChatWithRunnerManager::instance()->matchingContacts(text);
-
-    ListModel->setBuddyList(matchingContacts);
-}
-
-void OpenChatWith::itemActivated(int index)
-{
-    QModelIndex modelIndex = Chain->lastModel()->index(index, 0);
-    if (!modelIndex.isValid())
-        return;
-
-    Contact contact = modelIndex.data(ContactRole).value<Contact>();
-    if (!contact)
-        return;
-
-    Chat chat = ChatTypeContact::findChat(m_chatManager, m_chatStorage, contact, ActionCreateAndAdd);
-    if (!chat)
+    if (!chat || !m_chatWidgetManager)
         return;
 
     m_chatWidgetManager->openChat(chat, OpenChatActivation::Activate);
-    QTimer::singleShot(50, this, SLOT(close()));
-}
-
-void OpenChatWith::inputAccepted()
-{
-    if (BuddiesView->rootObject())
-        itemActivated(BuddiesView->rootObject()->property("currentIndex").toInt());
+    accept();
 }
 
 void OpenChatWith::show()
 {
     if (!isVisible())
-        QWidget::show();
+        QDialog::show();
     else
-        _activateWindow(m_configuration, this);
+    {
+        raise();
+        activateWindow();
+    }
 }

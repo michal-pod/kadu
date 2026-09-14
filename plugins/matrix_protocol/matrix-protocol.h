@@ -104,6 +104,11 @@ public:
     virtual MultilogonService *multilogonService() override;
     virtual QAbstractItemModel *createChatMembersModel(const Chat &chat, QObject *parent) override;
     virtual QWidget *createChatSettingsWindow(const Chat &chat, QWidget *parent) override;
+    virtual bool supportsConversationStart() const override
+    {
+        return true;
+    }
+    virtual ConversationStartForm *createConversationStartForm(QWidget *parent) override;
     virtual QString statusPixmapPath() override
     {
         return "xmpp";

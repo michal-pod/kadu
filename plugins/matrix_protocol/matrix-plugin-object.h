@@ -33,9 +33,7 @@
  */
 class MatrixProtocolFactory;
 class MatrixDeviceVerificationNotificationService;
-class MatrixJoinRoomAction;
 class MatrixRoomInvitationNotificationService;
-class MatrixVerifyDeviceAction;
 class ProtocolsManager;
 
 class MatrixPluginObject : public QObject
@@ -51,10 +49,8 @@ private slots:
     INJEQT_SET void setMatrixProtocolFactory(MatrixProtocolFactory *matrixProtocolFactory);
     INJEQT_SET void setMatrixDeviceVerificationNotificationService(
         MatrixDeviceVerificationNotificationService *matrixDeviceVerificationNotificationService);
-    INJEQT_SET void setMatrixJoinRoomAction(MatrixJoinRoomAction *matrixJoinRoomAction);
     INJEQT_SET void setMatrixRoomInvitationNotificationService(
         MatrixRoomInvitationNotificationService *matrixRoomInvitationNotificationService);
-    INJEQT_SET void setMatrixVerifyDeviceAction(MatrixVerifyDeviceAction *matrixVerifyDeviceAction);
     INJEQT_SET void setProtocolsManager(ProtocolsManager *protocolsManager);
     INJEQT_INIT void init();
     INJEQT_DONE void done();
@@ -62,8 +58,6 @@ private slots:
 private:
     QPointer<MatrixProtocolFactory> m_matrixProtocolFactory;
     QPointer<MatrixDeviceVerificationNotificationService> m_matrixDeviceVerificationNotificationService;
-    QPointer<MatrixJoinRoomAction> m_matrixJoinRoomAction;
     QPointer<MatrixRoomInvitationNotificationService> m_matrixRoomInvitationNotificationService;
-    QPointer<MatrixVerifyDeviceAction> m_matrixVerifyDeviceAction;
     QPointer<ProtocolsManager> m_protocolsManager;
 };

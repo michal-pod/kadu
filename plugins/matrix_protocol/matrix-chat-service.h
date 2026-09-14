@@ -65,6 +65,7 @@ public:
     void setContactAvatarService(MatrixContactAvatarService *contactAvatarService);
     void setRoomStateRegistry(MatrixRoomStateRegistry *roomStateRegistry);
     void completeCachedStateLoading(bool cacheLoaded);
+    Chat roomChat(Quotient::Room *room) const;
 
 public slots:
     virtual bool sendMessage(const Message &message) override;
@@ -108,7 +109,6 @@ private:
     void postLocation(Quotient::Room *room, const QString &geoUri);
     bool isSupportedRoom(const Quotient::Room *room) const;
     QString directPeerId(const Quotient::Room *room) const;
-    Chat roomChat(Quotient::Room *room) const;
     void synchronizeRoom(Quotient::Room *room);
     void synchronizeRoomDetails(Quotient::Room *room);
     void synchronizeRoomMembers(Quotient::Room *room);

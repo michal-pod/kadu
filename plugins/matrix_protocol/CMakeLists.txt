@@ -11,8 +11,10 @@ set (SOURCES
     gui/matrix-device-verification-dialog.cpp
     gui/matrix-device-verification-widget.cpp
     gui/matrix-restore-recovery-key-dialog.cpp
+    gui/matrix-conversation-start-widget.cpp
     gui/matrix-room-invitation-dialog.cpp
     gui/matrix-room-settings-window.cpp
+    gui/matrix-user-directory-search.cpp
     gui/matrix-add-account-widget.cpp
     gui/matrix-edit-account-widget.cpp
     matrix-account-data.cpp
@@ -25,7 +27,6 @@ set (SOURCES
     matrix-megolm-session-recovery.cpp
     matrix-timeline-service.cpp
     matrix-id-validator.cpp
-    matrix-join-room-action.cpp
     matrix-module.cpp
     matrix-plugin-modules-factory.cpp
     matrix-plugin-object.cpp
@@ -37,7 +38,6 @@ set (SOURCES
     matrix-session-service.cpp
     matrix-ssl-certificate-service.cpp
     matrix-timeline-relation-cache.cpp
-    matrix-verify-device-action.cpp
 )
 
 kadu_plugin (matrix_protocol

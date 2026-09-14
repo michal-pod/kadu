@@ -68,6 +68,7 @@ class ProtocolTimelineService;
 class ProtocolFactory;
 class ProtocolStateMachine;
 class RosterService;
+class ConversationStartForm;
 class SearchService;
 class SessionService;
 class StatusTypeManager;
@@ -180,6 +181,25 @@ public:
      * chat settings window as a fallback.
      */
     virtual QWidget *createChatSettingsWindow(const Chat &, QWidget *)
+    {
+        return nullptr;
+    }
+
+    /**
+     * Return whether this protocol supplies the protocol-specific part of the shared
+     * conversation-start window.
+     */
+    virtual bool supportsConversationStart() const
+    {
+        return false;
+    }
+    /**
+     * Create the protocol-owned part of the shared conversation-start window.
+     *
+     * The form performs asynchronous discovery and creation operations and emits
+     * ConversationStartForm::chatReady only when the resulting chat can be opened.
+     */
+    virtual ConversationStartForm *createConversationStartForm(QWidget *)
     {
         return nullptr;
     }

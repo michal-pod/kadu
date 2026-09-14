@@ -20,7 +20,10 @@
 #include "open-chat-with-action.h"
 #include "open-chat-with-action.moc"
 
+#include "accounts/account-manager.h"
+#include "accounts/account.h"
 #include "actions/action.h"
+#include "protocols/protocol.h"
 #include "windows/open-chat-with/open-chat-with-service.h"
 
 OpenChatWithAction::OpenChatWithAction(QObject *parent)
@@ -30,7 +33,7 @@ OpenChatWithAction::OpenChatWithAction(QObject *parent)
     setIcon(KaduIcon{"internet-group-chat"});
     setName(QStringLiteral("openChatWithAction"));
     setShortcut("kadu_openchatwith", Qt::ApplicationShortcut);
-    setText(tr("Open Chat with..."));
+    setText(tr("Start Conversation..."));
     setType(ActionDescription::TypeUser);
 }
 
@@ -38,9 +41,22 @@ OpenChatWithAction::~OpenChatWithAction()
 {
 }
 
+void OpenChatWithAction::setAccountManager(AccountManager *accountManager)
+{
+    m_accountManager = accountManager;
+}
+
 void OpenChatWithAction::setOpenChatWithService(OpenChatWithService *openChatWithService)
 {
     m_openChatWithService = openChatWithService;
+}
+
+void OpenChatWithAction::init()
+{
+    connect(m_accountManager, SIGNAL(accountLoadedStateChanged(Account)), this, SLOT(updateVisibility()));
+    connect(m_accountManager, SIGNAL(accountAdded(Account)), this, SLOT(updateVisibility()));
+    connect(m_accountManager, SIGNAL(accountRemoved(Account)), this, SLOT(updateVisibility()));
+    updateVisibility();
 }
 
 void OpenChatWithAction::actionTriggered(QAction *sender, bool)
@@ -50,4 +66,21 @@ void OpenChatWithAction::actionTriggered(QAction *sender, bool)
         return;
 
     m_openChatWithService->show();
+}
+
+void OpenChatWithAction::updateVisibility()
+{
+    auto supported = false;
+    for (const auto &account : m_accountManager->items())
+    {
+        auto *protocol = account ? account.protocolHandler() : nullptr;
+        if (protocol && protocol->supportsConversationStart())
+        {
+            supported = true;
+            break;
+        }
+    }
+
+    for (auto *action : actions())
+        action->setVisible(supported);
 }

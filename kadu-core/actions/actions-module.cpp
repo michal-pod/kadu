@@ -33,7 +33,6 @@
 #include "actions/chat-widget/send-location-action.h"
 #include "actions/chat-widget/underline-action.h"
 #include "actions/chat/add-conference-action.h"
-#include "actions/chat/add-room-chat-action.h"
 #include "actions/chat/leave-chat-action.h"
 #include "actions/chat/chat-notifications-action.h"
 #include "actions/chat/chat-priority-action.h"
@@ -85,7 +84,6 @@ ActionsModule::ActionsModule()
 {
     // chat
     add_type<AddConferenceAction>();
-    add_type<AddRoomChatAction>();
     add_type<LeaveChatAction>();
     add_type<ChatNotificationsAction>();
     add_type<ChatPriorityAction>();

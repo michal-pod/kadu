@@ -11,7 +11,6 @@ set (windows_SRCS
 	about.cpp
 	add-buddy-window.cpp
 	add-conference-window.cpp
-	add-room-chat-window.cpp
 	buddy-data-window.cpp
 	buddy-data-window-repository.cpp
 	buddy-delete-window.cpp
@@ -34,6 +33,7 @@ set (windows_SRCS
 	proxy-action-context.cpp
 	proxy-edit-window-service.cpp
 	proxy-edit-window.cpp
+	conversation-start-form.cpp
 	search-window.cpp
 	status-window-description-proxy-model.cpp
 	status-window-service.cpp

@@ -25,6 +25,7 @@
 #include <optional>
 
 class MatrixPowerLevelEditor;
+class MatrixUserDirectorySearch;
 class ChatPersonalSettingsWidget;
 class ChatService;
 class IconsManager;
@@ -43,7 +44,6 @@ class QStandardItemModel;
 class QTabWidget;
 class QTableWidget;
 class QToolButton;
-class QTimer;
 
 namespace Quotient
 {
@@ -126,7 +126,7 @@ private:
     QStandardItemModel *m_memberSearchModel = nullptr;
     QSortFilterProxyModel *m_memberSearchProxy = nullptr;
     QCompleter *m_memberCompleter = nullptr;
-    QTimer *m_memberDirectorySearchTimer = nullptr;
+    MatrixUserDirectorySearch *m_userDirectorySearch = nullptr;
     QLabel *m_accessEncryptionLabel = nullptr;
     QLabel *m_roomVersionLabel = nullptr;
     QLabel *m_canonicalAliasLabel = nullptr;
@@ -165,7 +165,6 @@ private:
     bool m_memberSearchLoading = false;
     bool m_memberSearchLoaded = false;
     bool m_invitationPending = false;
-    int m_memberDirectorySearchGeneration = 0;
     bool m_removeAvatar = false;
     bool m_saving = false;
     bool m_closeAfterSave = false;

@@ -17,19 +17,27 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "matrix-module.h"
+#pragma once
 
-#include "matrix-plugin-object.h"
-#include "matrix-protocol-factory.h"
-#include "matrix-device-verification-notification-service.h"
-#include "matrix-room-invitation-notification-service.h"
-#include "matrix-ssl-certificate-service.h"
+#include "chat/chat.h"
+#include "exports.h"
 
-MatrixModule::MatrixModule()
+#include <QtWidgets/QWidget>
+
+class KADUAPI ConversationStartForm : public QWidget
 {
-    add_type<MatrixPluginObject>();
-    add_type<MatrixDeviceVerificationNotificationService>();
-    add_type<MatrixRoomInvitationNotificationService>();
-    add_type<MatrixSslCertificateService>();
-    add_type<MatrixProtocolFactory>();
-}
+    Q_OBJECT
+
+public:
+    explicit ConversationStartForm(QWidget *parent = nullptr);
+    ~ConversationStartForm() override;
+
+    virtual QString primaryActionText() const = 0;
+    virtual bool primaryActionEnabled() const = 0;
+    virtual bool operationInProgress() const;
+    virtual void performPrimaryAction() = 0;
+
+signals:
+    void stateChanged();
+    void chatReady(Chat chat);
+};

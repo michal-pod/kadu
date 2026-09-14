@@ -35,7 +35,6 @@
 #include "actions/action.h"
 #include "actions/chat-widget/open-chat-with-action.h"
 #include "actions/chat/add-conference-action.h"
-#include "actions/chat/add-room-chat-action.h"
 #include "actions/main/exit-action.h"
 #include "actions/main/open-forum-action.h"
 #include "actions/main/open-get-involved-action.h"
@@ -107,11 +106,6 @@ void KaduWindow::setAddConferenceAction(AddConferenceAction *addConferenceAction
 void KaduWindow::setAddGroupAction(AddGroupAction *addGroupAction)
 {
     m_addGroupAction = addGroupAction;
-}
-
-void KaduWindow::setAddRoomChatAction(AddRoomChatAction *addRoomChatAction)
-{
-    m_addRoomChatAction = addRoomChatAction;
 }
 
 void KaduWindow::setAddUserAction(AddUserAction *addUserAction)
@@ -345,7 +339,6 @@ void KaduWindow::createContactsMenu()
     m_menuInventory->menu("buddy")
         ->addAction(m_addUserAction, KaduMenu::SectionBuddies, 50)
         ->addAction(m_addConferenceAction, KaduMenu::SectionBuddies, 40)
-        ->addAction(m_addRoomChatAction, KaduMenu::SectionBuddies, 30)
         ->addAction(m_addGroupAction, KaduMenu::SectionBuddies, 20)
         ->addAction(m_openSearchAction, KaduMenu::SectionBuddies, 10)
         ->addAction(m_openChatWithAction, KaduMenu::SectionOpenChat)

@@ -16,6 +16,7 @@
 #include "icons/icons-manager.h"
 #include "icons/kadu-icon.h"
 #include "matrix-power-level-editor.h"
+#include "matrix-user-directory-search.h"
 #include "protocols/services/chat-service.h"
 #include "widgets/chat-personal-settings-widget.h"
 
@@ -26,18 +27,15 @@
 #include <Quotient/csapi/list_public_rooms.h>
 #include <Quotient/csapi/rooms.h>
 #include <Quotient/csapi/room_state.h>
-#include <Quotient/csapi/users.h>
 #include <Quotient/events/roommemberevent.h>
 #include <Quotient/jobs/basejob.h>
 #include <Quotient/room.h>
 #include <Quotient/roommember.h>
-#include <Quotient/uri.h>
 
 #include <QtCore/QMimeDatabase>
 #include <QtCore/QSet>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QSortFilterProxyModel>
-#include <QtCore/QTimer>
 #include <QtGui/QCloseEvent>
 #include <QtGui/QPalette>
 #include <QtGui/QPixmap>
@@ -370,15 +368,15 @@ QWidget *MatrixRoomSettingsWindow::createUsersTab()
     m_userPowerLevelsTable->setShowGrid(false);
     layout->addWidget(m_userPowerLevelsTable, 1);
 
-    m_memberDirectorySearchTimer = new QTimer{this};
-    m_memberDirectorySearchTimer->setSingleShot(true);
-    m_memberDirectorySearchTimer->setInterval(300);
-    connect(m_memberDirectorySearchTimer, &QTimer::timeout, this, &MatrixRoomSettingsWindow::searchMemberDirectory);
+    m_userDirectorySearch = new MatrixUserDirectorySearch{m_connection, this};
+    connect(m_userDirectorySearch, &MatrixUserDirectorySearch::changed,
+            this, &MatrixRoomSettingsWindow::searchMemberDirectory);
     connect(m_memberSearchEdit, &QLineEdit::textChanged, this, &MatrixRoomSettingsWindow::refreshMemberSearch);
+    connect(m_memberSearchEdit, &QLineEdit::textChanged,
+            this, &MatrixRoomSettingsWindow::scheduleMemberDirectorySearch);
     connect(m_memberSearchEdit, &QLineEdit::textEdited, this, [this] {
         if (!m_memberSearchLoaded && !m_memberSearchLoading)
             ensureMemberSearchModel();
-        scheduleMemberDirectorySearch();
     });
     connect(m_addMemberButton, &QToolButton::clicked, this, &MatrixRoomSettingsWindow::addSelectedMember);
     return tab;
@@ -605,57 +603,39 @@ void MatrixRoomSettingsWindow::refreshMemberSearch()
 
 void MatrixRoomSettingsWindow::scheduleMemberDirectorySearch()
 {
-    ++m_memberDirectorySearchGeneration;
-    if (!m_memberDirectorySearchTimer)
+    if (!m_userDirectorySearch)
         return;
 
     const auto searchText = m_memberSearchEdit->text().trimmed();
-    if (searchText.size() < 2)
-    {
-        m_memberDirectorySearchTimer->stop();
-        clearMemberDirectoryResults();
-        return;
-    }
-    m_memberDirectorySearchTimer->start();
+    m_userDirectorySearch->setQuery(searchText);
 }
 
 void MatrixRoomSettingsWindow::searchMemberDirectory()
 {
-    if (!m_connection || !m_connection->isLoggedIn())
+    if (!m_userDirectorySearch || !m_memberSearchModel)
         return;
 
-    const auto searchText = m_memberSearchEdit->text().trimmed();
-    if (searchText.size() < 2)
-        return;
-    const auto generation = m_memberDirectorySearchGeneration;
-    m_connection->callApi<Quotient::SearchUserDirectoryJob>(searchText, std::optional<int>{20})
-        .then(this, [this, searchText, generation](Quotient::SearchUserDirectoryJob *job) {
-            if (generation != m_memberDirectorySearchGeneration ||
-                m_memberSearchEdit->text().trimmed() != searchText)
-                return;
+    clearMemberDirectoryResults();
+    for (const auto &user : m_userDirectorySearch->results())
+    {
+        if (m_roomMemberIds.contains(user.userId))
+            continue;
 
-            clearMemberDirectoryResults();
-            for (const auto &user : job->results())
-            {
-                if (user.userId.isEmpty() || m_roomMemberIds.contains(user.userId))
-                    continue;
-
-                m_memberDisplayNames.insert(user.userId, user.displayName);
-                m_memberAvatarUrls.insert(user.userId, user.avatarUrl);
-                const auto visibleName = user.displayName.isEmpty() ? user.userId : user.displayName;
-                const auto completionLabel = user.displayName.isEmpty()
-                                                 ? user.userId
-                                                 : QStringLiteral("%1 (%2)").arg(user.displayName, user.userId);
-                auto item = new QStandardItem{completionLabel};
-                item->setData(user.userId, MemberIdRole);
-                item->setData(visibleName + QLatin1Char('\n') + user.userId, MemberSearchTextRole);
-                item->setData(true, MemberDirectoryResultRole);
-                m_memberSearchModel->appendRow(item);
-            }
-            refreshMemberSearch();
-            if (m_memberCompleter && m_memberSearchEdit->hasFocus())
-                m_memberCompleter->complete();
-        });
+        m_memberDisplayNames.insert(user.userId, user.displayName);
+        m_memberAvatarUrls.insert(user.userId, user.avatarUrl);
+        const auto visibleName = user.displayName.isEmpty() ? user.userId : user.displayName;
+        const auto completionLabel = user.displayName.isEmpty()
+                                         ? user.userId
+                                         : QStringLiteral("%1 (%2)").arg(user.displayName, user.userId);
+        auto item = new QStandardItem{completionLabel};
+        item->setData(user.userId, MemberIdRole);
+        item->setData(visibleName + QLatin1Char('\n') + user.userId, MemberSearchTextRole);
+        item->setData(true, MemberDirectoryResultRole);
+        m_memberSearchModel->appendRow(item);
+    }
+    refreshMemberSearch();
+    if (m_memberCompleter && m_memberSearchEdit->hasFocus() && !m_userDirectorySearch->results().isEmpty())
+        m_memberCompleter->complete();
 }
 
 void MatrixRoomSettingsWindow::clearMemberDirectoryResults()
@@ -669,11 +649,7 @@ void MatrixRoomSettingsWindow::clearMemberDirectoryResults()
 
 QString MatrixRoomSettingsWindow::validMatrixUserId(const QString &text) const
 {
-    const auto uri = Quotient::Uri::fromUserInput(text);
-    return uri.isValid() && uri.type() == Quotient::Uri::UserId &&
-                   uri.secondaryType() == Quotient::Uri::NoSecondaryId
-               ? uri.primaryId()
-               : QString{};
+    return MatrixUserDirectorySearch::completeUserId(text);
 }
 
 void MatrixRoomSettingsWindow::selectMemberSearchResult(const QModelIndex &index)

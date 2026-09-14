@@ -4,7 +4,6 @@ set (actions_SRCS
 	chat/chat-priority-action.cpp
 	chat/mark-chat-read-action.cpp
 	chat/add-conference-action.cpp
-	chat/add-room-chat-action.cpp
 
 	chat-widget/italic-action.cpp
 	chat-widget/block-user-action.cpp

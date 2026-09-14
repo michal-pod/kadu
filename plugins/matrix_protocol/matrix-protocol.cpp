@@ -47,6 +47,7 @@
 #include "matrix-room-state-registry.h"
 #include "gui/matrix-device-verification-dialog.h"
 #include "gui/matrix-restore-recovery-key-dialog.h"
+#include "gui/matrix-conversation-start-widget.h"
 #include "gui/matrix-room-settings-window.h"
 
 #include <Quotient/connection.h>
@@ -232,6 +233,11 @@ QWidget *MatrixProtocol::createChatSettingsWindow(const Chat &chat, QWidget *par
                      ? m_connection->room(details->room(), Quotient::JoinState::Join)
                      : nullptr;
     return new MatrixRoomSettingsWindow{chat, m_chatService, m_connection, room, m_iconsManager, parent};
+}
+
+ConversationStartForm *MatrixProtocol::createConversationStartForm(QWidget *parent)
+{
+    return new MatrixConversationStartWidget{m_connection, m_chatService, m_iconsManager, parent};
 }
 
 void MatrixProtocol::createConnection()

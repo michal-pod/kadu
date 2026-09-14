@@ -26,6 +26,7 @@
 #include <injeqt/injeqt.h>
 
 class OpenChatWithService;
+class AccountManager;
 
 class OpenChatWithAction : public ActionDescription
 {
@@ -40,8 +41,12 @@ protected:
     virtual void actionTriggered(QAction *sender, bool toggled) override;
 
 private:
+    QPointer<AccountManager> m_accountManager;
     QPointer<OpenChatWithService> m_openChatWithService;
 
 private slots:
+    INJEQT_SET void setAccountManager(AccountManager *accountManager);
     INJEQT_SET void setOpenChatWithService(OpenChatWithService *openChatWithService);
+    INJEQT_INIT void init();
+    void updateVisibility();
 };

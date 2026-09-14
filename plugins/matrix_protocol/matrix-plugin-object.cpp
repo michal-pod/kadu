@@ -22,9 +22,7 @@
 
 #include "matrix-protocol-factory.h"
 #include "matrix-device-verification-notification-service.h"
-#include "matrix-join-room-action.h"
 #include "matrix-room-invitation-notification-service.h"
-#include "matrix-verify-device-action.h"
 #include "protocols/protocols-manager.h"
 
 MatrixPluginObject::MatrixPluginObject(QObject *parent) : QObject{parent}
@@ -40,11 +38,6 @@ void MatrixPluginObject::setMatrixProtocolFactory(MatrixProtocolFactory *matrixP
     m_matrixProtocolFactory = matrixProtocolFactory;
 }
 
-void MatrixPluginObject::setMatrixJoinRoomAction(MatrixJoinRoomAction *matrixJoinRoomAction)
-{
-    m_matrixJoinRoomAction = matrixJoinRoomAction;
-}
-
 void MatrixPluginObject::setMatrixDeviceVerificationNotificationService(
     MatrixDeviceVerificationNotificationService *matrixDeviceVerificationNotificationService)
 {
@@ -55,11 +48,6 @@ void MatrixPluginObject::setMatrixRoomInvitationNotificationService(
     MatrixRoomInvitationNotificationService *matrixRoomInvitationNotificationService)
 {
     m_matrixRoomInvitationNotificationService = matrixRoomInvitationNotificationService;
-}
-
-void MatrixPluginObject::setMatrixVerifyDeviceAction(MatrixVerifyDeviceAction *matrixVerifyDeviceAction)
-{
-    m_matrixVerifyDeviceAction = matrixVerifyDeviceAction;
 }
 
 void MatrixPluginObject::setProtocolsManager(ProtocolsManager *protocolsManager)
